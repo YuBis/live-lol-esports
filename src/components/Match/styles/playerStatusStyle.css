@@ -318,6 +318,14 @@ Gold bar
     text-align: center;
 }
 
+.team-gold-value-blue {
+    color: var(--blue-twitter);
+}
+
+.team-gold-value-red {
+    color: var(--red);
+}
+
 .gold-advantage-blue {
     color: var(--blue-twitter);
 }

@@ -892,6 +892,7 @@ function stabilizeDetailsFrame(
             previousItems,
             participantRole,
             lastKnownBootItemId,
+            observedItems,
         )
         const inferredItems = applyAggressiveMissingItemInference(bootRestoredItems, previousItems, participant, observedItems, participantRole)
         const lastKnownBoot = getBootItemId(inferredItems)
@@ -1268,12 +1269,14 @@ function restoreMidBootOnUnexpectedMissingSlot(
     previousItemIds: number[],
     participantRole: string | undefined,
     lastKnownBootItemId: number | undefined,
+    observedItems: Set<number> | undefined,
 ) {
     if (!isMidRole(participantRole)) return itemIds
     if (getBootItemId(itemIds) !== undefined) return itemIds
 
     const previousBootItemId = getBootItemId(previousItemIds)
-    const fallbackBootItemId = previousBootItemId || lastKnownBootItemId
+    const observedBootItemId = getPreferredObservedBootItemId(observedItems)
+    const fallbackBootItemId = previousBootItemId || lastKnownBootItemId || observedBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
     const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId)
@@ -1291,6 +1294,13 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number) {
     )
     if (!bootsUpgradePair) return bootItemId
     return bootsUpgradePair.targetItemId
+}
+
+function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
+    if (!observedItems || observedItems.size === 0) return undefined
+
+    const preferredBootItemIds = BASE_AND_UPGRADED_BOOT_ITEM_IDS.filter((itemId) => itemId !== 1001).concat(1001)
+    return preferredBootItemIds.find((itemId) => observedItems.has(itemId))
 }
 
 function isMidRole(participantRole: string | undefined) {
