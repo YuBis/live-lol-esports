@@ -285,12 +285,20 @@ export function Match({ match }: MatchRouteProps) {
                     observedDetailsItemsRef.current,
                     participantRoleByParticipantIdRef.current,
                     lastKnownBootByParticipantIdRef.current,
+                    isCurrentGameCompleted(),
                 )
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 setLastDetailsFrame(stabilizedFrame)
             });
+        }
+
+        function isCurrentGameCompleted() {
+            const matchEventDetails = matchEventDetailsRef.current
+            if (!matchEventDetails) return false
+            const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
+            return currentGame?.state === `completed`
         }
 
         function updateParticipantRoles(gameMetadata: GameMetadata) {
@@ -857,6 +865,7 @@ function stabilizeDetailsFrame(
     observedItemsByParticipantId?: ObservedDetailsItemsByParticipantId,
     participantRoleByParticipantId?: ParticipantRoleByParticipantId,
     lastKnownBootByParticipantId?: LastKnownBootItemByParticipantId,
+    isCompletedGame?: boolean,
 ): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
@@ -900,6 +909,7 @@ function stabilizeDetailsFrame(
             participantRole,
             lastKnownBootItemId,
             observedItems,
+            isCompletedGame,
         )
         const inferredItems = applyAggressiveMissingItemInference(
             bootRestoredItems,
@@ -908,13 +918,17 @@ function stabilizeDetailsFrame(
             observedItems,
             participantRole,
             lastKnownBootItemId,
+            isCompletedGame,
         )
         const normalizedBootRegressionItems = normalizeSuspiciousBootRegression(inferredItems, previousItems, lastKnownBootItemId)
         const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(normalizedBootRegressionItems, previousItems, lastKnownBootItemId, observedItems)
         const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
         const currentBootItemId = getBootItemId(normalizedTearItems)
         const resolvedKnownBootItemId = resolveKnownBootItemId(currentBootItemId, lastKnownBootItemId)
-        if (lastKnownBootByParticipantId && resolvedKnownBootItemId !== undefined) {
+        const shouldStoreResolvedBoot =
+            resolvedKnownBootItemId !== undefined
+            && !(isCompletedGame && resolvedKnownBootItemId === 1001 && lastKnownBootItemId === undefined)
+        if (lastKnownBootByParticipantId && shouldStoreResolvedBoot) {
             lastKnownBootByParticipantId.set(participant.participantId, resolvedKnownBootItemId)
         }
         return { ...participant, items: normalizedTearItems }
@@ -1054,6 +1068,7 @@ function applyAggressiveMissingItemInference(
     observedItems: Set<number> | undefined,
     participantRole: string | undefined,
     lastKnownBootItemId: number | undefined,
+    isCompletedGame?: boolean,
 ) {
     if (!observedItems || itemIds.length === 0) return itemIds
 
@@ -1064,6 +1079,7 @@ function applyAggressiveMissingItemInference(
             const knownBootItemId =
                 resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
                 || getStableObservedBootItemId(observedItems)
+            if (isCompletedGame && knownBootItemId === 1001 && lastKnownBootItemId === undefined && getBootItemId(previousItemIds) === undefined) return
             if (knownBootItemId === undefined) return
             if (!isBootInferencePairAllowedByKnownBoot(inferencePair, knownBootItemId)) return
         }
@@ -1323,6 +1339,7 @@ function restoreMidBootOnUnexpectedMissingSlot(
     participantRole: string | undefined,
     lastKnownBootItemId: number | undefined,
     observedItems: Set<number> | undefined,
+    isCompletedGame?: boolean,
 ) {
     if (!isMidRole(participantRole)) return itemIds
     if (getBootItemId(itemIds) !== undefined) return itemIds
@@ -1330,6 +1347,7 @@ function restoreMidBootOnUnexpectedMissingSlot(
     const previousBootItemId = getBootItemId(previousItemIds)
     const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
     const observedBootItemId = getStableObservedBootItemId(observedItems, knownBootItemId)
+    if (isCompletedGame && knownBootItemId === undefined && observedBootItemId === 1001) return itemIds
     const fallbackBootItemId = knownBootItemId || observedBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
