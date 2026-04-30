@@ -922,6 +922,16 @@ type MissingItemInferencePair = {
     type: `transform` | `boots`,
 }
 
+type TearLineUpgradeInferenceBranch = {
+    sourceItemId: number,
+    targetItemId: number,
+    profile: `ap` | `ad` | `tank`,
+    componentHintItemIds: number[],
+    subComponentHintItemIds: number[],
+    highConfidenceComponentHintItemIds: number[],
+    highConfidenceSubComponentHintItemIds: number[],
+}
+
 const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
     { sourceItemId: 3003, targetItemId: 3040, type: `transform` }, // Archangel's Staff -> Seraph's Embrace
     { sourceItemId: 3004, targetItemId: 3042, type: `transform` }, // Manamune -> Muramana
@@ -954,6 +964,40 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     3176,
     3179,
 ]
+const TEAR_OF_THE_GODDESS_ITEM_ID = 3070
+const TEAR_LINE_UPGRADE_INFERENCE_BRANCHES: TearLineUpgradeInferenceBranch[] = [
+    {
+        sourceItemId: 3003, // Archangel's Staff
+        targetItemId: 3040, // Seraph's Embrace
+        profile: `ap`,
+        componentHintItemIds: [1058, 3108, 3802, 3803, 2522],
+        subComponentHintItemIds: [1026, 1027, 1052],
+        highConfidenceComponentHintItemIds: [3108, 3802, 3803, 2522],
+        highConfidenceSubComponentHintItemIds: [1027],
+    },
+    {
+        sourceItemId: 3004, // Manamune
+        targetItemId: 3042, // Muramana
+        profile: `ad`,
+        componentHintItemIds: [1037, 3133],
+        subComponentHintItemIds: [1036],
+        highConfidenceComponentHintItemIds: [3133],
+        highConfidenceSubComponentHintItemIds: [1036],
+    },
+    {
+        sourceItemId: 3119, // Winter's Approach
+        targetItemId: 3121, // Fimbulwinter
+        profile: `tank`,
+        componentHintItemIds: [1011, 3067],
+        subComponentHintItemIds: [1028, 1027],
+        highConfidenceComponentHintItemIds: [1011, 3067],
+        highConfidenceSubComponentHintItemIds: [1028],
+    },
+]
+const TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.reduce<number[]>((itemIds, branch) => {
+    itemIds.push(branch.sourceItemId, branch.targetItemId)
+    return itemIds
+}, [])
 
 function getObservedItemsForParticipant(observedItemsByParticipantId: ObservedDetailsItemsByParticipantId | undefined, participantId: number) {
     if (!observedItemsByParticipantId) return undefined
@@ -1003,7 +1047,124 @@ function applyAggressiveMissingItemInference(
         inferredItems = appendOrReplaceInferredItem(inferredItems, inferencePair.targetItemId)
     })
 
+    inferredItems = inferTearLineUpgradeFromComponentDrop(
+        inferredItems,
+        previousItemIds,
+        participant,
+        observedItems,
+    )
+
     return inferredItems
+}
+
+function inferTearLineUpgradeFromComponentDrop(
+    currentItemIds: number[],
+    previousItemIds: number[],
+    participant: DetailsFrame[`participants`][number],
+    observedItems: Set<number>,
+) {
+    if (currentItemIds.some((itemId) => TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS.includes(itemId))) return currentItemIds
+
+    const droppedItemIds = getDroppedItemIds(previousItemIds, currentItemIds)
+    if (!droppedItemIds.includes(TEAR_OF_THE_GODDESS_ITEM_ID)) return currentItemIds
+
+    const candidateBranches = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.filter((branch) =>
+        shouldConsiderTearLineBranchFromDrop(branch, droppedItemIds, observedItems, participant)
+    )
+    if (candidateBranches.length === 0) return currentItemIds
+
+    const selectedBranch = selectTearLineUpgradeInferenceBranch(candidateBranches, droppedItemIds, observedItems, participant)
+    if (!selectedBranch) return currentItemIds
+
+    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems)
+    return appendOrReplaceInferredItem(currentItemIds, targetItemId)
+}
+
+function shouldConsiderTearLineBranchFromDrop(
+    branch: TearLineUpgradeInferenceBranch,
+    droppedItemIds: number[],
+    observedItems: Set<number>,
+    participant: DetailsFrame[`participants`][number],
+) {
+    const branchWasObserved = observedItems.has(branch.sourceItemId) || observedItems.has(branch.targetItemId)
+    if (branchWasObserved) return true
+
+    const droppedComponentHintCount = countMatchedItemIds(droppedItemIds, branch.componentHintItemIds)
+    const droppedSubComponentHintCount = countMatchedItemIds(droppedItemIds, branch.subComponentHintItemIds)
+    if (droppedComponentHintCount === 0 && droppedSubComponentHintCount === 0) return false
+
+    const droppedHighConfidenceHintCount =
+        countMatchedItemIds(droppedItemIds, branch.highConfidenceComponentHintItemIds)
+        + countMatchedItemIds(droppedItemIds, branch.highConfidenceSubComponentHintItemIds)
+    if (droppedHighConfidenceHintCount > 0) return true
+    if (droppedComponentHintCount > 0 && droppedSubComponentHintCount > 0) return true
+
+    const profile = getParticipantTearLineProfile(participant)
+    return profile === branch.profile
+}
+
+function selectTearLineUpgradeInferenceBranch(
+    candidateBranches: TearLineUpgradeInferenceBranch[],
+    droppedItemIds: number[],
+    observedItems: Set<number>,
+    participant: DetailsFrame[`participants`][number],
+) {
+    const profile = getParticipantTearLineProfile(participant)
+    const rankedBranches = candidateBranches
+        .map((branch) => {
+            const highConfidenceComponentHintCount = countMatchedItemIds(droppedItemIds, branch.highConfidenceComponentHintItemIds)
+            const highConfidenceSubComponentHintCount = countMatchedItemIds(droppedItemIds, branch.highConfidenceSubComponentHintItemIds)
+            const componentHintCount = countMatchedItemIds(droppedItemIds, branch.componentHintItemIds)
+            const subComponentHintCount = countMatchedItemIds(droppedItemIds, branch.subComponentHintItemIds)
+            const observedTargetScore = observedItems.has(branch.targetItemId) ? 1 : 0
+            const observedSourceScore = observedItems.has(branch.sourceItemId) ? 1 : 0
+            const profileScore = branch.profile === profile ? 1 : 0
+            return {
+                branch,
+                highConfidenceHintCount: highConfidenceComponentHintCount + highConfidenceSubComponentHintCount,
+                componentHintCount,
+                subComponentHintCount,
+                totalHintCount: componentHintCount + subComponentHintCount,
+                observedTargetScore,
+                observedSourceScore,
+                profileScore,
+            }
+        })
+        .sort((left, right) => {
+            if (right.observedTargetScore !== left.observedTargetScore) return right.observedTargetScore - left.observedTargetScore
+            if (right.observedSourceScore !== left.observedSourceScore) return right.observedSourceScore - left.observedSourceScore
+            if (right.highConfidenceHintCount !== left.highConfidenceHintCount) return right.highConfidenceHintCount - left.highConfidenceHintCount
+            if (right.componentHintCount !== left.componentHintCount) return right.componentHintCount - left.componentHintCount
+            if (right.subComponentHintCount !== left.subComponentHintCount) return right.subComponentHintCount - left.subComponentHintCount
+            if (right.totalHintCount !== left.totalHintCount) return right.totalHintCount - left.totalHintCount
+            if (right.profileScore !== left.profileScore) return right.profileScore - left.profileScore
+            return 0
+        })
+
+    return rankedBranches[0]?.branch
+}
+
+function getParticipantTearLineProfile(participant: DetailsFrame[`participants`][number]) {
+    if (participant.abilityPower >= participant.attackDamage + 25) return `ap`
+    if (participant.attackDamage >= participant.abilityPower + 20) return `ad`
+    return `tank`
+}
+
+function getPreferredTearLineRecoveredItemId(
+    branch: TearLineUpgradeInferenceBranch,
+    participant: DetailsFrame[`participants`][number],
+    observedItems: Set<number>,
+) {
+    if (observedItems.has(branch.targetItemId)) return branch.targetItemId
+    if (observedItems.has(branch.sourceItemId)) return branch.sourceItemId
+
+    const canAssumeTransformedItem = participant.level >= 14 || participant.totalGoldEarned >= 10500
+    return canAssumeTransformedItem ? branch.targetItemId : branch.sourceItemId
+}
+
+function countMatchedItemIds(referenceItemIds: number[], targetItemIds: number[]) {
+    if (referenceItemIds.length === 0 || targetItemIds.length === 0) return 0
+    return referenceItemIds.filter((itemId) => targetItemIds.includes(itemId)).length
 }
 
 function restoreMidBootOnUnexpectedMissingSlot(
@@ -1066,6 +1227,27 @@ function appendOrReplaceInferredItem(itemIds: number[], targetItemId: number) {
     const replacementIndex = getPreferredInferenceReplacementIndex(itemIds)
     if (replacementIndex < 0) return itemIds
     return replaceItemAtIndex(itemIds, replacementIndex, targetItemId)
+}
+
+function getDroppedItemIds(previousItemIds: number[], currentItemIds: number[]) {
+    if (previousItemIds.length === 0 || currentItemIds.length >= previousItemIds.length) return []
+
+    const currentItemCounts = new Map<number, number>()
+    currentItemIds.forEach((itemId) => {
+        currentItemCounts.set(itemId, (currentItemCounts.get(itemId) || 0) + 1)
+    })
+
+    const droppedItemIds: number[] = []
+    previousItemIds.forEach((itemId) => {
+        const count = currentItemCounts.get(itemId) || 0
+        if (count > 0) {
+            currentItemCounts.set(itemId, count - 1)
+            return
+        }
+        droppedItemIds.push(itemId)
+    })
+
+    return droppedItemIds
 }
 
 function getPreferredInferenceReplacementIndex(itemIds: number[]) {

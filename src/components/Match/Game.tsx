@@ -127,12 +127,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     const goldPercentage = getGoldPercentage(lastWindowFrame.blueTeam.totalGold, lastWindowFrame.redTeam.totalGold);
     const goldLead = lastWindowFrame.blueTeam.totalGold - lastWindowFrame.redTeam.totalGold
-    const goldLeadDirection = getGoldLeadDirection(goldLead)
+    const goldLeadSymbol = getGoldLeadSymbol(goldLead)
     const formattedBlueTeamGold = formatGoldInK(lastWindowFrame.blueTeam.totalGold)
     const formattedRedTeamGold = formatGoldInK(lastWindowFrame.redTeam.totalGold)
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
-    const goldLeadIndicatorText = getGoldLeadIndicatorText(goldLeadDirection, formattedGoldLead)
-    const goldLeadAlignmentClass = getGoldLeadAlignmentClass(goldLead)
+    const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -435,8 +434,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
                             <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
-                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`} ${goldLeadAlignmentClass}`}>
-                                {goldLeadIndicatorText}
+                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`}`}>
+                                {goldLeadSymbol ? (
+                                    <span className={`gold-lead-symbol ${goldLeadSymbolAlignmentClass}`}>{goldLeadSymbol}</span>
+                                ) : null}
+                                <span className="gold-lead-value">{formattedGoldLead}</span>
                             </span>
                             <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
                         </div>
@@ -865,23 +867,11 @@ function formatGoldInK(goldValue: number) {
     const normalizedK = Number(goldValue) / 1000
     const roundedK = Math.round(normalizedK * 10) / 10
     const displayValue = Number.isInteger(roundedK) ? roundedK.toFixed(0) : roundedK.toFixed(1)
-    return `${displayValue}K`
+    return `${displayValue}k`
 }
 
-function getGoldLeadDirection(goldLead: number) {
+function getGoldLeadSymbol(goldLead: number) {
     if (goldLead > 0) return `<`
     if (goldLead < 0) return `>`
-    return `=`
-}
-
-function getGoldLeadAlignmentClass(goldLead: number) {
-    if (goldLead > 0) return `gold-lead-left`
-    if (goldLead < 0) return `gold-lead-right`
-    return `gold-lead-center`
-}
-
-function getGoldLeadIndicatorText(goldLeadDirection: string, formattedGoldLead: string) {
-    if (goldLeadDirection === `<`) return `< ${formattedGoldLead}`
-    if (goldLeadDirection === `>`) return `${formattedGoldLead} >`
-    return formattedGoldLead
+    return ``
 }

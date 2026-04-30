@@ -342,18 +342,28 @@ Gold bar
     text-align: center;
     display: flex;
     align-items: center;
-}
-
-.gold-lead-indicator.gold-lead-left {
-    justify-content: flex-start;
-}
-
-.gold-lead-indicator.gold-lead-right {
-    justify-content: flex-end;
-}
-
-.gold-lead-indicator.gold-lead-center {
     justify-content: center;
+    position: relative;
+}
+
+.gold-lead-symbol {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-weight: 700;
+}
+
+.gold-lead-symbol-left {
+    left: 0.55rem;
+}
+
+.gold-lead-symbol-right {
+    right: 0.55rem;
+}
+
+.gold-lead-value {
+    width: 100%;
+    text-align: center;
 }
 
 .live-game-stats-header-gold-bar {
