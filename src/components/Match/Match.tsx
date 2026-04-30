@@ -896,6 +896,7 @@ function stabilizeDetailsFrame(
         const bootRestoredItems = restoreMidBootOnUnexpectedMissingSlot(
             stabilizedItems,
             previousItems,
+            participant,
             participantRole,
             lastKnownBootItemId,
             observedItems,
@@ -1074,6 +1075,7 @@ function applyAggressiveMissingItemInference(
         inferredItems,
         participant,
         observedItems,
+        participantRole,
     )
 
     return inferredItems
@@ -1106,12 +1108,13 @@ function inferTearLineUpgradeFromObservedHistory(
     currentItemIds: number[],
     participant: DetailsFrame[`participants`][number],
     observedItems: Set<number>,
+    participantRole: string | undefined,
 ) {
     if (!observedItems.has(TEAR_OF_THE_GODDESS_ITEM_ID)) return currentItemIds
     if (currentItemIds.some((itemId) => TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS.includes(itemId))) return currentItemIds
 
     const candidateBranches = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.filter((branch) =>
-        shouldConsiderTearLineBranchFromObservedHistory(branch, observedItems, participant)
+        shouldConsiderTearLineBranchFromObservedHistory(branch, currentItemIds, observedItems, participant, participantRole)
     )
     if (candidateBranches.length === 0) return currentItemIds
 
@@ -1188,24 +1191,35 @@ function selectTearLineUpgradeInferenceBranch(
 
 function shouldConsiderTearLineBranchFromObservedHistory(
     branch: TearLineUpgradeInferenceBranch,
+    currentItemIds: number[],
     observedItems: Set<number>,
     participant: DetailsFrame[`participants`][number],
+    participantRole: string | undefined,
 ) {
     const branchWasObserved = observedItems.has(branch.sourceItemId) || observedItems.has(branch.targetItemId)
-    if (branchWasObserved) return true
 
     const observedComponentHintCount = countMatchedObservedItemIds(observedItems, branch.componentHintItemIds)
     const observedSubComponentHintCount = countMatchedObservedItemIds(observedItems, branch.subComponentHintItemIds)
-    if (observedComponentHintCount === 0) return false
+    if (!branchWasObserved && observedComponentHintCount === 0 && observedSubComponentHintCount === 0) return false
 
     const observedHighConfidenceHintCount =
         countMatchedObservedItemIds(observedItems, branch.highConfidenceComponentHintItemIds)
         + countMatchedObservedItemIds(observedItems, branch.highConfidenceSubComponentHintItemIds)
-    if (observedHighConfidenceHintCount > 0) return true
-    if (observedSubComponentHintCount > 0) return true
-
+    const hasCurrentBranchEvidence = hasCurrentTearBranchEvidence(currentItemIds, branch)
+    const isSupportRole = participantRole?.toLowerCase() === `support`
     const profile = getParticipantTearLineProfile(participant)
-    return profile === branch.profile
+    const profileMatches = profile === branch.profile
+
+    if (branchWasObserved) return true
+
+    // Tank branch on support creates frequent false positives from shared HP components.
+    // Require live-frame branch evidence before inferring from history-only hints.
+    if (branch.profile === `tank` && isSupportRole && !hasCurrentBranchEvidence) return false
+
+    if (observedHighConfidenceHintCount >= 2 && (profileMatches || hasCurrentBranchEvidence)) return true
+    if (observedHighConfidenceHintCount >= 1 && profileMatches && hasCurrentBranchEvidence) return true
+    if (observedComponentHintCount > 0 && observedSubComponentHintCount > 0 && profileMatches && hasCurrentBranchEvidence) return true
+    return profileMatches && hasCurrentBranchEvidence
 }
 
 function selectTearLineUpgradeInferenceBranchFromObservedHistory(
@@ -1283,6 +1297,7 @@ function countMatchedObservedItemIds(observedItems: Set<number>, targetItemIds: 
 function restoreMidBootOnUnexpectedMissingSlot(
     itemIds: number[],
     previousItemIds: number[],
+    participant: DetailsFrame[`participants`][number],
     participantRole: string | undefined,
     lastKnownBootItemId: number | undefined,
     observedItems: Set<number> | undefined,
@@ -1295,7 +1310,8 @@ function restoreMidBootOnUnexpectedMissingSlot(
     const fallbackBootItemId = previousBootItemId || lastKnownBootItemId || observedBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
-    const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId)
+    let preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId)
+    preferredBootItemId = getPromotedMidRecoveredBootItemId(preferredBootItemId, participant)
     return appendOrReplaceInferredItem(itemIds, preferredBootItemId)
 }
 
@@ -1409,6 +1425,15 @@ function hasEvidenceOfSecondaryTearBuild(
     })
 }
 
+function hasCurrentTearBranchEvidence(itemIds: number[], branch: TearLineUpgradeInferenceBranch) {
+    return itemIds.some((itemId) =>
+        itemId === branch.sourceItemId
+        || itemId === branch.targetItemId
+        || branch.componentHintItemIds.includes(itemId)
+        || branch.subComponentHintItemIds.includes(itemId)
+    )
+}
+
 function getPreferredMidRecoveredBootItemId(bootItemId: number) {
     let preferredBootItemId = bootItemId
     const visitedBootItemIds = new Set<number>()
@@ -1421,6 +1446,20 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number) {
     }
 
     return preferredBootItemId
+}
+
+function getPromotedMidRecoveredBootItemId(
+    bootItemId: number,
+    participant: DetailsFrame[`participants`][number],
+) {
+    if (bootItemId !== 1001) return bootItemId
+
+    const hasLateGameSignal = participant.level >= 13 || participant.totalGoldEarned >= 9000
+    if (!hasLateGameSignal) return bootItemId
+
+    const hasApProfile = participant.abilityPower >= participant.attackDamage
+    if (hasApProfile) return 3175
+    return 3171
 }
 
 function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
