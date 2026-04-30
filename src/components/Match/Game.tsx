@@ -43,7 +43,7 @@ type Props = {
     championNameMap: {
         [championId: string]: string;
     },
-    isBackfillInProgress?: boolean,
+    backfillStatus?: `idle` | `running` | `completed`,
 }
 
 enum GameState {
@@ -52,7 +52,7 @@ enum GameState {
     finished = "game ended"
 }
 
-export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, isBackfillInProgress = false }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle` }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -131,6 +131,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const formattedBlueTeamGold = formatGoldInK(lastWindowFrame.blueTeam.totalGold)
     const formattedRedTeamGold = formatGoldInK(lastWindowFrame.redTeam.totalGold)
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
+    const goldLeadIndicatorText = getGoldLeadIndicatorText(goldLeadDirection, formattedGoldLead)
+    const goldLeadAlignmentClass = getGoldLeadAlignmentClass(goldLead)
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -433,8 +435,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
                             <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
-                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`}`}>
-                                {`${goldLeadDirection} ${formattedGoldLead}`}
+                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`} ${goldLeadAlignmentClass}`}>
+                                {goldLeadIndicatorText}
                             </span>
                             <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
                         </div>
@@ -664,8 +666,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         Copy Champion Names
                     </button>
                 </span>
-                {isBackfillInProgress ? (
+                {backfillStatus === `running` ? (
                     <span className="footer-notes backfill-status running">Backfill in progress: syncing historical items...</span>
+                ) : backfillStatus === `completed` ? (
+                    <span className="footer-notes backfill-status completed">Backfill completed: historical items synced.</span>
                 ) : null}
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
@@ -868,4 +872,16 @@ function getGoldLeadDirection(goldLead: number) {
     if (goldLead > 0) return `<`
     if (goldLead < 0) return `>`
     return `=`
+}
+
+function getGoldLeadAlignmentClass(goldLead: number) {
+    if (goldLead > 0) return `gold-lead-left`
+    if (goldLead < 0) return `gold-lead-right`
+    return `gold-lead-center`
+}
+
+function getGoldLeadIndicatorText(goldLeadDirection: string, formattedGoldLead: string) {
+    if (goldLeadDirection === `<`) return `< ${formattedGoldLead}`
+    if (goldLeadDirection === `>`) return `${formattedGoldLead} >`
+    return formattedGoldLead
 }

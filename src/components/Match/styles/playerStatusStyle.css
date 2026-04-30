@@ -340,6 +340,20 @@ Gold bar
     padding: 0.25rem 0.8rem;
     min-width: 6.5rem;
     text-align: center;
+    display: flex;
+    align-items: center;
+}
+
+.gold-lead-indicator.gold-lead-left {
+    justify-content: flex-start;
+}
+
+.gold-lead-indicator.gold-lead-right {
+    justify-content: flex-end;
+}
+
+.gold-lead-indicator.gold-lead-center {
+    justify-content: center;
 }
 
 .live-game-stats-header-gold-bar {
@@ -613,6 +627,10 @@ svg.player-champion {
 
 .footer-notes.backfill-status.running {
     color: var(--green-positive);
+}
+
+.footer-notes.backfill-status.completed {
+    color: var(--blue-twitter);
 }
 
 .chat-toggle, .stream-toggle {
