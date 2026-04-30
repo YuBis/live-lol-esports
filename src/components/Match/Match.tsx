@@ -50,6 +50,7 @@ type ChampionNameMap = {
 }
 
 type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
+type ParticipantRoleByParticipantId = Map<number, string>
 const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 30 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
@@ -84,6 +85,7 @@ export function Match({ match }: MatchRouteProps) {
     const firstDetailsTimestampRef = useRef<string>(``);
     const lastDetailsFrameRef = useRef<DetailsFrame>();
     const observedDetailsItemsRef = useRef<ObservedDetailsItemsByParticipantId>(new Map())
+    const participantRoleByParticipantIdRef = useRef<ParticipantRoleByParticipantId>(new Map())
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
     const activeGameIdRef = useRef<string>(``)
     const firstWindowTimestampRef = useRef<string>(``)
@@ -111,6 +113,7 @@ export function Match({ match }: MatchRouteProps) {
                     firstDetailsTimestampRef.current = ``
                     lastDetailsFrameRef.current = undefined
                     observedDetailsItemsRef.current = new Map()
+                    participantRoleByParticipantIdRef.current = new Map()
                     backfillStatusByGameIdRef.current = new Map()
                     firstWindowTimestampRef.current = ``
                     setLastDetailsFrame(undefined)
@@ -197,6 +200,7 @@ export function Match({ match }: MatchRouteProps) {
                 console.groupEnd()
                 firstWindowReceivedRef.current = true
                 firstWindowTimestampRef.current = normalizeTimestamp(frames[0].rfc460Timestamp)
+                updateParticipantRoles(response.data.gameMetadata)
                 setMetadata(response.data.gameMetadata)
                 setFirstWindowFrame(frames[0])
                 getItems(response.data.gameMetadata)
@@ -216,6 +220,7 @@ export function Match({ match }: MatchRouteProps) {
                 currentTimestampRef.current = lastWindowFrame.rfc460Timestamp
                 maybeStartLiveDetailsBackfill(gameId, lastWindowFrame)
 
+                updateParticipantRoles(response.data.gameMetadata)
                 setLastWindowFrame(lastWindowFrame)
                 setMetadata(response.data.gameMetadata)
 
@@ -265,12 +270,23 @@ export function Match({ match }: MatchRouteProps) {
                 if (!firstDetailsTimestampRef.current) {
                     firstDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 }
-                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current, observedDetailsItemsRef.current)
+                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current, observedDetailsItemsRef.current, participantRoleByParticipantIdRef.current)
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 setLastDetailsFrame(stabilizedFrame)
             });
+        }
+
+        function updateParticipantRoles(gameMetadata: GameMetadata) {
+            const participantRoleByParticipantId = new Map<number, string>()
+            gameMetadata.blueTeamMetadata.participantMetadata.forEach((participantMetadata) => {
+                participantRoleByParticipantId.set(participantMetadata.participantId, participantMetadata.role)
+            })
+            gameMetadata.redTeamMetadata.participantMetadata.forEach((participantMetadata) => {
+                participantRoleByParticipantId.set(participantMetadata.participantId, participantMetadata.role)
+            })
+            participantRoleByParticipantIdRef.current = participantRoleByParticipantId
         }
 
         function maybeStartLiveDetailsBackfill(gameId: string, lastWindowFrame: WindowFrame) {
@@ -812,7 +828,12 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
     return gameStates[gamesFinished.length >= eventDetails.match.games.length ? `completed` : scheduleEvent.state]
 }
 
-function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsFrame, observedItemsByParticipantId?: ObservedDetailsItemsByParticipantId): DetailsFrame {
+function stabilizeDetailsFrame(
+    nextFrame: DetailsFrame,
+    previousFrame?: DetailsFrame,
+    observedItemsByParticipantId?: ObservedDetailsItemsByParticipantId,
+    participantRoleByParticipantId?: ParticipantRoleByParticipantId,
+): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
         previousFrame.participants.forEach((participant) => {
@@ -823,6 +844,7 @@ function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsF
     const participants = nextFrame.participants.map((participant) => {
         const currentItems = sanitizeItemIds(participant.items)
         const previousItems = previousItemsByParticipantId.get(participant.participantId) || []
+        const participantRole = participantRoleByParticipantId?.get(participant.participantId)
         const observedItems = getObservedItemsForParticipant(observedItemsByParticipantId, participant.participantId)
         recordObservedItems(observedItems, previousItems)
         recordObservedItems(observedItems, currentItems)
@@ -846,8 +868,7 @@ function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsF
             }
         }
 
-        const inferredItems = applyAggressiveMissingItemInference(stabilizedItems, previousItems, participant, observedItems)
-        recordObservedItems(observedItems, inferredItems)
+        const inferredItems = applyAggressiveMissingItemInference(stabilizedItems, previousItems, participant, observedItems, participantRole)
         return { ...participant, items: inferredItems }
     })
 
@@ -902,11 +923,19 @@ function recordObservedItems(observedItems: Set<number> | undefined, itemIds: nu
     })
 }
 
-function applyAggressiveMissingItemInference(itemIds: number[], previousItemIds: number[], participant: DetailsFrame[`participants`][number], observedItems: Set<number> | undefined) {
+function applyAggressiveMissingItemInference(
+    itemIds: number[],
+    previousItemIds: number[],
+    participant: DetailsFrame[`participants`][number],
+    observedItems: Set<number> | undefined,
+    participantRole: string | undefined,
+) {
     if (!observedItems || itemIds.length === 0) return itemIds
 
     let inferredItems = itemIds.slice()
     AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.forEach((inferencePair) => {
+        if (inferencePair.type === `boots` && !isMidRole(participantRole)) return
+
         const sourceWasObserved = observedItems.has(inferencePair.sourceItemId)
         const targetWasObserved = observedItems.has(inferencePair.targetItemId)
         if (!sourceWasObserved || targetWasObserved) return
@@ -914,24 +943,23 @@ function applyAggressiveMissingItemInference(itemIds: number[], previousItemIds:
         if (!canAggressivelyInferMissingItem(inferencePair, inferredItems, previousItemIds, participant)) return
 
         if (inferredItems.includes(inferencePair.targetItemId)) {
-            observedItems.add(inferencePair.targetItemId)
             return
         }
 
         const sourceItemIndex = inferredItems.findIndex((itemId) => itemId === inferencePair.sourceItemId)
         if (sourceItemIndex >= 0) {
             inferredItems = replaceItemAtIndex(inferredItems, sourceItemIndex, inferencePair.targetItemId)
-            observedItems.add(inferencePair.targetItemId)
             return
         }
 
         inferredItems = appendOrReplaceInferredItem(inferredItems, inferencePair.targetItemId)
-        if (inferredItems.includes(inferencePair.targetItemId)) {
-            observedItems.add(inferencePair.targetItemId)
-        }
     })
 
     return inferredItems
+}
+
+function isMidRole(participantRole: string | undefined) {
+    return participantRole?.toLowerCase() === `mid`
 }
 
 function canAggressivelyInferMissingItem(inferencePair: MissingItemInferencePair, currentItemIds: number[], previousItemIds: number[], participant: DetailsFrame[`participants`][number]) {
