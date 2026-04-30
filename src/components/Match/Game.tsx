@@ -499,7 +499,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <MiniHealthBar currentHealth={player.currentHealth} maxHealth={player.maxHealth} />
                                         </td>
                                         <td>
-                                            <ItemsDisplay participantId={player.participantId - 1} lastFrame={lastDetailsFrame} items={items} patchVersion={formattedPatchVersion} />
+                                            <ItemsDisplay
+                                                participantId={player.participantId - 1}
+                                                lastFrame={lastDetailsFrame}
+                                                items={items}
+                                                patchVersion={formattedPatchVersion}
+                                                role={gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].role}
+                                            />
                                         </td>
                                         <td>
                                             <div className=" player-stats">{player.creepScore}</div>
@@ -588,7 +594,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <MiniHealthBar currentHealth={player.currentHealth} maxHealth={player.maxHealth} />
                                         </td>
                                         <td>
-                                            <ItemsDisplay participantId={player.participantId - 1} lastFrame={lastDetailsFrame} items={items} patchVersion={formattedPatchVersion} />
+                                            <ItemsDisplay
+                                                participantId={player.participantId - 1}
+                                                lastFrame={lastDetailsFrame}
+                                                items={items}
+                                                patchVersion={formattedPatchVersion}
+                                                role={gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].role}
+                                            />
                                         </td>
                                         <td>
                                             <div className=" player-stats">{player.creepScore}</div>

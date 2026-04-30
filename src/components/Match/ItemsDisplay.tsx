@@ -6,10 +6,11 @@ type Props = {
     participantId: number,
     lastFrame: DetailsFrame,
     items: Item[],
-    patchVersion: string
+    patchVersion: string,
+    role?: string,
 }
 
-export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: Props) {
+export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, role }: Props) {
     const lastFrameItems = lastFrame.participants[participantId].items;
 
     /*
@@ -39,6 +40,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
     const itemsID = itemIds
         .filter((itemId) => !TRINKET_IDS.includes(itemId))
         .sort((a, b) => sortItemsByGoldDesc(a, b, items))
+    const constrainedItems = applyRoleNonTrinketItemLimit(itemsID, role, items)
 
     const itemsUrlWithPatchVersion = ITEMS_URL.replace(`PATCH_VERSION`, patchVersion)
 
@@ -46,26 +48,26 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
         <div className="player-stats-items" key={`${participantId}`}>
             {[...Array(7)].map((x, i) => {
 
-                if (itemsID[i] !== undefined) {
-                    let currentItem = items[itemsID[i]]
+                if (constrainedItems[i] !== undefined) {
+                    let currentItem = items[constrainedItems[i]]
                     return (
                         <div className="player-stats-item"
-                            key={`${participantId}_${i}_${itemsID[i]}`}
-                            id={`item_${participantId}_${i}_${itemsID[i]}`}
-                            onMouseEnter={() => showItemDescription(`item_${participantId}_${i}_${itemsID[i]}`)}
-                            onMouseLeave={() => hideItemDescription(`item_${participantId}_${i}_${itemsID[i]}`)}
-                            onTouchStart={() => showItemDescription(`item_${participantId}_${i}_${itemsID[i]}`)}
-                            onTouchEnd={() => hideItemDescription(`item_${participantId}_${i}_${itemsID[i]}`)}>
+                            key={`${participantId}_${i}_${constrainedItems[i]}`}
+                            id={`item_${participantId}_${i}_${constrainedItems[i]}`}
+                            onMouseEnter={() => showItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
+                            onMouseLeave={() => hideItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
+                            onTouchStart={() => showItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
+                            onTouchEnd={() => hideItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}>
                             <div className="itemDescription">
                                 <div className="itemName">{currentItem.name}</div>
                                 {formatItemDescription(currentItem)}
                             </div>
-                            <img alt="" src={`${itemsUrlWithPatchVersion}${itemsID[i]}.png`} />
+                            <img alt="" src={`${itemsUrlWithPatchVersion}${constrainedItems[i]}.png`} />
                         </div>
                     )
                 } else {
                     return (
-                        <div className="player-stats-item empty" key={`${participantId}_${i}_${itemsID[i]}`} />
+                        <div className="player-stats-item empty" key={`${participantId}_${i}_${constrainedItems[i]}`} />
                     )
                 }
 
@@ -103,7 +105,13 @@ const FALLBACK_CONSUMABLE_ITEM_IDS = [
     2031, // Refillable Potion
     2033, // Corrupting Potion
     2055, // Control Ward
+    2138, // Elixir of Iron
+    2139, // Elixir of Sorcery
+    2140, // Elixir of Wrath
 ]
+const FALLBACK_INSTANT_CONSUMED_ITEM_IDS = [2138, 2139, 2140]
+const NON_BOTTOM_SUPPORT_MAX_NON_TRINKET_ITEMS = 6
+const DEFAULT_MAX_NON_TRINKET_ITEMS = 7
 
 function dedupeConsumableItems(itemIds: number[], items: Item[]) {
     const dedupedItems: number[] = []
@@ -130,6 +138,61 @@ function isConsumableItem(itemId: number, items: Item[]) {
     if (item.consumed) return true
     if (item.tags && item.tags.includes("Consumable")) return true
     return FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
+}
+
+function isInstantConsumedLikelyItem(itemId: number, items: Item[]) {
+    const item = items[itemId]
+    if (!item) return FALLBACK_INSTANT_CONSUMED_ITEM_IDS.includes(itemId)
+
+    if (item.consumed) return true
+    return FALLBACK_INSTANT_CONSUMED_ITEM_IDS.includes(itemId)
+}
+
+function applyRoleNonTrinketItemLimit(itemIds: number[], role: string | undefined, items: Item[]) {
+    const maxNonTrinketItems = getMaxNonTrinketItemsForRole(role)
+    if (itemIds.length <= maxNonTrinketItems) return itemIds
+
+    let filteredItems = itemIds.slice()
+    filteredItems = trimItemsByPriority(filteredItems, maxNonTrinketItems, (itemId) => isInstantConsumedLikelyItem(itemId, items))
+
+    if (filteredItems.length > maxNonTrinketItems) {
+        filteredItems = trimItemsByPriority(filteredItems, maxNonTrinketItems, (itemId) => isConsumableItem(itemId, items))
+    }
+
+    if (filteredItems.length > maxNonTrinketItems) {
+        return filteredItems.slice(0, maxNonTrinketItems)
+    }
+
+    return filteredItems
+}
+
+function getMaxNonTrinketItemsForRole(role: string | undefined) {
+    const normalizedRole = role?.toLowerCase()
+    if (normalizedRole === `top` || normalizedRole === `jungle` || normalizedRole === `mid`) {
+        return NON_BOTTOM_SUPPORT_MAX_NON_TRINKET_ITEMS
+    }
+    return DEFAULT_MAX_NON_TRINKET_ITEMS
+}
+
+function trimItemsByPriority(itemIds: number[], maxItems: number, shouldTrimItem: (itemId: number) => boolean) {
+    if (itemIds.length <= maxItems) return itemIds
+
+    const retainedItems: number[] = []
+    const trimCandidateItems: number[] = []
+    itemIds.forEach((itemId) => {
+        if (shouldTrimItem(itemId)) {
+            trimCandidateItems.push(itemId)
+            return
+        }
+        retainedItems.push(itemId)
+    })
+
+    if (retainedItems.length >= maxItems) {
+        return retainedItems.slice(0, maxItems)
+    }
+
+    const remainingSlots = maxItems - retainedItems.length
+    return retainedItems.concat(trimCandidateItems.slice(0, remainingSlots))
 }
 
 function sortItemsByGoldDesc(a: number, b: number, items: Item[]) {
