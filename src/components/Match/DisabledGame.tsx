@@ -404,14 +404,11 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                 <th className="table-top-row" title="gold">
                                     <span>Gold</span>
                                 </th>
-                                <th className="table-top-row" title="gold difference">
-                                    <span>+/-</span>
-                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {firstWindowFrame.blueTeam.participants.map((player: WindowParticipant, index) => {
-                                let goldDifference = getGoldDifference(player, "blue", gameMetadata, firstWindowFrame);
+                                let goldDifference = getGoldDifference(player, firstWindowFrame);
                                 // let championDetails = lastDetailsFrame.participants[index]
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
@@ -424,9 +421,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{getChampionDisplayName(gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId)}</span>
+                                                    <span>{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
                                                     <span
-                                                        className=" player-card-player-name">{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
+                                                        className=" player-card-player-name">{getChampionDisplayName(gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId)}</span>
                                                 </div>
                                             </div>
                                         </th>
@@ -449,16 +446,15 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
                                         </td>
                                         <td>
-                                            <div
-                                                className=" player-stats">{Number(player.totalGold).toLocaleString('en-us')}</div>
-                                        </td>
-                                        <td>
-                                            <div className={`player-stats player-gold-${goldDifference?.style}`}>{goldDifference.goldDifference}</div>
+                                            <div className="player-stats player-stats-gold">
+                                                <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
+                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 ), (
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}_stats`} className='champion-stats-row'>
-                                        <td colSpan={9}>
+                                        <td colSpan={8}>
                                             <span>
                                                 {/* {getFormattedChampionStats(championDetails, runes)} */}
                                             </span>
@@ -496,14 +492,11 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                 <th className="table-top-row" title="gold">
                                     <span>Gold</span>
                                 </th>
-                                <th className="table-top-row" title="gold difference">
-                                    <span>+/-</span>
-                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {firstWindowFrame.redTeam.participants.map((player: WindowParticipant, index) => {
-                                let goldDifference = getGoldDifference(player, "red", gameMetadata, firstWindowFrame);
+                                let goldDifference = getGoldDifference(player, firstWindowFrame);
                                 // let championDetails = lastDetailsFrame.participants[index + 5]
 
                                 return [(
@@ -517,8 +510,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>
-                                                    <span className=" player-card-player-name">{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
+                                                    <span>{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
+                                                    <span className=" player-card-player-name">{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>
                                                 </div>
                                             </div>
                                         </th>
@@ -541,15 +534,15 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats">{Number(player.totalGold).toLocaleString('en-us')}</div>
-                                        </td>
-                                        <td>
-                                            <div className={`player-stats player-gold-${goldDifference?.style}`}>{goldDifference.goldDifference}</div>
+                                            <div className="player-stats player-stats-gold">
+                                                <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
+                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 ), (
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}_stats`} className='champion-stats-row'>
-                                        <td colSpan={9}>
+                                        <td colSpan={8}>
                                             <span>
                                                 {/* {getFormattedChampionStats(championDetails, runes)} */}
                                             </span>
@@ -633,23 +626,15 @@ function getInGameTime(startTime: string, currentTime: string) {
     return hours ? `${hours}:${minutes}:${secondsString}` : `${minutes}:${secondsString}`
 }
 
-function getGoldDifference(player: WindowParticipant, side: string, gameMetadata: GameMetadata, frame: WindowFrame) {
+function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
     if (6 > player.participantId) { // blue side
         const redPlayer = frame.redTeam.participants[player.participantId - 1];
         const goldResult = player.totalGold - redPlayer.totalGold;
-
-        return {
-            style: goldResult > 0 ? "positive" : "negative",
-            goldDifference: goldResult > 0 ? "+" + Number(goldResult).toLocaleString("en-us") : Number(goldResult).toLocaleString("en-us")
-        };
+        return goldResult;
     } else {
         const bluePlayer = frame.blueTeam.participants[player.participantId - 6];
         const goldResult = player.totalGold - bluePlayer.totalGold;
-
-        return {
-            style: goldResult > 0 ? "positive" : "negative",
-            goldDifference: goldResult > 0 ? "+" + Number(goldResult).toLocaleString("en-us") : Number(goldResult).toLocaleString("en-us")
-        };
+        return goldResult;
     }
 }
 

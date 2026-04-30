@@ -353,6 +353,30 @@ Status dragons
     position: relative;
 }
 
+.player-rune-types {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 16px;
+    height: 32px;
+    margin-right: 6px;
+}
+
+.player-rune-type-icon,
+.player-rune-type-empty {
+    width: 16px;
+    height: 16px;
+}
+
+.player-rune-type-icon {
+    object-fit: contain;
+}
+
+.player-rune-type-empty {
+    border-radius: 3px;
+    background: var(--gray-line);
+}
+
 img.player-champion {
     z-index: 2;
 }
@@ -403,12 +427,12 @@ svg.player-champion {
 
 .table-top-row-vida {
     height: 28px;
-    width: 15rem;
+    width: 12rem;
 }
 
 .table-top-row-items {
     height: 28px;
-    width: 12rem;
+    width: 14rem;
 }
 
 .table-top-row {
@@ -425,6 +449,19 @@ svg.player-champion {
     background: var(--gray-line);
     text-align: center;
     border-radius: 3px;
+}
+
+.player-stats-gold {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+}
+
+.player-stats-gold-lead {
+    color: var(--green-positive);
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .chatDiv, .streamDiv {

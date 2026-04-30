@@ -466,29 +466,27 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 <th className="table-top-row" title="gold">
                                     <span>Gold</span>
                                 </th>
-                                <th className="table-top-row" title="gold difference">
-                                    <span>+/-</span>
-                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {lastWindowFrame.blueTeam.participants.map((player: WindowParticipant, index) => {
-                                let goldDifference = getGoldDifference(player, "blue", gameMetadata, lastWindowFrame);
+                                let goldDifference = getGoldDifference(player, lastWindowFrame);
                                 let championDetails = lastDetailsFrame.participants[index]
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
                                             <div className="player-champion-info">
                                                 <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                                {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{getChampionDisplayName(gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId)}</span>
+                                                    <span>{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
                                                     <span
-                                                        className=" player-card-player-name">{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
+                                                        className=" player-card-player-name">{getChampionDisplayName(gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId)}</span>
                                                 </div>
                                             </div>
                                         </th>
@@ -511,16 +509,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
                                         </td>
                                         <td>
-                                            <div
-                                                className=" player-stats">{Number(player.totalGold).toLocaleString('en-us')}</div>
-                                        </td>
-                                        <td>
-                                            <div className={`player-stats player-gold-${goldDifference?.style}`}>{goldDifference.goldDifference}</div>
+                                            <div className="player-stats player-stats-gold">
+                                                <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
+                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 ), (
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}_stats`} className='champion-stats-row'>
-                                        <td colSpan={9}>
+                                        <td colSpan={8}>
                                             <span>
                                                 {getFormattedChampionStats(championDetails, runes)}
                                             </span>
@@ -558,14 +555,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 <th className="table-top-row" title="gold">
                                     <span>Gold</span>
                                 </th>
-                                <th className="table-top-row" title="gold difference">
-                                    <span>+/-</span>
-                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             {lastWindowFrame.redTeam.participants.map((player: WindowParticipant, index) => {
-                                let goldDifference = getGoldDifference(player, "red", gameMetadata, lastWindowFrame);
+                                let goldDifference = getGoldDifference(player, lastWindowFrame);
                                 let championDetails = lastDetailsFrame.participants[index + 5]
 
                                 return [(
@@ -573,14 +567,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <th>
                                             <div className="player-champion-info">
                                                 <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                                {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>
-                                                    <span className=" player-card-player-name">{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
+                                                    <span>{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
+                                                    <span className=" player-card-player-name">{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>
                                                 </div>
                                             </div>
                                         </th>
@@ -603,15 +598,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats">{Number(player.totalGold).toLocaleString('en-us')}</div>
-                                        </td>
-                                        <td>
-                                            <div className={`player-stats player-gold-${goldDifference?.style}`}>{goldDifference.goldDifference}</div>
+                                            <div className="player-stats player-stats-gold">
+                                                <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
+                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                            </div>
                                         </td>
                                     </tr>
                                 ), (
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}_stats`} className='champion-stats-row'>
-                                        <td colSpan={9}>
+                                        <td colSpan={8}>
                                             <span>
                                                 {getFormattedChampionStats(championDetails, runes)}
                                             </span>
@@ -698,6 +693,26 @@ function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) 
     )
 }
 
+function getParticipantRuneTypes(championDetails: Participant | undefined, runes: Rune[]) {
+    const primaryStyle = championDetails ? runes.find((rune) => rune.id === championDetails.perkMetadata.styleId) : undefined
+    const subStyle = championDetails ? runes.find((rune) => rune.id === championDetails.perkMetadata.subStyleId) : undefined
+
+    return (
+        <div className="player-rune-types">
+            {primaryStyle ? (
+                <img className="player-rune-type-icon" src={getRuneUrlFromIcon(runes, primaryStyle.icon)} alt={primaryStyle.name} />
+            ) : (
+                <div className="player-rune-type-empty" />
+            )}
+            {subStyle ? (
+                <img className="player-rune-type-icon" src={getRuneUrlFromIcon(runes, subStyle.icon)} alt={subStyle.name} />
+            ) : (
+                <div className="player-rune-type-empty" />
+            )}
+        </div>
+    )
+}
+
 function getRuneUrlFromIcon(runes: Rune[], icon: string) {
     const perkImageUrl = `https://ddragon.leagueoflegends.com/cdn/img/PERK_ICON`
     return perkImageUrl.replace(`PERK_ICON`, icon)
@@ -761,23 +776,15 @@ function getInGameTime(startTime: string, currentTime: string) {
     return hours ? `${hours}:${minutes}:${secondsString}` : `${minutes}:${secondsString}`
 }
 
-function getGoldDifference(player: WindowParticipant, side: string, gameMetadata: GameMetadata, frame: WindowFrame) {
+function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
     if (6 > player.participantId) { // blue side
         const redPlayer = frame.redTeam.participants[player.participantId - 1];
         const goldResult = player.totalGold - redPlayer.totalGold;
-
-        return {
-            style: goldResult > 0 ? "positive" : "negative",
-            goldDifference: goldResult > 0 ? "+" + Number(goldResult).toLocaleString("en-us") : Number(goldResult).toLocaleString("en-us")
-        };
+        return goldResult;
     } else {
         const bluePlayer = frame.blueTeam.participants[player.participantId - 6];
         const goldResult = player.totalGold - bluePlayer.totalGold;
-
-        return {
-            style: goldResult > 0 ? "positive" : "negative",
-            goldDifference: goldResult > 0 ? "+" + Number(goldResult).toLocaleString("en-us") : Number(goldResult).toLocaleString("en-us")
-        };
+        return goldResult;
     }
 }
 
