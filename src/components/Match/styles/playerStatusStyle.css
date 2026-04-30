@@ -340,6 +340,13 @@ Status dragons
     margin-left: 0.5rem;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+}
+
+.player-champion-info-name > span:first-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .player-card-player-name {
@@ -422,7 +429,7 @@ svg.player-champion {
 }
 
 .table-top-row-champion {
-    width: 12rem;
+    width: 14rem;
 }
 
 .table-top-row-vida {
@@ -437,6 +444,11 @@ svg.player-champion {
 
 .table-top-row {
     height: 28px;
+}
+
+.status-live-game-card-table .player-stats-row td:last-child {
+    width: 7.5rem;
+    min-width: 7.5rem;
 }
 
 .player-stats,
@@ -455,13 +467,16 @@ svg.player-champion {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
+    font-size: 11px;
+    padding: 0px 4px;
 }
 
 .player-stats-gold-lead {
     color: var(--green-positive);
     font-weight: 500;
     white-space: nowrap;
+    font-size: 10px;
 }
 
 .chatDiv, .streamDiv {

@@ -694,12 +694,16 @@ function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) 
 }
 
 function getParticipantRuneTypes(championDetails: Participant | undefined, runes: Rune[]) {
+    const slottedRunes = getSlottedRunes(runes)
+    const primaryPerk = championDetails ? slottedRunes.find((slottedRune) => slottedRune.id === championDetails.perkMetadata.perks[0]) : undefined
     const primaryStyle = championDetails ? runes.find((rune) => rune.id === championDetails.perkMetadata.styleId) : undefined
     const subStyle = championDetails ? runes.find((rune) => rune.id === championDetails.perkMetadata.subStyleId) : undefined
 
     return (
         <div className="player-rune-types">
-            {primaryStyle ? (
+            {primaryPerk ? (
+                <img className="player-rune-type-icon" src={getRuneUrlFromIcon(runes, primaryPerk.icon)} alt={primaryPerk.name} />
+            ) : primaryStyle ? (
                 <img className="player-rune-type-icon" src={getRuneUrlFromIcon(runes, primaryStyle.icon)} alt={primaryStyle.name} />
             ) : (
                 <div className="player-rune-type-empty" />
