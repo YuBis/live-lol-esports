@@ -133,6 +133,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
     const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
     const goldLeadColorClass = goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
+    const backfillStatusClassName = backfillStatus === `running` ? `running` : backfillStatus === `completed` ? `completed` : `idle`
+    const backfillStatusLabel = backfillStatus === `running`
+        ? `Backfill in progress: syncing historical items...`
+        : backfillStatus === `completed`
+            ? `Backfill completed: historical items synced.`
+            : `Backfill pending: waiting for timeline sync trigger.`
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -669,11 +675,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         Copy Champion Names
                     </button>
                 </span>
-                {backfillStatus === `running` ? (
-                    <span className="footer-notes backfill-status running">Backfill in progress: syncing historical items...</span>
-                ) : backfillStatus === `completed` ? (
-                    <span className="footer-notes backfill-status completed">Backfill completed: historical items synced.</span>
-                ) : null}
+                <span className={`footer-notes backfill-status ${backfillStatusClassName}`}>{backfillStatusLabel}</span>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>

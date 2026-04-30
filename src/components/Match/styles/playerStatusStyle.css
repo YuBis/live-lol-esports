@@ -669,6 +669,10 @@ svg.player-champion {
     color: var(--blue-twitter);
 }
 
+.footer-notes.backfill-status.idle {
+    color: var(--text);
+}
+
 .chat-toggle, .stream-toggle {
     margin-left: 35%;
     cursor: pointer;
