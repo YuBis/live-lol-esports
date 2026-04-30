@@ -48,6 +48,8 @@ type ChampionNameMap = {
     [championId: string]: string;
 }
 
+type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
+
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
     const [firstWindowFrame, setFirstWindowFrame] = useState<WindowFrame>();
@@ -76,6 +78,7 @@ export function Match({ match }: MatchRouteProps) {
     const currentTimestampRef = useRef<string>(``);
     const lastDetailsTimestampRef = useRef<string>(``);
     const lastDetailsFrameRef = useRef<DetailsFrame>();
+    const observedDetailsItemsRef = useRef<ObservedDetailsItemsByParticipantId>(new Map())
     const firstWindowReceivedRef = useRef<boolean>(false);
     const championNamePatchRef = useRef<string>(``);
 
@@ -98,6 +101,7 @@ export function Match({ match }: MatchRouteProps) {
                 if (currentGameIndexRef.current !== newGameIndex) {
                     lastDetailsTimestampRef.current = ``
                     lastDetailsFrameRef.current = undefined
+                    observedDetailsItemsRef.current = new Map()
                     setLastDetailsFrame(undefined)
                 }
                 getFirstWindow(gameId)
@@ -244,7 +248,7 @@ export function Match({ match }: MatchRouteProps) {
                 // Ignore stale details responses that arrive out-of-order.
                 if (incomingTimestamp !== 0 && currentTimestamp !== 0 && incomingTimestamp < currentTimestamp) return
 
-                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current)
+                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current, observedDetailsItemsRef.current)
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
@@ -721,7 +725,7 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
     return gameStates[gamesFinished.length >= eventDetails.match.games.length ? `completed` : scheduleEvent.state]
 }
 
-function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsFrame): DetailsFrame {
+function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsFrame, observedItemsByParticipantId?: ObservedDetailsItemsByParticipantId): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
         previousFrame.participants.forEach((participant) => {
@@ -732,22 +736,32 @@ function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsF
     const participants = nextFrame.participants.map((participant) => {
         const currentItems = sanitizeItemIds(participant.items)
         const previousItems = previousItemsByParticipantId.get(participant.participantId) || []
+        const observedItems = getObservedItemsForParticipant(observedItemsByParticipantId, participant.participantId)
+        recordObservedItems(observedItems, previousItems)
+        recordObservedItems(observedItems, currentItems)
 
+        let stabilizedItems = currentItems
         if (currentItems.length === 0 && previousItems.length > 0) {
-            return { ...participant, items: previousItems }
+            stabilizedItems = previousItems
+        }
+        else if (shouldKeepPreviousOnSuspiciousDrop(currentItems, previousItems)) {
+            stabilizedItems = previousItems
+        }
+        else {
+            const droppedItemsCount = previousItems.length - currentItems.length
+            if (
+                droppedItemsCount >= 2
+                && currentItems.length > 0
+                && isSubsetWithCounts(currentItems, previousItems)
+            ) {
+                // Partial payloads sometimes drop 1-2 item slots. Keep last known-good snapshot.
+                stabilizedItems = previousItems
+            }
         }
 
-        const droppedItemsCount = previousItems.length - currentItems.length
-        if (
-            droppedItemsCount >= 2
-            && currentItems.length > 0
-            && isSubsetWithCounts(currentItems, previousItems)
-        ) {
-            // Partial payloads sometimes drop 1-2 item slots. Keep last known-good snapshot.
-            return { ...participant, items: previousItems }
-        }
-
-        return { ...participant, items: currentItems }
+        const inferredItems = applyAggressiveMissingItemInference(stabilizedItems, previousItems, participant, observedItems)
+        recordObservedItems(observedItems, inferredItems)
+        return { ...participant, items: inferredItems }
     })
 
     return {
@@ -759,6 +773,180 @@ function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsF
 function sanitizeItemIds(itemIds: number[] | undefined) {
     if (!Array.isArray(itemIds)) return []
     return itemIds.filter((itemId) => Number.isFinite(itemId) && itemId > 0)
+}
+
+const TRINKET_ITEM_IDS = [3340, 3363, 3364]
+const CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055]
+const MAX_INVENTORY_ITEM_SLOTS = 8
+
+type MissingItemInferencePair = {
+    sourceItemId: number,
+    targetItemId: number,
+    type: `transform` | `boots`,
+}
+
+const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
+    { sourceItemId: 3003, targetItemId: 3040, type: `transform` }, // Archangel's Staff -> Seraph's Embrace
+    { sourceItemId: 3004, targetItemId: 3042, type: `transform` }, // Manamune -> Muramana
+    { sourceItemId: 3119, targetItemId: 3121, type: `transform` }, // Winter's Approach -> Fimbulwinter
+    { sourceItemId: 3005, targetItemId: 3170, type: `boots` }, // Symbiotic Soles -> Spellslinger's Shoes
+    { sourceItemId: 3158, targetItemId: 3171, type: `boots` }, // Ionian Boots -> Crimson Lucidity
+    { sourceItemId: 3006, targetItemId: 3172, type: `boots` }, // Berserker's Greaves -> Forever Forward
+    { sourceItemId: 3111, targetItemId: 3173, type: `boots` }, // Mercury's Treads -> Chainlaced Crushers
+    { sourceItemId: 3047, targetItemId: 3174, type: `boots` }, // Plated Steelcaps -> Armored Advance
+    { sourceItemId: 3020, targetItemId: 3175, type: `boots` }, // Sorcerer's Shoes -> Gunmetal Greaves
+    { sourceItemId: 3009, targetItemId: 3176, type: `boots` }, // Boots of Swiftness -> Swiftmarch
+    { sourceItemId: 3117, targetItemId: 3179, type: `boots` }, // Mobility Boots -> Forever Forward (variant)
+]
+
+function getObservedItemsForParticipant(observedItemsByParticipantId: ObservedDetailsItemsByParticipantId | undefined, participantId: number) {
+    if (!observedItemsByParticipantId) return undefined
+    const existingObservedItems = observedItemsByParticipantId.get(participantId)
+    if (existingObservedItems) return existingObservedItems
+    const newObservedItems = new Set<number>()
+    observedItemsByParticipantId.set(participantId, newObservedItems)
+    return newObservedItems
+}
+
+function recordObservedItems(observedItems: Set<number> | undefined, itemIds: number[]) {
+    if (!observedItems) return
+    itemIds.forEach((itemId) => {
+        observedItems.add(itemId)
+    })
+}
+
+function applyAggressiveMissingItemInference(itemIds: number[], previousItemIds: number[], participant: DetailsFrame[`participants`][number], observedItems: Set<number> | undefined) {
+    if (!observedItems || itemIds.length === 0) return itemIds
+
+    let inferredItems = itemIds.slice()
+    AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.forEach((inferencePair) => {
+        const sourceWasObserved = observedItems.has(inferencePair.sourceItemId)
+        const targetWasObserved = observedItems.has(inferencePair.targetItemId)
+        if (!sourceWasObserved || targetWasObserved) return
+
+        if (!canAggressivelyInferMissingItem(inferencePair, inferredItems, previousItemIds, participant)) return
+
+        if (inferredItems.includes(inferencePair.targetItemId)) {
+            observedItems.add(inferencePair.targetItemId)
+            return
+        }
+
+        const sourceItemIndex = inferredItems.findIndex((itemId) => itemId === inferencePair.sourceItemId)
+        if (sourceItemIndex >= 0) {
+            inferredItems = replaceItemAtIndex(inferredItems, sourceItemIndex, inferencePair.targetItemId)
+            observedItems.add(inferencePair.targetItemId)
+            return
+        }
+
+        inferredItems = appendOrReplaceInferredItem(inferredItems, inferencePair.targetItemId)
+        if (inferredItems.includes(inferencePair.targetItemId)) {
+            observedItems.add(inferencePair.targetItemId)
+        }
+    })
+
+    return inferredItems
+}
+
+function canAggressivelyInferMissingItem(inferencePair: MissingItemInferencePair, currentItemIds: number[], previousItemIds: number[], participant: DetailsFrame[`participants`][number]) {
+    const currentCoreItems = getCoreItemIds(currentItemIds)
+    const sourceInCurrentItems = currentItemIds.includes(inferencePair.sourceItemId)
+    const sourceInPreviousItems = previousItemIds.includes(inferencePair.sourceItemId)
+
+    if (sourceInPreviousItems && !sourceInCurrentItems) return true
+    if (inferencePair.type === `transform`) {
+        if (sourceInCurrentItems) {
+            return participant.level >= 11 || participant.totalGoldEarned >= 8000 || currentCoreItems.length >= 3
+        }
+        return participant.level >= 14 || participant.totalGoldEarned >= 11000 || currentCoreItems.length >= 4
+    }
+
+    if (sourceInCurrentItems) {
+        return participant.level >= 14 || participant.totalGoldEarned >= 10000 || currentCoreItems.length >= 4
+    }
+    return participant.level >= 15 || participant.totalGoldEarned >= 12000 || currentCoreItems.length >= 4
+}
+
+function appendOrReplaceInferredItem(itemIds: number[], targetItemId: number) {
+    if (itemIds.includes(targetItemId)) return itemIds
+    if (itemIds.length < MAX_INVENTORY_ITEM_SLOTS) return [...itemIds, targetItemId]
+
+    const replacementIndex = getPreferredInferenceReplacementIndex(itemIds)
+    if (replacementIndex < 0) return itemIds
+    return replaceItemAtIndex(itemIds, replacementIndex, targetItemId)
+}
+
+function getPreferredInferenceReplacementIndex(itemIds: number[]) {
+    const consumableItemIndex = itemIds.findIndex((itemId) => isConsumableItemId(itemId))
+    if (consumableItemIndex >= 0) return consumableItemIndex
+
+    const trinketItemIndex = itemIds.findIndex((itemId) => isTrinketItemId(itemId))
+    if (trinketItemIndex >= 0) return trinketItemIndex
+
+    return -1
+}
+
+function replaceItemAtIndex(itemIds: number[], index: number, replacementItemId: number) {
+    if (index < 0 || index >= itemIds.length) return itemIds
+    const replacedItemIds = itemIds.slice()
+    replacedItemIds[index] = replacementItemId
+    return replacedItemIds
+}
+
+function shouldKeepPreviousOnSuspiciousDrop(currentItems: number[], previousItems: number[]) {
+    if (previousItems.length === 0 || currentItems.length === 0) return false
+
+    const totalItemsDropped = previousItems.length - currentItems.length
+    if (totalItemsDropped < 2) return false
+
+    const retainedItems = countIntersectionWithCounts(previousItems, currentItems)
+    const newItems = currentItems.length - retainedItems
+
+    const previousCoreItems = getCoreItemIds(previousItems)
+    const currentCoreItems = getCoreItemIds(currentItems)
+    const retainedCoreItems = countIntersectionWithCounts(previousCoreItems, currentCoreItems)
+    const newCoreItems = currentCoreItems.length - retainedCoreItems
+    const coreItemsDropped = previousCoreItems.length - currentCoreItems.length
+
+    // If total slots drop hard without meaningful replacements, this is usually a partial payload.
+    if (newItems <= 1 && newCoreItems === 0) return true
+
+    // If most previous core items vanish and there are not enough new core replacements,
+    // this is usually a partial/buggy payload from live stats.
+    if (previousCoreItems.length >= 3 && coreItemsDropped >= 2 && retainedCoreItems <= previousCoreItems.length - 2 && newCoreItems === 0) return true
+
+    // Additional fallback for severe abrupt drops.
+    if (totalItemsDropped >= 3 && currentCoreItems.length <= previousCoreItems.length - 2 && newCoreItems === 0) return true
+
+    return false
+}
+
+function getCoreItemIds(itemIds: number[]) {
+    return itemIds.filter((itemId) => !isTrinketItemId(itemId) && !isConsumableItemId(itemId))
+}
+
+function isTrinketItemId(itemId: number) {
+    return TRINKET_ITEM_IDS.includes(itemId)
+}
+
+function isConsumableItemId(itemId: number) {
+    return CONSUMABLE_ITEM_IDS.includes(itemId)
+}
+
+function countIntersectionWithCounts(reference: number[], candidate: number[]) {
+    const referenceCounts = new Map<number, number>()
+    reference.forEach((itemId) => {
+        referenceCounts.set(itemId, (referenceCounts.get(itemId) || 0) + 1)
+    })
+
+    let retainedCount = 0
+    candidate.forEach((itemId) => {
+        const count = referenceCounts.get(itemId) || 0
+        if (count <= 0) return
+        referenceCounts.set(itemId, count - 1)
+        retainedCount++
+    })
+
+    return retainedCount
 }
 
 function isSubsetWithCounts(candidate: number[], reference: number[]) {

@@ -66,14 +66,14 @@ span.mini-current-health {
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.35rem;
-    font-size: 1.3rem;
+    font-size: 1.65rem;
     font-weight: 700;
     line-height: 1;
 }
 
 .live-game-kill-score-icon {
-    width: 16px;
-    height: 16px;
+    width: 22px;
+    height: 22px;
 }
 
 .live-game-kill-score-icon path,
@@ -184,7 +184,7 @@ span.mini-current-health {
     }
 
     .live-game-kill-score {
-        font-size: 1.1rem;
+        font-size: 1.3rem;
     }
 
     .match-container .live-game-card-team-image {
