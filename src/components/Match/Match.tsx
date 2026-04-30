@@ -1053,6 +1053,11 @@ function applyAggressiveMissingItemInference(
         participant,
         observedItems,
     )
+    inferredItems = inferTearLineUpgradeFromObservedHistory(
+        inferredItems,
+        participant,
+        observedItems,
+    )
 
     return inferredItems
 }
@@ -1074,6 +1079,26 @@ function inferTearLineUpgradeFromComponentDrop(
     if (candidateBranches.length === 0) return currentItemIds
 
     const selectedBranch = selectTearLineUpgradeInferenceBranch(candidateBranches, droppedItemIds, observedItems, participant)
+    if (!selectedBranch) return currentItemIds
+
+    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems)
+    return appendOrReplaceInferredItem(currentItemIds, targetItemId)
+}
+
+function inferTearLineUpgradeFromObservedHistory(
+    currentItemIds: number[],
+    participant: DetailsFrame[`participants`][number],
+    observedItems: Set<number>,
+) {
+    if (!observedItems.has(TEAR_OF_THE_GODDESS_ITEM_ID)) return currentItemIds
+    if (currentItemIds.some((itemId) => TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS.includes(itemId))) return currentItemIds
+
+    const candidateBranches = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.filter((branch) =>
+        shouldConsiderTearLineBranchFromObservedHistory(branch, observedItems, participant)
+    )
+    if (candidateBranches.length === 0) return currentItemIds
+
+    const selectedBranch = selectTearLineUpgradeInferenceBranchFromObservedHistory(candidateBranches, observedItems, participant)
     if (!selectedBranch) return currentItemIds
 
     const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems)
@@ -1144,6 +1169,68 @@ function selectTearLineUpgradeInferenceBranch(
     return rankedBranches[0]?.branch
 }
 
+function shouldConsiderTearLineBranchFromObservedHistory(
+    branch: TearLineUpgradeInferenceBranch,
+    observedItems: Set<number>,
+    participant: DetailsFrame[`participants`][number],
+) {
+    const branchWasObserved = observedItems.has(branch.sourceItemId) || observedItems.has(branch.targetItemId)
+    if (branchWasObserved) return true
+
+    const observedComponentHintCount = countMatchedObservedItemIds(observedItems, branch.componentHintItemIds)
+    const observedSubComponentHintCount = countMatchedObservedItemIds(observedItems, branch.subComponentHintItemIds)
+    if (observedComponentHintCount === 0) return false
+
+    const observedHighConfidenceHintCount =
+        countMatchedObservedItemIds(observedItems, branch.highConfidenceComponentHintItemIds)
+        + countMatchedObservedItemIds(observedItems, branch.highConfidenceSubComponentHintItemIds)
+    if (observedHighConfidenceHintCount > 0) return true
+    if (observedSubComponentHintCount > 0) return true
+
+    const profile = getParticipantTearLineProfile(participant)
+    return profile === branch.profile
+}
+
+function selectTearLineUpgradeInferenceBranchFromObservedHistory(
+    candidateBranches: TearLineUpgradeInferenceBranch[],
+    observedItems: Set<number>,
+    participant: DetailsFrame[`participants`][number],
+) {
+    const profile = getParticipantTearLineProfile(participant)
+    const rankedBranches = candidateBranches
+        .map((branch) => {
+            const highConfidenceComponentHintCount = countMatchedObservedItemIds(observedItems, branch.highConfidenceComponentHintItemIds)
+            const highConfidenceSubComponentHintCount = countMatchedObservedItemIds(observedItems, branch.highConfidenceSubComponentHintItemIds)
+            const componentHintCount = countMatchedObservedItemIds(observedItems, branch.componentHintItemIds)
+            const subComponentHintCount = countMatchedObservedItemIds(observedItems, branch.subComponentHintItemIds)
+            const observedTargetScore = observedItems.has(branch.targetItemId) ? 1 : 0
+            const observedSourceScore = observedItems.has(branch.sourceItemId) ? 1 : 0
+            const profileScore = branch.profile === profile ? 1 : 0
+            return {
+                branch,
+                highConfidenceHintCount: highConfidenceComponentHintCount + highConfidenceSubComponentHintCount,
+                componentHintCount,
+                subComponentHintCount,
+                totalHintCount: componentHintCount + subComponentHintCount,
+                observedTargetScore,
+                observedSourceScore,
+                profileScore,
+            }
+        })
+        .sort((left, right) => {
+            if (right.observedTargetScore !== left.observedTargetScore) return right.observedTargetScore - left.observedTargetScore
+            if (right.observedSourceScore !== left.observedSourceScore) return right.observedSourceScore - left.observedSourceScore
+            if (right.highConfidenceHintCount !== left.highConfidenceHintCount) return right.highConfidenceHintCount - left.highConfidenceHintCount
+            if (right.componentHintCount !== left.componentHintCount) return right.componentHintCount - left.componentHintCount
+            if (right.subComponentHintCount !== left.subComponentHintCount) return right.subComponentHintCount - left.subComponentHintCount
+            if (right.totalHintCount !== left.totalHintCount) return right.totalHintCount - left.totalHintCount
+            if (right.profileScore !== left.profileScore) return right.profileScore - left.profileScore
+            return 0
+        })
+
+    return rankedBranches[0]?.branch
+}
+
 function getParticipantTearLineProfile(participant: DetailsFrame[`participants`][number]) {
     if (participant.abilityPower >= participant.attackDamage + 25) return `ap`
     if (participant.attackDamage >= participant.abilityPower + 20) return `ad`
@@ -1165,6 +1252,15 @@ function getPreferredTearLineRecoveredItemId(
 function countMatchedItemIds(referenceItemIds: number[], targetItemIds: number[]) {
     if (referenceItemIds.length === 0 || targetItemIds.length === 0) return 0
     return referenceItemIds.filter((itemId) => targetItemIds.includes(itemId)).length
+}
+
+function countMatchedObservedItemIds(observedItems: Set<number>, targetItemIds: number[]) {
+    if (observedItems.size === 0 || targetItemIds.length === 0) return 0
+    let count = 0
+    targetItemIds.forEach((itemId) => {
+        if (observedItems.has(itemId)) count++
+    })
+    return count
 }
 
 function restoreMidBootOnUnexpectedMissingSlot(
