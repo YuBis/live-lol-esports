@@ -132,6 +132,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const formattedRedTeamGold = formatGoldInK(lastWindowFrame.redTeam.totalGold)
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
     const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
+    const goldLeadColorClass = goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -434,11 +435,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
                             <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
-                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`}`}>
+                            <span className={`gold-lead-indicator ${goldLeadColorClass}`}>
                                 {goldLeadSymbol ? (
-                                    <span className={`gold-lead-symbol ${goldLeadSymbolAlignmentClass}`}>{goldLeadSymbol}</span>
+                                    <span className={`gold-lead-symbol ${goldLeadSymbolAlignmentClass} ${goldLeadColorClass}`}>{goldLeadSymbol}</span>
                                 ) : null}
-                                <span className="gold-lead-value">{formattedGoldLead}</span>
+                                <span className={`gold-lead-value ${goldLeadColorClass}`}>{formattedGoldLead}</span>
                             </span>
                             <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
                         </div>

@@ -366,6 +366,24 @@ Gold bar
     text-align: center;
 }
 
+.gold-lead-symbol.gold-advantage-blue,
+.gold-lead-value.gold-advantage-blue,
+.gold-lead-indicator.gold-advantage-blue {
+    color: var(--blue-twitter);
+}
+
+.gold-lead-symbol.gold-advantage-red,
+.gold-lead-value.gold-advantage-red,
+.gold-lead-indicator.gold-advantage-red {
+    color: var(--red);
+}
+
+.gold-lead-symbol.gold-advantage-neutral,
+.gold-lead-value.gold-advantage-neutral,
+.gold-lead-indicator.gold-advantage-neutral {
+    color: var(--text);
+}
+
 .live-game-stats-header-gold-bar {
     display: flex;
     width: 100%;
