@@ -80,6 +80,11 @@ export function EventsSchedule() {
             title: 'Recent Matches',
         }
     ]
+    const listedEvents = getUniqueScheduleEvents(
+        scheduledEvents
+            .flatMap((scheduledEvent) => scheduledEvent.scheduleEvents)
+            .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
+    )
 
     return (
         <div className="orders-container">
@@ -87,6 +92,7 @@ export function EventsSchedule() {
                 {LEAGUE_FILTERS.map((leagueFilter) => {
                     const logoUrl = leagueFilter.leagueSlug ? leagueImages[leagueFilter.leagueSlug] : undefined
                     const isActive = selectedLeagueFilter === leagueFilter.key
+                    const leagueCount = getLeagueFilterCount(listedEvents, leagueFilter.key)
                     return (
                         <button
                             key={leagueFilter.key}
@@ -96,6 +102,7 @@ export function EventsSchedule() {
                         >
                             {logoUrl ? <img className="league-filter-button-logo" src={logoUrl} alt={`${leagueFilter.label} logo`} /> : null}
                             <span>{leagueFilter.label}</span>
+                            <span className="league-filter-button-count">{leagueCount}</span>
                         </button>
                     )
                 })}
@@ -173,6 +180,21 @@ function getLeagueFilter(scheduleEvent: ScheduleEvent): Exclude<LeagueFilter, "A
 function matchesLeagueFilter(scheduleEvent: ScheduleEvent, selectedLeagueFilter: LeagueFilter) {
     if (selectedLeagueFilter === "ALL") return true
     return getLeagueFilter(scheduleEvent) === selectedLeagueFilter
+}
+
+function getLeagueFilterCount(scheduleEvents: ScheduleEvent[], selectedLeagueFilter: LeagueFilter) {
+    return scheduleEvents.filter((scheduleEvent) => matchesLeagueFilter(scheduleEvent, selectedLeagueFilter)).length
+}
+
+function getUniqueScheduleEvents(scheduleEvents: ScheduleEvent[]) {
+    const uniqueScheduleEvents = new Map<string, ScheduleEvent>()
+    scheduleEvents.forEach((scheduleEvent) => {
+        const key = `${scheduleEvent.match.id}_${scheduleEvent.startTime}`
+        if (!uniqueScheduleEvents.has(key)) {
+            uniqueScheduleEvents.set(key, scheduleEvent)
+        }
+    })
+    return Array.from(uniqueScheduleEvents.values())
 }
 
 function filterLiveEvents(scheduleEvent: ScheduleEvent) {

@@ -20,6 +20,13 @@
     gap: 0.5rem;
 }
 
+.live-game-card-league-title > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .live-game-card-league-logo {
     width: 1.4rem;
     height: 1.4rem;
@@ -141,6 +148,180 @@
     margin-bottom: 1rem;
 }
 
+.schedule-event-card {
+    min-height: 18.6rem;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid transparent;
+}
+
+.schedule-event-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px -14px rgba(0, 0, 0, 0.65);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.schedule-event-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 2rem;
+}
+
+.schedule-event-card .live-game-card-league-title {
+    min-height: 0;
+    flex: 1;
+    justify-content: flex-start;
+}
+
+.schedule-event-time {
+    min-height: 1.5rem;
+}
+
+.schedule-event-time span {
+    color: var(--text);
+    opacity: 0.85;
+}
+
+.schedule-event-matchup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.4rem;
+}
+
+.schedule-event-team {
+    min-height: 11.4rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.schedule-event-card .live-game-card-team-image {
+    width: 4.3rem;
+    height: 4.3rem;
+    margin: 0.3rem auto 0.5rem;
+}
+
+.schedule-event-team-name-wrap {
+    min-height: 2.9rem;
+    display: flex;
+    align-items: center;
+}
+
+.schedule-event-matchup .schedule-event-team-name {
+    max-width: 9.2rem;
+    margin: 0;
+    line-height: 1.2;
+    font-size: 0.95rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.schedule-event-outcome p {
+    min-width: 3.2rem;
+    margin-top: 0.35rem;
+    margin-bottom: 0.35rem;
+}
+
+.schedule-event-record-wrap {
+    min-height: 1.4rem;
+}
+
+.schedule-event-record {
+    margin: 0;
+    font-size: 0.83rem;
+    color: var(--text);
+    opacity: 0.8;
+}
+
+.schedule-event-versus {
+    margin-top: 0.9rem;
+    min-width: 4.6rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.schedule-event-bo {
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    opacity: 0.75;
+}
+
+.schedule-event-series-score-wrap {
+    min-height: 1.2rem;
+}
+
+.schedule-event-series-score {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.schedule-event-versus h1 {
+    margin: 0.2rem 0 0;
+}
+
+.schedule-event-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4.25rem;
+    height: 1.3rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
+}
+
+.schedule-event-status-badge.live {
+    color: #fff;
+    background: linear-gradient(90deg, #df2c55, #ff5f45);
+}
+
+.schedule-event-status-badge.upcoming {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.schedule-event-status-badge.final {
+    color: #d6f6d2;
+    background: rgba(22, 122, 88, 0.35);
+    border-color: rgba(100, 203, 158, 0.45);
+}
+
+.schedule-event-series-progress {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    width: 4.2rem;
+    gap: 3px;
+    margin-top: 0.2rem;
+}
+
+.schedule-event-series-segment {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.schedule-event-series-segment.blue {
+    background: #4ea9ff;
+}
+
+.schedule-event-series-segment.red {
+    background: #ff6a7d;
+}
+
 .league-filter-container {
     display: flex;
     flex-wrap: wrap;
@@ -179,4 +360,32 @@
     width: 1rem;
     height: 1rem;
     object-fit: contain;
+}
+
+.league-filter-button-count {
+    min-width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.league-filter-button.active .league-filter-button-count {
+    background: rgba(100, 203, 158, 0.25);
+}
+
+@media (max-width: 560px) {
+    .games-list-items {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .schedule-event-card {
+        width: 100%;
+        min-height: 17.8rem;
+    }
 }
