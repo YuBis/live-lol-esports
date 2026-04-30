@@ -74,6 +74,8 @@ export function Match({ match }: MatchRouteProps) {
     const currentGameIndexRef = useRef<number>(1);
     const lastFrameSuccessRef = useRef<boolean>(false);
     const currentTimestampRef = useRef<string>(``);
+    const lastDetailsTimestampRef = useRef<string>(``);
+    const lastDetailsFrameRef = useRef<DetailsFrame>();
     const firstWindowReceivedRef = useRef<boolean>(false);
     const championNamePatchRef = useRef<string>(``);
 
@@ -93,6 +95,11 @@ export function Match({ match }: MatchRouteProps) {
             let gameId = matchEventDetails.match.games[newGameIndex - 1].id
             if (currentGameIndexRef.current !== newGameIndex || !firstWindowReceivedRef.current) {
                 currentTimestampRef.current = ``
+                if (currentGameIndexRef.current !== newGameIndex) {
+                    lastDetailsTimestampRef.current = ``
+                    lastDetailsFrameRef.current = undefined
+                    setLastDetailsFrame(undefined)
+                }
                 getFirstWindow(gameId)
                 setGameIndex(newGameIndex)
                 currentGameIndexRef.current = newGameIndex
@@ -228,9 +235,20 @@ export function Match({ match }: MatchRouteProps) {
                 lastFrameSuccessRef.current = false
                 if (response === undefined) return
                 let frames: DetailsFrame[] = response.data.frames;
-                if (frames === undefined) return;
+                if (frames === undefined || frames.length === 0) return;
+
+                const incomingLastFrame = frames[frames.length - 1]
+                const incomingTimestamp = getTimestampValue(incomingLastFrame.rfc460Timestamp)
+                const currentTimestamp = getTimestampValue(lastDetailsTimestampRef.current)
+
+                // Ignore stale details responses that arrive out-of-order.
+                if (incomingTimestamp !== 0 && currentTimestamp !== 0 && incomingTimestamp < currentTimestamp) return
+
+                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current)
                 lastFrameSuccessRef.current = true
-                setLastDetailsFrame(frames[frames.length - 1])
+                lastDetailsFrameRef.current = stabilizedFrame
+                lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
+                setLastDetailsFrame(stabilizedFrame)
             });
         }
 
@@ -701,4 +719,73 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
     if (eventDetails.match.games.length === 1) return gameStates[lastWindowFrame.gameState]
     let gamesFinished = eventDetails.match.games.filter(game => game.state === `completed` || game.state === `unneeded`)
     return gameStates[gamesFinished.length >= eventDetails.match.games.length ? `completed` : scheduleEvent.state]
+}
+
+function stabilizeDetailsFrame(nextFrame: DetailsFrame, previousFrame?: DetailsFrame): DetailsFrame {
+    const previousItemsByParticipantId = new Map<number, number[]>()
+    if (previousFrame) {
+        previousFrame.participants.forEach((participant) => {
+            previousItemsByParticipantId.set(participant.participantId, sanitizeItemIds(participant.items))
+        })
+    }
+
+    const participants = nextFrame.participants.map((participant) => {
+        const currentItems = sanitizeItemIds(participant.items)
+        const previousItems = previousItemsByParticipantId.get(participant.participantId) || []
+
+        if (currentItems.length === 0 && previousItems.length > 0) {
+            return { ...participant, items: previousItems }
+        }
+
+        const droppedItemsCount = previousItems.length - currentItems.length
+        if (
+            droppedItemsCount >= 2
+            && currentItems.length > 0
+            && isSubsetWithCounts(currentItems, previousItems)
+        ) {
+            // Partial payloads sometimes drop 1-2 item slots. Keep last known-good snapshot.
+            return { ...participant, items: previousItems }
+        }
+
+        return { ...participant, items: currentItems }
+    })
+
+    return {
+        ...nextFrame,
+        participants,
+    }
+}
+
+function sanitizeItemIds(itemIds: number[] | undefined) {
+    if (!Array.isArray(itemIds)) return []
+    return itemIds.filter((itemId) => Number.isFinite(itemId) && itemId > 0)
+}
+
+function isSubsetWithCounts(candidate: number[], reference: number[]) {
+    const referenceCounts = new Map<number, number>()
+    reference.forEach((itemId) => {
+        referenceCounts.set(itemId, (referenceCounts.get(itemId) || 0) + 1)
+    })
+
+    for (const itemId of candidate) {
+        const count = referenceCounts.get(itemId) || 0
+        if (count <= 0) return false
+        referenceCounts.set(itemId, count - 1)
+    }
+
+    return true
+}
+
+function getTimestampValue(timestamp: string | Date | undefined) {
+    if (!timestamp) return 0
+    const value = new Date(timestamp).getTime()
+    return Number.isFinite(value) ? value : 0
+}
+
+function normalizeTimestamp(timestamp: string | Date | undefined) {
+    if (!timestamp) return ``
+    const parsedDate = new Date(timestamp)
+    const parsedTimestamp = parsedDate.getTime()
+    if (!Number.isFinite(parsedTimestamp)) return ``
+    return parsedDate.toISOString()
 }

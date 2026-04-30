@@ -30,13 +30,13 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
     }*/
 
     let trinket = -1;
-    const uniqueItemIds = Array.from(new Set(lastFrameItems))
-    const foundTrinket = uniqueItemIds.find((itemId) => TRINKET_IDS.includes(itemId))
+    const itemIds = dedupeConsumableItems(lastFrameItems, items)
+    const foundTrinket = itemIds.find((itemId) => TRINKET_IDS.includes(itemId))
     if (foundTrinket !== undefined) {
         trinket = foundTrinket
     }
 
-    const itemsID = uniqueItemIds
+    const itemsID = itemIds
         .filter((itemId) => !TRINKET_IDS.includes(itemId))
         .sort((a, b) => sortItemsByGoldDesc(a, b, items))
 
@@ -97,6 +97,40 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
  */
 
 const TRINKET_IDS = [3340, 3363, 3364]
+const FALLBACK_CONSUMABLE_ITEM_IDS = [
+    2003, // Health Potion
+    2010, // Biscuit
+    2031, // Refillable Potion
+    2033, // Corrupting Potion
+    2055, // Control Ward
+]
+
+function dedupeConsumableItems(itemIds: number[], items: Item[]) {
+    const dedupedItems: number[] = []
+    const seenConsumables = new Set<number>()
+
+    itemIds.forEach((itemId) => {
+        if (!isConsumableItem(itemId, items)) {
+            dedupedItems.push(itemId)
+            return
+        }
+
+        if (seenConsumables.has(itemId)) return
+        seenConsumables.add(itemId)
+        dedupedItems.push(itemId)
+    })
+
+    return dedupedItems
+}
+
+function isConsumableItem(itemId: number, items: Item[]) {
+    const item = items[itemId]
+    if (!item) return FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
+
+    if (item.consumed) return true
+    if (item.tags && item.tags.includes("Consumable")) return true
+    return FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
+}
 
 function sortItemsByGoldDesc(a: number, b: number, items: Item[]) {
     const goldA = getItemTotalGold(a, items)

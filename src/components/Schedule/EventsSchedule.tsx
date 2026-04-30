@@ -255,11 +255,14 @@ type EventCardProps = {
 }
 
 function EventCards({ emptyMessage, scheduleEvents, title, selectedLeagueFilter, leagueImages, teamRanksByEventKey }: EventCardProps) {
+    const sortDirection = title === "Recent Matches" ? -1 : 1
     const filteredEvents = scheduleEvents
         .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
         .filter((scheduleEvent) => matchesLeagueFilter(scheduleEvent, selectedLeagueFilter))
         .sort((a, b) => {
-            return (new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || a.league.name.localeCompare(b.league.name)
+            const timeSort = new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            if (timeSort !== 0) return timeSort * sortDirection
+            return a.league.name.localeCompare(b.league.name)
         })
 
     if (filteredEvents.length !== 0) {

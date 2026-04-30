@@ -276,6 +276,8 @@ export interface Item {
     plaintext: string;
     into: string[];
     gold: Gold;
+    consumed?: boolean;
+    tags?: string[];
 }
 
 export interface Rune {

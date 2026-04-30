@@ -16,6 +16,7 @@ const API_KEY = "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z"
 let secondDelay = 60
 let count = 0
 let failureCount = 0
+const LIVE_STATS_STARTING_TIME_STEP_SECONDS = 10
 
 export function getScheduleResponse() {
     return axios.get(`${API_URL_PERSISTED}/getSchedule?hl=en-US`, {
@@ -137,13 +138,18 @@ export function getISODateMultiplyOf10() {
     const date = new Date();
     date.setMilliseconds(0);
 
-    if (date.getSeconds() % 10 !== 0) {
-        date.setSeconds(date.getSeconds() - (date.getSeconds() % 10));
+    if (date.getSeconds() % LIVE_STATS_STARTING_TIME_STEP_SECONDS !== 0) {
+        date.setSeconds(date.getSeconds() - (date.getSeconds() % LIVE_STATS_STARTING_TIME_STEP_SECONDS));
     }
 
     date.setSeconds(date.getSeconds() - secondDelay);
 
     return date.toISOString();
+}
+
+// Backward-compatible alias for older imports/usages.
+export function getISODateMultiplyOf5() {
+    return getISODateMultiplyOf10()
 }
 
 export function getFormattedPatchVersion(patchVersion: string) {
