@@ -3,9 +3,9 @@ import '../Schedule/styles/scheduleStyle.css'
 
 import { GameDetails } from "./GameDetails"
 import { MiniHealthBar } from "./MiniHealthBar";
-import React, { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { toast } from 'react-toastify';
-import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, Slot, SlottedRune } from "../types/baseTypes";
+import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, SlottedRune } from "../types/baseTypes";
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
@@ -24,7 +24,7 @@ import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-eld
 import { ItemsDisplay } from "./ItemsDisplay";
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
-import { CHAMPIONS_URL, RUNES_JSON_URL, getDataDragonResponse, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
+import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
@@ -59,7 +59,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     useEffect(() => {
-        let currentGameState: GameState = GameState[lastWindowFrame.gameState as keyof typeof GameState]
+        const currentGameState: GameState = GameState[lastWindowFrame.gameState as keyof typeof GameState]
         let icon = currentGameState === GameState.finished ? "🔴" : currentGameState === GameState.paused ? "🟠" : "🟢"
         document.title = `${icon} ${eventDetails.league.name} - ${blueTeam.name} vs. ${redTeam.name}`;
 
@@ -103,7 +103,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
         }
 
-    }, [lastWindowFrame.gameState, gameState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lastWindowFrame.gameState, gameState, eventDetails.league.name, eventDetails.match.teams]);
 
     let blueTeam = eventDetails.match.teams[0];
     let redTeam = eventDetails.match.teams[1];
@@ -137,9 +138,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         })
     })
 
-    $(`.copy-champion-names`).prop("onclick", null).off("click");
-    $(`.copy-champion-names`).on(`click`, () => {
-        let championNames: Array<String> = []
+    function copyChampionNames() {
+        let championNames: string[] = []
         gameMetadata.blueTeamMetadata.participantMetadata.forEach(participant => {
             championNames.push(participant.championId)
         })
@@ -148,13 +148,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             championNames.push(participant.championId)
         })
         navigator.clipboard.writeText(championNames.join("\t"));
-    })
+    }
 
-    function handleStreamChange(e: any) {
-        let optionSelected = $("option:selected", e.target);
+    function handleStreamChange(e: ChangeEvent<HTMLSelectElement>) {
+        const optionSelected = e.target.selectedOptions[0];
+        if (!optionSelected) return;
 
-        setVideoParameter(optionSelected.attr(`data-parameter`) || videoParameter)
-        setVideoProvider(optionSelected.attr(`data-provider`) || videoProvider)
+        setVideoParameter(optionSelected.getAttribute(`data-parameter`) || videoParameter)
+        setVideoProvider(optionSelected.getAttribute(`data-provider`) || videoProvider)
         let videoPlayer = document.querySelector(`#video-player`)
         if (videoPlayer) {
             videoPlayer.removeAttribute(`added`)
@@ -315,7 +316,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             let streamOffset = Math.round(stream.offset / 1000 / 60 * -1)
             let delayString = streamOffset > 1 ? `~${streamOffset} minutes` : `<1 minute`
             let streamString = vods.length ? `VOD: ${capitalizeFirstLetter(stream.provider)}(${stream.locale})` : stream.coStreamer ? stream.mediaLocale.englishName : stream.provider === `twitch` ? `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - ${stream.parameter} - Delay: ${delayString}` : `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - Delay: ${delayString}`
-            return <option value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
+            return <option key={`${stream.provider}_${stream.parameter}_${stream.locale}`} value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
         })
 
         let videoPlayer = document.querySelector(`#video-player`)
@@ -349,15 +350,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </iframe>`
 
                 if (chatEnabled) {
-                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live\_chat?v=${parameter}" ></iframe>`
+                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live_chat?v=${parameter}" ></iframe>`
                 }
 
             } else if (videoProvider === "twitch") {
                 videoPlayer.innerHTML = ``
-                const embed = new TwitchEmbed(`video-player`, {
+                new TwitchEmbed(`video-player`, {
                     width: `100%`,
                     height: `100%`,
-                    channel: videoParameter,
+                    channel: parameter,
                     layout: chatEnabled ? TwitchEmbedLayout.VIDEO_WITH_CHAT : TwitchEmbedLayout.VIDEO,
                 });
             } else if (videoProvider === "huya") {
@@ -615,12 +616,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </table>
                 </div>
                 <span className="footer-notes">
-                    <a target="_blank" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-26-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
+                    <a target="_blank" rel="noreferrer" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-26-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
                 </span>
                 <span className="footer-notes">
-                    <a href="javascript:void(0);" className="copy-champion-names">
+                    <button type="button" className="copy-champion-names" onClick={copyChampionNames}>
                         Copy Champion Names
-                    </a>
+                    </button>
                 </span>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>

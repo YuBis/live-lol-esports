@@ -90,7 +90,26 @@ function EventCards({ emptyMessage, scheduleEvents, title }: EventCardProps) {
 }
 
 function filterLiveEvents(scheduleEvent: ScheduleEvent) {
-    return scheduleEvent.match && (scheduleEvent.state === "inProgress" || (scheduleEvent.state === "unstarted" && ((scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[0].result.gameWins > 0 && !scheduleEvent.match.teams[0].result.outcome) || scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[1].result && scheduleEvent.match.teams[1].result.gameWins > 0 && !scheduleEvent.match.teams[1].result.outcome)) || (scheduleEvent.state === "completed" && ((scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[0].result.gameWins > 0 && !scheduleEvent.match.teams[0].result.outcome) || scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[1].result && scheduleEvent.match.teams[1].result.gameWins > 0 && !scheduleEvent.match.teams[1].result.outcome)));
+    if (!scheduleEvent.match) return false
+    if (scheduleEvent.state === "inProgress") return true
+
+    const blueTeamResult = scheduleEvent.match.teams[0].result
+    const redTeamResult = scheduleEvent.match.teams[1].result
+
+    const blueTeamInSeries = Boolean(
+        blueTeamResult &&
+        blueTeamResult.gameWins > 0 &&
+        !blueTeamResult.outcome
+    )
+    const redTeamInSeries = Boolean(
+        blueTeamResult &&
+        redTeamResult &&
+        redTeamResult.gameWins > 0 &&
+        !redTeamResult.outcome
+    )
+
+    const matchIsLiveBySeries = blueTeamInSeries || redTeamInSeries
+    return (scheduleEvent.state === "unstarted" || scheduleEvent.state === "completed") && matchIsLiveBySeries
 }
 
 function filterByLast7Days(scheduleEvent: ScheduleEvent) {
@@ -116,8 +135,14 @@ function filterByLast7Days(scheduleEvent: ScheduleEvent) {
 }
 
 function filterByNext7Days(scheduleEvent: ScheduleEvent) {
-    if (scheduleEvent.match && (scheduleEvent.state === "inProgress" || (scheduleEvent.state === "completed" && (scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[0].result.gameWins > 0) || (scheduleEvent.match.teams[1].result && scheduleEvent.match.teams[1].result.gameWins > 0)))) {
-        return
+    if (scheduleEvent.match) {
+        const blueTeamHasWins = Boolean(scheduleEvent.match.teams[0].result && scheduleEvent.match.teams[0].result.gameWins > 0)
+        const redTeamHasWins = Boolean(scheduleEvent.match.teams[1].result && scheduleEvent.match.teams[1].result.gameWins > 0)
+        const completedWithBlueScore = scheduleEvent.state === "completed" && blueTeamHasWins
+
+        if (scheduleEvent.state === "inProgress" || completedWithBlueScore || redTeamHasWins) {
+            return false
+        }
     }
     let minDate = new Date();
     let maxDate = new Date()

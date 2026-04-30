@@ -1,7 +1,6 @@
 import './styles/playerStatusStyle.css'
 import '../Schedule/styles/scheduleStyle.css'
 
-import { useEffect } from "react";
 import { EventDetails, GameMetadata, Record, Result, ScheduleEvent } from "../types/baseTypes";
 
 type Props = {
@@ -14,11 +13,6 @@ type Props = {
 }
 
 export function MatchDetails({ gameMetadata, eventDetails, matchState, records, results, scheduleEvent }: Props) {
-
-    useEffect(() => {
-
-    }, []);
-
     let blueTeam = eventDetails.match.teams[0];
     let redTeam = eventDetails.match.teams[1];
 

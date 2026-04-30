@@ -2,6 +2,16 @@
     text-decoration: underline;
 }
 
+.footer-notes button.copy-champion-names {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-decoration: underline;
+}
+
 .mini-health-bar {
     display: flex;
     align-items: center;

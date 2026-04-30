@@ -12,7 +12,7 @@ import {
     ITEMS_JSON_URL,
     RUNES_JSON_URL
 } from "../../utils/LoLEsportsAPI";
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Loading from '../../assets/images/loading.svg'
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
 import { MatchDetails } from "./MatchDetails"
@@ -24,8 +24,15 @@ import { GameDetails } from './GameDetails';
 import { StreamToggler } from '../Navbar/StreamToggler';
 import { DisabledGame } from './DisabledGame';
 
+type MatchRouteProps = {
+    match: {
+        params: {
+            gameid: string;
+        }
+    }
+}
 
-export function Match({ match }: any) {
+export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
     const [firstWindowFrame, setFirstWindowFrame] = useState<WindowFrame>();
     const [lastDetailsFrame, setLastDetailsFrame] = useState<DetailsFrame>();
@@ -46,33 +53,41 @@ export function Match({ match }: any) {
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     const matchId = match.params.gameid;
-    let matchEventDetails = eventDetails
-    let currentGameIndex = 1
-    let lastFrameSuccess = false
-    let currentTimestamp = ``
-    let firstWindowReceived = false
-    useEffect(() => {
-        getEventDetails(getInitialGameIndex());
+    const matchEventDetailsRef = useRef<EventDetails>();
+    const currentGameIndexRef = useRef<number>(1);
+    const lastFrameSuccessRef = useRef<boolean>(false);
+    const currentTimestampRef = useRef<string>(``);
+    const firstWindowReceivedRef = useRef<boolean>(false);
 
+    useEffect(() => {
+        const initialGameIndex = getInitialGameIndex();
+        if (initialGameIndex > 0) {
+            currentGameIndexRef.current = initialGameIndex
+        }
+        getEventDetails();
+
+        const POLL_INTERVAL_MS = 500;
         const windowIntervalID = setInterval(() => {
+            const matchEventDetails = matchEventDetailsRef.current
             if (!matchEventDetails) return
+
             let newGameIndex = getGameIndex(matchEventDetails)
             let gameId = matchEventDetails.match.games[newGameIndex - 1].id
-            if (currentGameIndex !== newGameIndex || !firstWindowReceived) {
-                currentTimestamp = ``
+            if (currentGameIndexRef.current !== newGameIndex || !firstWindowReceivedRef.current) {
+                currentTimestampRef.current = ``
                 getFirstWindow(gameId)
                 setGameIndex(newGameIndex)
-                currentGameIndex = newGameIndex
+                currentGameIndexRef.current = newGameIndex
             }
             getLiveWindow(gameId);
             getLastDetailsFrame(gameId);
-        }, 500);
+        }, POLL_INTERVAL_MS);
 
         return () => {
             clearInterval(windowIntervalID);
         }
 
-        function getEventDetails(gameIndex: number) {
+        function getEventDetails() {
             getEventDetailsResponse(matchId).then(response => {
                 let eventDetails: EventDetails = response.data.data.event;
                 if (eventDetails === undefined) return undefined;
@@ -83,11 +98,12 @@ export function Match({ match }: any) {
                 console.log(eventDetails)
                 console.groupEnd()
                 setEventDetails(eventDetails)
-                setGameIndex(gameIndex)
+                setGameIndex(newGameIndex)
+                currentGameIndexRef.current = newGameIndex
                 getFirstWindow(gameId)
                 getScheduleEvent(eventDetails)
                 getResults(eventDetails)
-                matchEventDetails = eventDetails
+                matchEventDetailsRef.current = eventDetails
             })
         }
 
@@ -138,7 +154,7 @@ export function Match({ match }: any) {
                 console.groupCollapsed(`First Frame`)
                 console.log(frames[0])
                 console.groupEnd()
-                firstWindowReceived = true
+                firstWindowReceivedRef.current = true
                 setMetadata(response.data.gameMetadata)
                 setFirstWindowFrame(frames[0])
                 getItems(response.data.gameMetadata)
@@ -153,26 +169,27 @@ export function Match({ match }: any) {
                 let frames: WindowFrame[] = response.data.frames;
                 if (frames === undefined) return
                 const lastWindowFrame = frames[frames.length - 1]
-                if (currentTimestamp > lastWindowFrame.rfc460Timestamp) return;
-                currentTimestamp = lastWindowFrame.rfc460Timestamp
+                if (currentTimestampRef.current > lastWindowFrame.rfc460Timestamp) return;
+                currentTimestampRef.current = lastWindowFrame.rfc460Timestamp
 
                 setLastWindowFrame(lastWindowFrame)
                 setMetadata(response.data.gameMetadata)
 
+                const matchEventDetails = matchEventDetailsRef.current
                 if (matchEventDetails === undefined) return
                 const homeTeam = matchEventDetails.match.teams[0]
                 const awayTeam = matchEventDetails.match.teams[1]
-                const cleanSweep = matchEventDetails.match.games[currentGameIndex - 1].state === `completed` && (matchEventDetails.match.teams[0].result.gameWins === 0 || matchEventDetails.match.teams[1].result.gameWins === 0)
+                const cleanSweep = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (matchEventDetails.match.teams[0].result.gameWins === 0 || matchEventDetails.match.teams[1].result.gameWins === 0)
 
-                const blueTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndex - 1].teams[0].id === homeTeam.id ? homeTeam : awayTeam
-                const redTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndex - 1].teams[1].id === homeTeam.id ? homeTeam : awayTeam
+                const blueTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndexRef.current - 1].teams[0].id === homeTeam.id ? homeTeam : awayTeam
+                const redTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndexRef.current - 1].teams[1].id === homeTeam.id ? homeTeam : awayTeam
                 const blueTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && blueTeam.result.gameWins > redTeam.result.gameWins
                 const redTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && redTeam.result.gameWins > blueTeam.result.gameWins
 
                 const blueTeamWonOnInhibitors = lastWindowFrame.blueTeam.inhibitors > 0 && lastWindowFrame?.redTeam.inhibitors === 0
                 const redTeamWonOnInhibitors = lastWindowFrame?.redTeam.inhibitors > 0 && lastWindowFrame?.blueTeam.inhibitors === 0
-                const blueTeamWon = matchEventDetails.match.games[currentGameIndex - 1].state === `completed` && (blueTeam.result.outcome === `win` || (cleanSweep && blueTeam.result.gameWins > 0) || blueTeamWonOnInhibitors || (blueTeamWonMatch && (currentGameIndex - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
-                const redTeamWon = matchEventDetails.match.games[currentGameIndex - 1].state === `completed` && (redTeam.result.outcome === `win` || (cleanSweep && redTeam.result.gameWins > 0) || redTeamWonOnInhibitors || (redTeamWonMatch && (currentGameIndex - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
+                const blueTeamWon = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (blueTeam.result.outcome === `win` || (cleanSweep && blueTeam.result.gameWins > 0) || blueTeamWonOnInhibitors || (blueTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
+                const redTeamWon = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (redTeam.result.outcome === `win` || (cleanSweep && redTeam.result.gameWins > 0) || redTeamWonOnInhibitors || (redTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
 
                 const outcome: Array<Outcome> = [
                     {
@@ -188,12 +205,12 @@ export function Match({ match }: any) {
 
         function getLastDetailsFrame(gameId: string) {
             let date = getISODateMultiplyOf10();
-            getGameDetailsResponse(gameId, date, lastFrameSuccess).then(response => {
-                lastFrameSuccess = false
+            getGameDetailsResponse(gameId, date, lastFrameSuccessRef.current).then(response => {
+                lastFrameSuccessRef.current = false
                 if (response === undefined) return
                 let frames: DetailsFrame[] = response.data.frames;
                 if (frames === undefined) return;
-                lastFrameSuccess = true
+                lastFrameSuccessRef.current = true
                 setLastDetailsFrame(frames[frames.length - 1])
             });
         }
@@ -243,10 +260,9 @@ export function Match({ match }: any) {
         return string.charAt(0).toUpperCase() + string.slice(1);
     }
 
-    $(`.copy-champion-names`).prop("onclick", null).off("click");
-    $(`.copy-champion-names`).on(`click`, () => {
+    function copyChampionNames() {
         if (!metadata) return
-        let championNames: Array<String> = []
+        let championNames: string[] = []
         metadata.blueTeamMetadata.participantMetadata.forEach(participant => {
             championNames.push(participant.championId)
         })
@@ -255,13 +271,14 @@ export function Match({ match }: any) {
             championNames.push(participant.championId)
         })
         navigator.clipboard.writeText(championNames.join("\t"));
-    })
+    }
 
-    function handleStreamChange(e: any) {
-        let optionSelected = $("option:selected", e.target);
+    function handleStreamChange(e: ChangeEvent<HTMLSelectElement>) {
+        const optionSelected = e.target.selectedOptions[0];
+        if (!optionSelected) return;
 
-        setVideoParameter(optionSelected.attr(`data-parameter`) || videoParameter)
-        setVideoProvider(optionSelected.attr(`data-provider`) || videoProvider)
+        setVideoParameter(optionSelected.getAttribute(`data-parameter`) || videoParameter)
+        setVideoProvider(optionSelected.getAttribute(`data-provider`) || videoProvider)
         let videoPlayer = document.querySelector(`#video-player`)
         if (videoPlayer) {
             videoPlayer.removeAttribute(`added`)
@@ -428,7 +445,7 @@ export function Match({ match }: any) {
             let streamOffset = Math.round(stream.offset / 1000 / 60 * -1)
             let delayString = streamOffset > 1 ? `~${streamOffset} minutes` : `<1 minute`
             let streamString = vods.length ? `VOD: ${capitalizeFirstLetter(stream.provider)}(${stream.locale})` : stream.coStreamer ? stream.mediaLocale.englishName : stream.provider === `twitch` ? `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - ${stream.parameter} - Delay: ${delayString}` : `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - Delay: ${delayString}`
-            return <option value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
+            return <option key={`${stream.provider}_${stream.parameter}_${stream.locale}`} value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
         })
 
         let videoPlayer = document.querySelector(`#video-player`)
@@ -462,15 +479,15 @@ export function Match({ match }: any) {
                     </iframe>`
 
                 if (chatEnabled) {
-                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live\_chat?v=${parameter}" ></iframe>`
+                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live_chat?v=${parameter}" ></iframe>`
                 }
 
             } else if (videoProvider === "twitch") {
                 videoPlayer.innerHTML = ``
-                const embed = new TwitchEmbed(`video-player`, {
+                new TwitchEmbed(`video-player`, {
                     width: `100%`,
                     height: `100%`,
-                    channel: videoParameter,
+                    channel: parameter,
                     layout: chatEnabled ? TwitchEmbedLayout.VIDEO_WITH_CHAT : TwitchEmbedLayout.VIDEO,
                 });
             } else if (videoProvider === "huya") {
@@ -579,12 +596,12 @@ export function Match({ match }: any) {
                         {metadata ? (
                             <div>
                                 <span className="footer-notes">
-                                    <a target="_blank" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-25-${metadata.patchVersion.split(`.`)[1].length > 1 ? metadata.patchVersion.split(`.`)[1] : "" + metadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {metadata.patchVersion}</a>
+                                    <a target="_blank" rel="noreferrer" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-25-${metadata.patchVersion.split(`.`)[1].length > 1 ? metadata.patchVersion.split(`.`)[1] : "" + metadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {metadata.patchVersion}</a>
                                 </span>
                                 <span className="footer-notes">
-                                    <a href="javascript:void(0);" className="copy-champion-names">
+                                    <button type="button" className="copy-champion-names" onClick={copyChampionNames}>
                                         Copy Champion Names
-                                    </a>
+                                    </button>
                                 </span>
                             </div>
                         ) : null}

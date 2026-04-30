@@ -3,9 +3,8 @@ import '../Schedule/styles/scheduleStyle.css'
 
 import { GameDetails } from "./GameDetails"
 import { MiniHealthBar } from "./MiniHealthBar";
-import React, { useEffect, useState } from "react";
-import { toast } from 'react-toastify';
-import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, Slot, SlottedRune } from "../types/baseTypes";
+import { ChangeEvent, useEffect, useState } from "react";
+import { EventDetails, GameMetadata, Record, TeamStats, WindowFrame, WindowParticipant, ExtendedVod } from "../types/baseTypes";
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
@@ -21,10 +20,9 @@ import { ReactComponent as InfernalDragonSVG } from '../../assets/images/dragon-
 import { ReactComponent as CloudDragonSVG } from '../../assets/images/dragon-cloud.svg';
 import { ReactComponent as MountainDragonSVG } from '../../assets/images/dragon-mountain.svg';
 import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-elder.svg';
-import { ItemsDisplay } from "./ItemsDisplay";
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
-import { CHAMPIONS_URL, RUNES_JSON_URL, getDataDragonResponse, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
+import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
@@ -46,11 +44,10 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     useEffect(() => {
-        let currentGameState: "disabled"
-        let icon = "🟣"
+        let icon = "?윢"
         document.title = `${icon} ${eventDetails.league.name} - ${blueTeam.name} vs. ${redTeam.name}`;
-
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [eventDetails.league.name, eventDetails.match.teams]);
 
     let blueTeam = eventDetails.match.teams[0];
     let redTeam = eventDetails.match.teams[1];
@@ -58,12 +55,12 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     const auxBlueTeam = blueTeam
 
     /*
-        As vezes os times continuam errados mesmo apos verificar o ultimo frame,
-        em ligas como TCL, por isso fazemos essa verificação pelo nome
+        Team side can remain inverted in some leagues even after frame checks,
+        so we also validate by summoner/team naming.
     */
     const summonerName = gameMetadata.blueTeamMetadata.participantMetadata[0].summonerName.split(" ");
 
-    if ((summonerName[0] && summonerName[0].startsWith(redTeam.code)) || gameMetadata.blueTeamMetadata.esportsTeamId !== blueTeam.id) { // Temos que verificar apenas os primeiros caracteres pois os times academy usam o A, a mais na tag mas não nos nomes
+    if ((summonerName[0] && summonerName[0].startsWith(redTeam.code)) || gameMetadata.blueTeamMetadata.esportsTeamId !== blueTeam.id) { // Academy tags may include extra chars, so we only compare prefixes.
         blueTeam = redTeam;
         redTeam = auxBlueTeam;
     }
@@ -84,9 +81,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
         })
     })
 
-    $(`.copy-champion-names`).prop("onclick", null).off("click");
-    $(`.copy-champion-names`).on(`click`, () => {
-        let championNames: Array<String> = []
+    function copyChampionNames() {
+        let championNames: string[] = []
         gameMetadata.blueTeamMetadata.participantMetadata.forEach(participant => {
             championNames.push(participant.championId)
         })
@@ -95,20 +91,19 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
             championNames.push(participant.championId)
         })
         navigator.clipboard.writeText(championNames.join("\t"));
-    })
+    }
 
-    $(`#streamDropdown`).prop("onchange", null).off("change");
-    $(`#streamDropdown`).on(`change`, (e) => {
-        let optionSelected = $("option:selected", e.target);
+    function handleStreamChange(e: ChangeEvent<HTMLSelectElement>) {
+        const optionSelected = e.target.selectedOptions[0];
+        if (!optionSelected) return;
 
-        setVideoParameter(optionSelected.attr(`data-parameter`) || videoParameter)
-        setVideoProvider(optionSelected.attr(`data-provider`) || videoProvider)
+        setVideoParameter(optionSelected.getAttribute(`data-parameter`) || videoParameter)
+        setVideoProvider(optionSelected.getAttribute(`data-provider`) || videoProvider)
         let videoPlayer = document.querySelector(`#video-player`)
         if (videoPlayer) {
             videoPlayer.removeAttribute(`added`)
         }
-
-    })
+    }
 
     function capitalizeFirstLetter(string: string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
@@ -259,7 +254,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
             let streamOffset = Math.round(stream.offset / 1000 / 60 * -1)
             let delayString = streamOffset > 1 ? `~${streamOffset} minutes` : `<1 minute`
             let streamString = vods.length ? `VOD: ${capitalizeFirstLetter(stream.provider)}(${stream.locale})` : stream.coStreamer ? stream.mediaLocale.englishName : stream.provider === `twitch` ? `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - ${stream.parameter} - Delay: ${delayString}` : `${capitalizeFirstLetter(stream.provider)}(${stream.locale}) - Delay: ${delayString}`
-            return <option value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
+            return <option key={`${stream.provider}_${stream.parameter}_${stream.locale}`} value={stream.parameter} data-provider={stream.provider} data-parameter={stream.parameter}>{streamString}</option>
         })
 
         let videoPlayer = document.querySelector(`#video-player`)
@@ -271,7 +266,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
             getVideoPlayer(streamsOrVods[0].parameter)
         }
 
-        return (<select id="streamDropdown" className='footer-notes'>{dropdown}</select>)
+        return (<select id="streamDropdown" className='footer-notes' onChange={handleStreamChange}>{dropdown}</select>)
     }
 
     function getVideoPlayer(newParameter?: string) {
@@ -293,15 +288,15 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                     </iframe>`
 
                 if (chatEnabled) {
-                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live\_chat?v=${parameter}" ></iframe>`
+                    videoPlayer.innerHTML += `<iframe width="350px" height="500px" src="https://www.youtube.com/live_chat?v=${parameter}" ></iframe>`
                 }
 
             } else if (videoProvider === "twitch") {
                 videoPlayer.innerHTML = ``
-                const embed = new TwitchEmbed(`video-player`, {
+                new TwitchEmbed(`video-player`, {
                     width: `100%`,
                     height: `100%`,
-                    channel: videoParameter,
+                    channel: parameter,
                     layout: chatEnabled ? TwitchEmbedLayout.VIDEO_WITH_CHAT : TwitchEmbedLayout.VIDEO,
                 });
             } else if (videoProvider === "huya") {
@@ -559,12 +554,12 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                     </table>
                 </div>
                 <span className="footer-notes">
-                    <a target="_blank" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-25-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
+                    <a target="_blank" rel="noreferrer" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-25-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
                 </span>
                 <span className="footer-notes">
-                    <a href="javascript:void(0);" className="copy-champion-names">
+                    <button type="button" className="copy-champion-names" onClick={copyChampionNames}>
                         Copy Champion Names
-                    </a>
+                    </button>
                 </span>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
@@ -611,72 +606,6 @@ function HeaderStats(teamStats: TeamStats, teamColor: string) {
                 <KillSVG />
                 {teamStats.totalKills}
             </div>
-        </div>
-    )
-}
-
-function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) {
-    return (
-        <div>
-            <div className='footer-notes'>Attack Damage: {championDetails.attackDamage}</div>
-            <div className='footer-notes'>Ability Power: {championDetails.abilityPower}</div>
-            <div className='footer-notes'>Attack Speed: {championDetails.attackSpeed}</div>
-            <div className='footer-notes'>Life Steal: {championDetails.lifeSteal}%</div>
-            <div className='footer-notes'>Armor: {championDetails.armor}</div>
-            <div className='footer-notes'>Magic Resistance: {championDetails.magicResistance}</div>
-            <div className='footer-notes'>Wards Destroyed: {championDetails.wardsDestroyed}</div>
-            <div className='footer-notes'>Wards Placed: {championDetails.wardsPlaced}</div>
-            <div className='footer-notes'>Damage Share: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
-            <div className='footer-notes'>Kill Participation: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
-            <div className='footer-notes'>Skill Order: {championDetails.abilities.join('->')}</div>
-            {getFormattedRunes(championDetails, runes)}
-        </div>
-    )
-}
-
-function getRuneUrlFromIcon(runes: Rune[], icon: string) {
-    const perkImageUrl = `https://ddragon.leagueoflegends.com/cdn/img/PERK_ICON`
-    return perkImageUrl.replace(`PERK_ICON`, icon)
-}
-
-function getSlottedRunes(runes: Rune[]): Array<SlottedRune> {
-    const slottedRunes: Array<SlottedRune> = []
-    runes.forEach(rune => {
-        rune.slots.forEach(slot => {
-            slot.runes.forEach(slottedRune => {
-                slottedRunes.push(slottedRune)
-            })
-        })
-    })
-    return slottedRunes
-}
-
-function getRuneHTMLElement(slottedRune: SlottedRune) {
-    return <div dangerouslySetInnerHTML={{ __html: slottedRune.longDesc }}></div>
-}
-
-function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
-    const slottedRunes = getSlottedRunes(runes)
-    const mappedRunes = championDetails.perkMetadata.perks.map(perk => {
-        return slottedRunes.find(slottedRune => slottedRune.id === perk)
-    })
-    if (!mappedRunes) return (<div className="StatsMatchupRunes"></div>)
-
-    return (
-        <div className="rune-list">
-            {mappedRunes.map(mappedRune => {
-                return mappedRune ?
-                    (
-                        <div className="rune">
-                            <div>
-                                <img className="image" src={getRuneUrlFromIcon(runes, mappedRune.icon)} alt="" />
-                                <div className="name">{mappedRune.name}</div>
-                            </div>
-                            <div className="text">
-                                <div className="description">{getRuneHTMLElement(mappedRune)}</div>
-                            </div>
-                        </div>) : null
-            })}
         </div>
     )
 }

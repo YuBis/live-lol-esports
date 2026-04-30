@@ -1,7 +1,6 @@
 import './styles/playerStatusStyle.css'
 import '../Schedule/styles/scheduleStyle.css'
 
-import { useEffect } from "react";
 import { EventDetails } from "../types/baseTypes";
 
 type Props = {
@@ -10,10 +9,6 @@ type Props = {
 }
 
 export function GameDetails({ eventDetails, gameIndex }: Props) {
-    useEffect(() => {
-
-    }, []);
-
     return (
         (eventDetails.match.games.length > 1) ? (
             <div className='game-selector'>
