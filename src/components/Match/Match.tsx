@@ -945,20 +945,27 @@ const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
     { sourceItemId: 3003, targetItemId: 3040, type: `transform` }, // Archangel's Staff -> Seraph's Embrace
     { sourceItemId: 3004, targetItemId: 3042, type: `transform` }, // Manamune -> Muramana
     { sourceItemId: 3119, targetItemId: 3121, type: `transform` }, // Winter's Approach -> Fimbulwinter
-    { sourceItemId: 3005, targetItemId: 3170, type: `boots` }, // Symbiotic Soles -> Spellslinger's Shoes
+    { sourceItemId: 3009, targetItemId: 3170, type: `boots` }, // Boots of Swiftness -> Swiftmarch
     { sourceItemId: 3158, targetItemId: 3171, type: `boots` }, // Ionian Boots -> Crimson Lucidity
-    { sourceItemId: 3006, targetItemId: 3172, type: `boots` }, // Berserker's Greaves -> Forever Forward
+    { sourceItemId: 3006, targetItemId: 3172, type: `boots` }, // Berserker's Greaves -> Gunmetal Greaves
     { sourceItemId: 3111, targetItemId: 3173, type: `boots` }, // Mercury's Treads -> Chainlaced Crushers
     { sourceItemId: 3047, targetItemId: 3174, type: `boots` }, // Plated Steelcaps -> Armored Advance
-    { sourceItemId: 3020, targetItemId: 3175, type: `boots` }, // Sorcerer's Shoes -> Gunmetal Greaves
-    { sourceItemId: 3009, targetItemId: 3176, type: `boots` }, // Boots of Swiftness -> Swiftmarch
-    { sourceItemId: 3117, targetItemId: 3179, type: `boots` }, // Mobility Boots -> Forever Forward (variant)
+    { sourceItemId: 3020, targetItemId: 3175, type: `boots` }, // Sorcerer's Shoes -> Spellslinger's Shoes
+    { sourceItemId: 3010, targetItemId: 3013, type: `boots` }, // Symbiotic Soles -> Synchronized Souls
+    { sourceItemId: 3013, targetItemId: 3176, type: `boots` }, // Synchronized Souls -> Forever Forward
 ]
+const BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID = new Map<number, number>(
+    AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS
+        .filter((inferencePair) => inferencePair.type === `boots`)
+        .map((inferencePair) => [inferencePair.sourceItemId, inferencePair.targetItemId])
+)
 const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     1001,
     3005,
     3006,
     3009,
+    3010,
+    3013,
     3020,
     3047,
     3111,
@@ -971,7 +978,6 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     3174,
     3175,
     3176,
-    3179,
 ]
 const BOOT_ITEM_PREFERENCE_ORDER = BASE_AND_UPGRADED_BOOT_ITEM_IDS.slice().reverse()
 const TEAR_OF_THE_GODDESS_ITEM_ID = 3070
@@ -1404,12 +1410,17 @@ function hasEvidenceOfSecondaryTearBuild(
 }
 
 function getPreferredMidRecoveredBootItemId(bootItemId: number) {
-    const bootsUpgradePair = AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.find((inferencePair) =>
-        inferencePair.type === `boots`
-        && inferencePair.sourceItemId === bootItemId
-    )
-    if (!bootsUpgradePair) return bootItemId
-    return bootsUpgradePair.targetItemId
+    let preferredBootItemId = bootItemId
+    const visitedBootItemIds = new Set<number>()
+
+    while (!visitedBootItemIds.has(preferredBootItemId)) {
+        visitedBootItemIds.add(preferredBootItemId)
+        const upgradedBootItemId = BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID.get(preferredBootItemId)
+        if (!upgradedBootItemId) return preferredBootItemId
+        preferredBootItemId = upgradedBootItemId
+    }
+
+    return preferredBootItemId
 }
 
 function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
