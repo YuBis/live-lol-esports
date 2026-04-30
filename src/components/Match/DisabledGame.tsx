@@ -339,6 +339,11 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         <h1>
                             <div className="gamestate-bg-game-disabled">STATS TEMPORARILY DISABLED</div>
                             <div>{inGameTime}</div>
+                            <div className="live-game-kill-score">
+                                <span className="blue-team-kills">{firstWindowFrame.blueTeam.totalKills}</span>
+                                <KillSVG className="live-game-kill-score-icon" />
+                                <span className="red-team-kills">{firstWindowFrame.redTeam.totalKills}</span>
+                            </div>
                         </h1>
                         <div className="live-game-card-team">
                             {redTeam.code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image" />) : (<img className="live-game-card-team-image" src={redTeam.image} alt={redTeam.name} />)}
@@ -601,10 +606,6 @@ function HeaderStats(teamStats: TeamStats, teamColor: string) {
                 <span>
                     {Number(teamStats.totalGold).toLocaleString('en-us')}
                 </span>
-            </div>
-            <div className="team-stats kills">
-                <KillSVG />
-                {teamStats.totalKills}
             </div>
         </div>
     )

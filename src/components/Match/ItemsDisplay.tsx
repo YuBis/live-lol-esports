@@ -30,11 +30,15 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
     }*/
 
     let trinket = -1;
-    const itemsID = Array.from(new Set(lastFrameItems)).sort(sortItems);
-
-    if (itemsID[0] !== undefined && (itemsID[0] === 3340 || itemsID[0] === 3363 || itemsID[0] === 3364)) {
-        trinket = itemsID.shift() as number;
+    const uniqueItemIds = Array.from(new Set(lastFrameItems))
+    const foundTrinket = uniqueItemIds.find((itemId) => TRINKET_IDS.includes(itemId))
+    if (foundTrinket !== undefined) {
+        trinket = foundTrinket
     }
+
+    const itemsID = uniqueItemIds
+        .filter((itemId) => !TRINKET_IDS.includes(itemId))
+        .sort((a, b) => sortItemsByGoldDesc(a, b, items))
 
     const itemsUrlWithPatchVersion = ITEMS_URL.replace(`PATCH_VERSION`, patchVersion)
 
@@ -92,12 +96,21 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
     adicionamos o id 3513 (arauto) ao seus itens
  */
 
-const sortItems = (a: number, b: number) => { // (3364, 3363, 3340) id das wards | 3513 id do arauto
-    if (a === 3364 || a === 3363 || a === 3340 || a === 3513) return -1;
-    if (b === 3364 || b === 3363 || b === 3340 || a === 3513) return 1;
+const TRINKET_IDS = [3340, 3363, 3364]
 
-    //return (a > b ? 1 : -1);
-    return b - a;
+function sortItemsByGoldDesc(a: number, b: number, items: Item[]) {
+    const goldA = getItemTotalGold(a, items)
+    const goldB = getItemTotalGold(b, items)
+    if (goldA !== goldB) return goldB - goldA
+
+    // Deterministic fallback when both items have the same total gold.
+    return b - a
+}
+
+function getItemTotalGold(itemId: number, items: Item[]) {
+    const totalGold = items[itemId]?.gold?.total
+    const numericValue = Number(totalGold)
+    return Number.isFinite(numericValue) ? numericValue : 0
 }
 
 function formatItemDescription(item: Item) {

@@ -60,6 +60,35 @@ span.mini-current-health {
     font-size: 1rem;
 }
 
+.live-game-kill-score {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.live-game-kill-score-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.live-game-kill-score-icon path,
+.live-game-kill-score-icon g {
+    fill: var(--text);
+}
+
+.live-game-kill-score .blue-team-kills {
+    color: var(--blue-twitter);
+}
+
+.live-game-kill-score .red-team-kills {
+    color: var(--red);
+}
+
 .live-game-stats-header-team-images>div {
     flex: 1;
     text-align: center;
@@ -152,6 +181,10 @@ span.mini-current-health {
     .live-game-stats-header-status>.red-team {
         flex-direction: column-reverse !important;
         align-items: center;
+    }
+
+    .live-game-kill-score {
+        font-size: 1.1rem;
     }
 
     .match-container .live-game-card-team-image {
