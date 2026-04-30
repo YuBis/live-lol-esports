@@ -901,12 +901,21 @@ function stabilizeDetailsFrame(
             lastKnownBootItemId,
             observedItems,
         )
-        const inferredItems = applyAggressiveMissingItemInference(bootRestoredItems, previousItems, participant, observedItems, participantRole)
-        const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(inferredItems, previousItems, lastKnownBootItemId, observedItems)
+        const inferredItems = applyAggressiveMissingItemInference(
+            bootRestoredItems,
+            previousItems,
+            participant,
+            observedItems,
+            participantRole,
+            lastKnownBootItemId,
+        )
+        const normalizedBootRegressionItems = normalizeSuspiciousBootRegression(inferredItems, previousItems, lastKnownBootItemId)
+        const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(normalizedBootRegressionItems, previousItems, lastKnownBootItemId, observedItems)
         const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
-        const lastKnownBoot = getBootItemId(normalizedTearItems)
-        if (lastKnownBootByParticipantId && lastKnownBoot !== undefined) {
-            lastKnownBootByParticipantId.set(participant.participantId, lastKnownBoot)
+        const currentBootItemId = getBootItemId(normalizedTearItems)
+        const resolvedKnownBootItemId = resolveKnownBootItemId(currentBootItemId, lastKnownBootItemId)
+        if (lastKnownBootByParticipantId && resolvedKnownBootItemId !== undefined) {
+            lastKnownBootByParticipantId.set(participant.participantId, resolvedKnownBootItemId)
         }
         return { ...participant, items: normalizedTearItems }
     })
@@ -959,6 +968,11 @@ const BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID = new Map<number, number>(
     AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS
         .filter((inferencePair) => inferencePair.type === `boots`)
         .map((inferencePair) => [inferencePair.sourceItemId, inferencePair.targetItemId])
+)
+const BOOT_SOURCE_ITEM_ID_BY_TARGET_ITEM_ID = new Map<number, number>(
+    AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS
+        .filter((inferencePair) => inferencePair.type === `boots`)
+        .map((inferencePair) => [inferencePair.targetItemId, inferencePair.sourceItemId])
 )
 const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     1001,
@@ -1039,12 +1053,17 @@ function applyAggressiveMissingItemInference(
     participant: DetailsFrame[`participants`][number],
     observedItems: Set<number> | undefined,
     participantRole: string | undefined,
+    lastKnownBootItemId: number | undefined,
 ) {
     if (!observedItems || itemIds.length === 0) return itemIds
 
     let inferredItems = itemIds.slice()
     AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.forEach((inferencePair) => {
         if (inferencePair.type === `boots` && !isMidRole(participantRole)) return
+        if (inferencePair.type === `boots`) {
+            const knownBootItemId = resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
+            if (!isBootInferencePairAllowedByKnownBoot(inferencePair, knownBootItemId)) return
+        }
 
         const sourceWasObserved = observedItems.has(inferencePair.sourceItemId)
         const targetWasObserved = observedItems.has(inferencePair.targetItemId)
@@ -1306,17 +1325,73 @@ function restoreMidBootOnUnexpectedMissingSlot(
     if (getBootItemId(itemIds) !== undefined) return itemIds
 
     const previousBootItemId = getBootItemId(previousItemIds)
-    const observedBootItemId = getPreferredObservedBootItemId(observedItems)
-    const fallbackBootItemId = previousBootItemId || lastKnownBootItemId || observedBootItemId
+    const fallbackBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
     if (fallbackBootItemId === undefined) return itemIds
 
-    let preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId)
-    preferredBootItemId = getPromotedMidRecoveredBootItemId(preferredBootItemId, participant)
+    const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId, observedItems)
     return appendOrReplaceInferredItem(itemIds, preferredBootItemId)
 }
 
 function getBootItemId(itemIds: number[]) {
     return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
+}
+
+function resolveKnownBootItemId(previousBootItemId: number | undefined, lastKnownBootItemId: number | undefined) {
+    if (previousBootItemId === undefined) return lastKnownBootItemId
+    if (lastKnownBootItemId === undefined) return previousBootItemId
+    if (previousBootItemId === lastKnownBootItemId) return previousBootItemId
+
+    if (previousBootItemId === 1001 && lastKnownBootItemId !== 1001) return lastKnownBootItemId
+    if (lastKnownBootItemId === 1001 && previousBootItemId !== 1001) return previousBootItemId
+
+    // Keep an already-seen upgraded boot when the next frame regresses to a lower-tier source boot.
+    if (isBootUpgradeOf(lastKnownBootItemId, previousBootItemId)) return lastKnownBootItemId
+    if (isBootUpgradeOf(previousBootItemId, lastKnownBootItemId)) return previousBootItemId
+
+    const previousBootFamilyAnchorItemId = getBootFamilyAnchorItemId(previousBootItemId)
+    const lastKnownBootFamilyAnchorItemId = getBootFamilyAnchorItemId(lastKnownBootItemId)
+    if (
+        previousBootFamilyAnchorItemId !== undefined
+        && lastKnownBootFamilyAnchorItemId !== undefined
+        && previousBootFamilyAnchorItemId !== lastKnownBootFamilyAnchorItemId
+    ) {
+        // Conflicting families are usually payload glitches; keep the established family.
+        return lastKnownBootItemId
+    }
+
+    return previousBootItemId
+}
+
+function getBootFamilyAnchorItemId(bootItemId: number | undefined) {
+    if (bootItemId === undefined || bootItemId === 1001) return undefined
+
+    let currentBootItemId = bootItemId
+    const visitedBootItemIds = new Set<number>()
+    while (!visitedBootItemIds.has(currentBootItemId)) {
+        visitedBootItemIds.add(currentBootItemId)
+        const sourceBootItemId = BOOT_SOURCE_ITEM_ID_BY_TARGET_ITEM_ID.get(currentBootItemId)
+        if (!sourceBootItemId) return currentBootItemId
+        currentBootItemId = sourceBootItemId
+    }
+
+    return currentBootItemId
+}
+
+function isBootUpgradeOf(candidateBootItemId: number, sourceBootItemId: number) {
+    if (candidateBootItemId === sourceBootItemId) return false
+
+    let currentBootItemId = sourceBootItemId
+    const visitedBootItemIds = new Set<number>()
+
+    while (!visitedBootItemIds.has(currentBootItemId)) {
+        visitedBootItemIds.add(currentBootItemId)
+        const upgradedBootItemId = BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID.get(currentBootItemId)
+        if (!upgradedBootItemId) return false
+        if (upgradedBootItemId === candidateBootItemId) return true
+        currentBootItemId = upgradedBootItemId
+    }
+
+    return false
 }
 
 function normalizeUnexpectedDuplicateBootItems(
@@ -1341,6 +1416,34 @@ function normalizeUnexpectedDuplicateBootItems(
     })
 }
 
+function normalizeSuspiciousBootRegression(
+    itemIds: number[],
+    previousItemIds: number[],
+    lastKnownBootItemId: number | undefined,
+) {
+    const currentBootItemId = getBootItemId(itemIds)
+    if (currentBootItemId === undefined) return itemIds
+
+    const knownBootItemId = resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
+    if (knownBootItemId === undefined || knownBootItemId === currentBootItemId) return itemIds
+
+    const knownFamilyAnchorItemId = getBootFamilyAnchorItemId(knownBootItemId)
+    const currentFamilyAnchorItemId = getBootFamilyAnchorItemId(currentBootItemId)
+
+    const isRegressionToBasicBoots = currentBootItemId === 1001 && knownBootItemId !== 1001
+    const isRegressionWithinSameBootChain = isBootUpgradeOf(knownBootItemId, currentBootItemId)
+    const isConflictingBootFamily =
+        knownFamilyAnchorItemId !== undefined
+        && currentFamilyAnchorItemId !== undefined
+        && knownFamilyAnchorItemId !== currentFamilyAnchorItemId
+
+    if (!isRegressionToBasicBoots && !isRegressionWithinSameBootChain && !isConflictingBootFamily) return itemIds
+
+    const currentBootItemIndex = itemIds.findIndex((itemId) => BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
+    if (currentBootItemIndex < 0) return itemIds
+    return replaceItemAtIndex(itemIds, currentBootItemIndex, knownBootItemId)
+}
+
 function getPreferredBootItemIdForNormalization(
     currentBootItemIds: number[],
     previousItemIds: number[],
@@ -1348,9 +1451,16 @@ function getPreferredBootItemIdForNormalization(
     observedItems: Set<number> | undefined,
 ) {
     const previousBootItemId = getBootItemId(previousItemIds)
-    if (previousBootItemId !== undefined && currentBootItemIds.includes(previousBootItemId)) return previousBootItemId
+    const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
+    if (knownBootItemId !== undefined && currentBootItemIds.includes(knownBootItemId)) return knownBootItemId
 
-    if (lastKnownBootItemId !== undefined && currentBootItemIds.includes(lastKnownBootItemId)) return lastKnownBootItemId
+    if (knownBootItemId !== undefined) {
+        const knownFamilyAnchorItemId = getBootFamilyAnchorItemId(knownBootItemId)
+        if (knownFamilyAnchorItemId !== undefined) {
+            const sameFamilyBootItemIds = currentBootItemIds.filter((itemId) => getBootFamilyAnchorItemId(itemId) === knownFamilyAnchorItemId)
+            if (sameFamilyBootItemIds.length > 0) return getBootItemId(sameFamilyBootItemIds)
+        }
+    }
 
     const observedBootItemId = getPreferredObservedBootItemId(observedItems)
     if (observedBootItemId !== undefined && currentBootItemIds.includes(observedBootItemId)) return observedBootItemId
@@ -1434,7 +1544,7 @@ function hasCurrentTearBranchEvidence(itemIds: number[], branch: TearLineUpgrade
     )
 }
 
-function getPreferredMidRecoveredBootItemId(bootItemId: number) {
+function getPreferredMidRecoveredBootItemId(bootItemId: number, observedItems: Set<number> | undefined) {
     let preferredBootItemId = bootItemId
     const visitedBootItemIds = new Set<number>()
 
@@ -1442,24 +1552,13 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number) {
         visitedBootItemIds.add(preferredBootItemId)
         const upgradedBootItemId = BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID.get(preferredBootItemId)
         if (!upgradedBootItemId) return preferredBootItemId
+
+        // Only promote along the chain when we've actually observed the upgraded state.
+        if (!observedItems || !observedItems.has(upgradedBootItemId)) return preferredBootItemId
         preferredBootItemId = upgradedBootItemId
     }
 
     return preferredBootItemId
-}
-
-function getPromotedMidRecoveredBootItemId(
-    bootItemId: number,
-    participant: DetailsFrame[`participants`][number],
-) {
-    if (bootItemId !== 1001) return bootItemId
-
-    const hasLateGameSignal = participant.level >= 13 || participant.totalGoldEarned >= 9000
-    if (!hasLateGameSignal) return bootItemId
-
-    const hasApProfile = participant.abilityPower >= participant.attackDamage
-    if (hasApProfile) return 3175
-    return 3171
 }
 
 function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
@@ -1472,23 +1571,36 @@ function isMidRole(participantRole: string | undefined) {
     return participantRole?.toLowerCase() === `mid`
 }
 
+function isBootInferencePairAllowedByKnownBoot(inferencePair: MissingItemInferencePair, knownBootItemId: number | undefined) {
+    if (inferencePair.type !== `boots`) return true
+    if (knownBootItemId === undefined) return true
+
+    const knownFamilyAnchorItemId = getBootFamilyAnchorItemId(knownBootItemId)
+    if (knownFamilyAnchorItemId === undefined) return true
+
+    const pairFamilyAnchorItemId = getBootFamilyAnchorItemId(inferencePair.sourceItemId)
+    return pairFamilyAnchorItemId === knownFamilyAnchorItemId
+}
+
 function canAggressivelyInferMissingItem(inferencePair: MissingItemInferencePair, currentItemIds: number[], previousItemIds: number[], participant: DetailsFrame[`participants`][number]) {
     const currentCoreItems = getCoreItemIds(currentItemIds)
     const sourceInCurrentItems = currentItemIds.includes(inferencePair.sourceItemId)
     const sourceInPreviousItems = previousItemIds.includes(inferencePair.sourceItemId)
+    const targetInCurrentItems = currentItemIds.includes(inferencePair.targetItemId)
+
+    if (inferencePair.type === `boots`) {
+        if (targetInCurrentItems) return false
+        // Only infer boot upgrades when the source boot genuinely disappeared between frames.
+        // This avoids false promotions such as forcing Spellslinger's Shoes from late-game heuristics.
+        return sourceInPreviousItems && !sourceInCurrentItems
+    }
 
     if (sourceInPreviousItems && !sourceInCurrentItems) return true
-    if (inferencePair.type === `transform`) {
-        if (sourceInCurrentItems) {
-            return participant.level >= 11 || participant.totalGoldEarned >= 8000 || currentCoreItems.length >= 3
-        }
-        return participant.level >= 14 || participant.totalGoldEarned >= 11000 || currentCoreItems.length >= 4
-    }
-
     if (sourceInCurrentItems) {
-        return participant.level >= 13 || participant.totalGoldEarned >= 9000 || currentCoreItems.length >= 4
+        return participant.level >= 11 || participant.totalGoldEarned >= 8000 || currentCoreItems.length >= 3
     }
-    return participant.level >= 14 || participant.totalGoldEarned >= 10500 || currentCoreItems.length >= 4
+    return participant.level >= 14 || participant.totalGoldEarned >= 11000 || currentCoreItems.length >= 4
+
 }
 
 function appendOrReplaceInferredItem(itemIds: number[], targetItemId: number) {
