@@ -1,18 +1,9 @@
-# 📊 Live LoL Esports - Forked from [Aureom](https://github.com/Aureom/live-lol-esports)
+# 📊 Live LoL Esports - Forked from [andydanger](https://github.com/andydanger/live-lol-esports)
 
 # 🔑 Key Differences
-* Translated to English 🤠
-* Defaults to dark theme & sound muted 😎
-* Shows patch version with link to patch notes 🤓
-* Shows series information such as "Best of 5" and "European Semi-Finals" 🏆
-* Shows in-game timer & stream delay (approximate) ⏲
-* Show game start times and upcoming games 📅
-* Item Stats ⚔
-* More to come 👀
-  * Player stats & damage?
-  * Current betting odds from top betting sites?
-  * Historical matches?
-  * Spoiler free mode?
+* Translated to Korean 🤠
+
+* ...AND More to come!
 
 
 ## 📦 Dependencies and programs used
