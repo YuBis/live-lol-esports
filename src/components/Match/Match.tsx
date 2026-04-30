@@ -9,6 +9,7 @@ import {
     getStandingsResponse,
     getDataDragonResponse,
     getFormattedPatchVersion,
+    CHAMPIONS_JSON_URL,
     ITEMS_JSON_URL,
     RUNES_JSON_URL
 } from "../../utils/LoLEsportsAPI";
@@ -32,6 +33,21 @@ type MatchRouteProps = {
     }
 }
 
+type DataDragonChampionSummary = {
+    id: string;
+    name: string;
+}
+
+type DataDragonChampionResponse = {
+    data: {
+        [championId: string]: DataDragonChampionSummary;
+    };
+}
+
+type ChampionNameMap = {
+    [championId: string]: string;
+}
+
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
     const [firstWindowFrame, setFirstWindowFrame] = useState<WindowFrame>();
@@ -45,6 +61,7 @@ export function Match({ match }: MatchRouteProps) {
     const [gameIndex, setGameIndex] = useState<number>();
     const [items, setItems] = useState<Item[]>();
     const [runes, setRunes] = useState<Rune[]>();
+    const [championNameMap, setChampionNameMap] = useState<ChampionNameMap>({});
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const chatData = localStorage.getItem("chat");
@@ -58,6 +75,7 @@ export function Match({ match }: MatchRouteProps) {
     const lastFrameSuccessRef = useRef<boolean>(false);
     const currentTimestampRef = useRef<string>(``);
     const firstWindowReceivedRef = useRef<boolean>(false);
+    const championNamePatchRef = useRef<string>(``);
 
     useEffect(() => {
         const initialGameIndex = getInitialGameIndex();
@@ -159,6 +177,7 @@ export function Match({ match }: MatchRouteProps) {
                 setFirstWindowFrame(frames[0])
                 getItems(response.data.gameMetadata)
                 getRunes(response.data.gameMetadata)
+                getChampionNameMap(response.data.gameMetadata)
             });
         }
 
@@ -251,6 +270,25 @@ export function Match({ match }: MatchRouteProps) {
             const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
             getDataDragonResponse(RUNES_JSON_URL, formattedPatchVersion).then(response => {
                 setRunes(response.data)
+            })
+        }
+
+        function getChampionNameMap(metadata: GameMetadata) {
+            const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
+            if (championNamePatchRef.current === formattedPatchVersion) return
+
+            getDataDragonResponse(CHAMPIONS_JSON_URL, formattedPatchVersion).then(response => {
+                const championResponse: DataDragonChampionResponse = response.data
+                const newChampionNameMap: ChampionNameMap = {}
+
+                Object.values(championResponse.data).forEach((championSummary) => {
+                    newChampionNameMap[championSummary.id] = championSummary.name
+                })
+
+                setChampionNameMap(newChampionNameMap)
+                championNamePatchRef.current = formattedPatchVersion
+            }).catch((error) => {
+                console.error(error)
             })
         }
 
@@ -504,14 +542,14 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, firstWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} />
+                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} />
             </div>
         );
     } else if (eventDetails !== undefined) {

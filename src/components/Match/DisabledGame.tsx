@@ -33,9 +33,12 @@ type Props = {
     gameMetadata: GameMetadata,
     eventDetails: EventDetails,
     records?: Record[],
+    championNameMap: {
+        [championId: string]: string;
+    }
 }
 
-export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails }: Props) {
+export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const chatData = localStorage.getItem("chat");
@@ -84,13 +87,17 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     function copyChampionNames() {
         let championNames: string[] = []
         gameMetadata.blueTeamMetadata.participantMetadata.forEach(participant => {
-            championNames.push(participant.championId)
+            championNames.push(getChampionDisplayName(participant.championId))
         })
 
         gameMetadata.redTeamMetadata.participantMetadata.forEach(participant => {
-            championNames.push(participant.championId)
+            championNames.push(getChampionDisplayName(participant.championId))
         })
         navigator.clipboard.writeText(championNames.join("\t"));
+    }
+
+    function getChampionDisplayName(championId: string) {
+        return championNameMap[championId] || championId
     }
 
     function handleStreamChange(e: ChangeEvent<HTMLSelectElement>) {
@@ -417,7 +424,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}</span>
+                                                    <span>{getChampionDisplayName(gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId)}</span>
                                                     <span
                                                         className=" player-card-player-name">{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
                                                 </div>
@@ -510,7 +517,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                                 <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
-                                                    <span>{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}</span>
+                                                    <span>{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>
                                                     <span className=" player-card-player-name">{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
                                                 </div>
                                             </div>
