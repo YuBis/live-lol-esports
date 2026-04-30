@@ -13,6 +13,22 @@
     color: var(--text);
 }
 
+.live-game-card-league-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.live-game-card-league-logo {
+    width: 1.4rem;
+    height: 1.4rem;
+    object-fit: contain;
+    border-radius: 4px;
+    background: var(--background);
+    padding: 2px;
+}
+
 .live-game-card-content{
     display: flex;
     justify-content: center;
@@ -123,4 +139,44 @@
 
 .orders-container > div {
     margin-bottom: 1rem;
+}
+
+.league-filter-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+}
+
+.league-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 2.1rem;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--gray-line);
+    background: var(--card-color);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.league-filter-button:hover {
+    transform: translateY(-1px);
+    border-color: var(--text);
+}
+
+.league-filter-button.active {
+    border-color: var(--green-positive);
+    box-shadow: 0 0 0 1px var(--green-positive) inset;
+}
+
+.league-filter-button-logo {
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
 }

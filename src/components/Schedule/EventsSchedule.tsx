@@ -1,15 +1,37 @@
 import './styles/scheduleStyle.css'
 
-import { getScheduleResponse } from "../../utils/LoLEsportsAPI";
+import { getLeaguesResponse, getScheduleResponse } from "../../utils/LoLEsportsAPI";
 import { EventCard } from "./EventCard";
 import { useEffect, useState } from "react";
 
 import { Schedule, ScheduleEvent } from "../types/baseTypes";
 
+type LeagueFilter = "ALL" | "LCK" | "LPL" | "LCS" | "LEC" | "ETC"
+
+type LeagueImageMap = {
+    [slug: string]: string;
+}
+
+type LeagueSummary = {
+    slug: string;
+    image?: string;
+}
+
+const LEAGUE_FILTERS: Array<{ key: LeagueFilter; label: string; leagueSlug?: string }> = [
+    { key: "ALL", label: "ALL" },
+    { key: "LCK", label: "LCK", leagueSlug: "lck" },
+    { key: "LPL", label: "LPL", leagueSlug: "lpl" },
+    { key: "LCS", label: "LCS", leagueSlug: "lcs" },
+    { key: "LEC", label: "LEC", leagueSlug: "lec" },
+    { key: "ETC", label: "ETC" },
+]
+
 export function EventsSchedule() {
     const [liveEvents, setLiveEvents] = useState<ScheduleEvent[]>([])
-    const [last7DaysEvents, setlast7DaysEvents] = useState<ScheduleEvent[]>([])
+    const [last7DaysEvents, setLast7DaysEvents] = useState<ScheduleEvent[]>([])
     const [next7DaysEvents, setNext7DaysEvents] = useState<ScheduleEvent[]>([])
+    const [selectedLeagueFilter, setSelectedLeagueFilter] = useState<LeagueFilter>("ALL")
+    const [leagueImages, setLeagueImages] = useState<LeagueImageMap>({})
 
     useEffect(() => {
         getScheduleResponse().then(response => {
@@ -18,8 +40,22 @@ export function EventsSchedule() {
             console.table(schedule.events)
             console.groupEnd()
             setLiveEvents(schedule.events.filter(filterLiveEvents))
-            setlast7DaysEvents(schedule.events.filter(filterByLast7Days))
+            setLast7DaysEvents(schedule.events.filter(filterByLast7Days))
             setNext7DaysEvents(schedule.events.filter(filterByNext7Days))
+        }).catch(error =>
+            console.error(error)
+        )
+
+        getLeaguesResponse().then(response => {
+            const leagues: LeagueSummary[] = response.data.data.leagues
+            const newLeagueImages: LeagueImageMap = {}
+
+            leagues.forEach((league) => {
+                if (!league.slug || !league.image) return
+                newLeagueImages[league.slug] = normalizeImageUrl(league.image)
+            })
+
+            setLeagueImages(newLeagueImages)
         }).catch(error =>
             console.error(error)
         )
@@ -47,8 +83,32 @@ export function EventsSchedule() {
 
     return (
         <div className="orders-container">
+            <div className="league-filter-container">
+                {LEAGUE_FILTERS.map((leagueFilter) => {
+                    const logoUrl = leagueFilter.leagueSlug ? leagueImages[leagueFilter.leagueSlug] : undefined
+                    const isActive = selectedLeagueFilter === leagueFilter.key
+                    return (
+                        <button
+                            key={leagueFilter.key}
+                            type="button"
+                            className={`league-filter-button ${isActive ? "active" : ""}`}
+                            onClick={() => setSelectedLeagueFilter(leagueFilter.key)}
+                        >
+                            {logoUrl ? <img className="league-filter-button-logo" src={logoUrl} alt={`${leagueFilter.label} logo`} /> : null}
+                            <span>{leagueFilter.label}</span>
+                        </button>
+                    )
+                })}
+            </div>
             {scheduledEvents.map(scheduledEvent => (
-                <EventCards key={scheduledEvent.title} emptyMessage={scheduledEvent.emptyMessage} scheduleEvents={scheduledEvent.scheduleEvents} title={scheduledEvent.title} />
+                <EventCards
+                    key={scheduledEvent.title}
+                    emptyMessage={scheduledEvent.emptyMessage}
+                    scheduleEvents={scheduledEvent.scheduleEvents}
+                    title={scheduledEvent.title}
+                    selectedLeagueFilter={selectedLeagueFilter}
+                    leagueImages={leagueImages}
+                />
             ))}
         </div>
     );
@@ -58,26 +118,34 @@ type EventCardProps = {
     emptyMessage: string;
     scheduleEvents: ScheduleEvent[];
     title: string;
+    selectedLeagueFilter: LeagueFilter;
+    leagueImages: LeagueImageMap;
 }
 
-function EventCards({ emptyMessage, scheduleEvents, title }: EventCardProps) {
-    if (scheduleEvents !== undefined && scheduleEvents.length !== 0) {
+function EventCards({ emptyMessage, scheduleEvents, title, selectedLeagueFilter, leagueImages }: EventCardProps) {
+    const filteredEvents = scheduleEvents
+        .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
+        .filter((scheduleEvent) => matchesLeagueFilter(scheduleEvent, selectedLeagueFilter))
+        .sort((a, b) => {
+            return (new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || a.league.name.localeCompare(b.league.name)
+        })
+
+    if (filteredEvents.length !== 0) {
         return (
             <div>
                 <h2 className="games-of-day">{title}</h2>
                 <div className="games-list-container">
                     <div className="games-list-items">
-                        {scheduleEvents.sort((a, b) => {
-                            return (new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) || a.league.name.localeCompare(b.league.name)
-                        }).map(scheduleEvent => {
-                            return scheduleEvent.league.slug !== "tft_esports" ? (
+                        {filteredEvents.map(scheduleEvent => {
+                            const leagueLogoUrl = leagueImages[scheduleEvent.league.slug]
+                            return (
                                 <EventCard
                                     key={`${scheduleEvent.match.id}_${scheduleEvent.startTime}`}
                                     scheduleEvent={scheduleEvent}
+                                    leagueLogoUrl={leagueLogoUrl}
                                 />
-                            ) : null
-                        })
-                        }
+                            )
+                        })}
                     </div>
                 </div>
             </div>
@@ -87,6 +155,24 @@ function EventCards({ emptyMessage, scheduleEvents, title }: EventCardProps) {
             <h2 className="games-of-day">{emptyMessage}</h2>
         );
     }
+}
+
+function normalizeImageUrl(url: string) {
+    return url.replace("http://", "https://")
+}
+
+function getLeagueFilter(scheduleEvent: ScheduleEvent): Exclude<LeagueFilter, "ALL"> {
+    const slug = scheduleEvent.league.slug.toLowerCase()
+    if (slug === "lck") return "LCK"
+    if (slug === "lpl") return "LPL"
+    if (slug === "lcs") return "LCS"
+    if (slug === "lec") return "LEC"
+    return "ETC"
+}
+
+function matchesLeagueFilter(scheduleEvent: ScheduleEvent, selectedLeagueFilter: LeagueFilter) {
+    if (selectedLeagueFilter === "ALL") return true
+    return getLeagueFilter(scheduleEvent) === selectedLeagueFilter
 }
 
 function filterLiveEvents(scheduleEvent: ScheduleEvent) {

@@ -5,13 +5,19 @@ import {ScheduleEvent} from "../types/baseTypes";
 
 type Props = {
     scheduleEvent: ScheduleEvent;
+    leagueLogoUrl?: string;
 }
 
-export function EventCard({ scheduleEvent }: Props) {
+export function EventCard({ scheduleEvent, leagueLogoUrl }: Props) {
     return (
         <Link to={`live/${scheduleEvent.match.id}`}>
             <div className="live-game-card">
-                <h3>{scheduleEvent.league.name} - {scheduleEvent.blockName}</h3>
+                <h3 className="live-game-card-league-title">
+                    {leagueLogoUrl ? (
+                        <img className="live-game-card-league-logo" src={leagueLogoUrl} alt={`${scheduleEvent.league.name} logo`} />
+                    ) : null}
+                    <span>{scheduleEvent.league.name} - {scheduleEvent.blockName}</span>
+                </h3>
                 <h4>
                     <span>
                         {new Date(scheduleEvent.startTime).toLocaleTimeString([], {year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit'})}

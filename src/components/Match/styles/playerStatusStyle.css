@@ -429,7 +429,7 @@ svg.player-champion {
 }
 
 .table-top-row-champion {
-    width: 14rem;
+    width: 16rem;
 }
 
 .table-top-row-vida {
@@ -444,6 +444,12 @@ svg.player-champion {
 
 .table-top-row {
     height: 28px;
+}
+
+.status-live-game-card-table th[title="creep score"],
+.status-live-game-card-table .player-stats-row td:nth-child(4) {
+    width: 2.25rem;
+    min-width: 2.25rem;
 }
 
 .status-live-game-card-table .player-stats-row td:last-child {
