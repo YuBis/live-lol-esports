@@ -99,6 +99,27 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
  */
 
 const TRINKET_IDS = [3340, 3363, 3364]
+const BOOT_ITEM_IDS = [
+    1001,
+    3005,
+    3006,
+    3009,
+    3010,
+    3013,
+    3020,
+    3047,
+    3111,
+    3117,
+    3158,
+    3170,
+    3171,
+    3172,
+    3173,
+    3174,
+    3175,
+    3176,
+]
+const BOOT_ITEM_PREFERENCE_ORDER = BOOT_ITEM_IDS.slice().reverse()
 const CONTROL_WARD_ITEM_ID = 2055
 const FALLBACK_CONSUMABLE_ITEM_IDS = [
     2003, // Health Potion
@@ -168,10 +189,10 @@ function applyRoleNonTrinketItemLimit(itemIds: number[], role: string | undefine
     }
 
     if (filteredItems.length > maxNonTrinketItems) {
-        return filteredItems.slice(0, maxNonTrinketItems)
+        filteredItems = filteredItems.slice(0, maxNonTrinketItems)
     }
 
-    return filteredItems
+    return ensureBootItemPreserved(itemIds, filteredItems, maxNonTrinketItems)
 }
 
 function getMaxNonTrinketItemsForRole(role: string | undefined) {
@@ -201,6 +222,32 @@ function trimItemsByPriority(itemIds: number[], maxItems: number, shouldTrimItem
 
     const remainingSlots = maxItems - retainedItems.length
     return retainedItems.concat(trimCandidateItems.slice(0, remainingSlots))
+}
+
+function ensureBootItemPreserved(
+    sourceItemIds: number[],
+    constrainedItemIds: number[],
+    maxItems: number,
+) {
+    const sourceBootItemId = getPreferredBootItemId(sourceItemIds)
+    if (sourceBootItemId === undefined) return constrainedItemIds
+
+    const constrainedHasBoot = constrainedItemIds.some((itemId) => BOOT_ITEM_IDS.includes(itemId))
+    if (constrainedHasBoot) return constrainedItemIds
+
+    if (constrainedItemIds.length < maxItems) {
+        return [...constrainedItemIds, sourceBootItemId]
+    }
+
+    if (constrainedItemIds.length === 0) return [sourceBootItemId]
+
+    const bootPreservedItems = constrainedItemIds.slice()
+    bootPreservedItems[bootPreservedItems.length - 1] = sourceBootItemId
+    return bootPreservedItems
+}
+
+function getPreferredBootItemId(itemIds: number[]) {
+    return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
 }
 
 function sortItemsByGoldDesc(a: number, b: number, items: Item[]) {

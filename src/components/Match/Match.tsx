@@ -1061,7 +1061,10 @@ function applyAggressiveMissingItemInference(
     AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.forEach((inferencePair) => {
         if (inferencePair.type === `boots` && !isMidRole(participantRole)) return
         if (inferencePair.type === `boots`) {
-            const knownBootItemId = resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
+            const knownBootItemId =
+                resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
+                || getStableObservedBootItemId(observedItems)
+            if (knownBootItemId === undefined) return
             if (!isBootInferencePairAllowedByKnownBoot(inferencePair, knownBootItemId)) return
         }
 
@@ -1325,7 +1328,9 @@ function restoreMidBootOnUnexpectedMissingSlot(
     if (getBootItemId(itemIds) !== undefined) return itemIds
 
     const previousBootItemId = getBootItemId(previousItemIds)
-    const fallbackBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
+    const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
+    const observedBootItemId = getStableObservedBootItemId(observedItems, knownBootItemId)
+    const fallbackBootItemId = knownBootItemId || observedBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
     const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId, observedItems)
@@ -1462,7 +1467,7 @@ function getPreferredBootItemIdForNormalization(
         }
     }
 
-    const observedBootItemId = getPreferredObservedBootItemId(observedItems)
+    const observedBootItemId = getStableObservedBootItemId(observedItems, knownBootItemId)
     if (observedBootItemId !== undefined && currentBootItemIds.includes(observedBootItemId)) return observedBootItemId
 
     return getBootItemId(currentBootItemIds)
@@ -1561,10 +1566,48 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number, observedItems: S
     return preferredBootItemId
 }
 
-function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
-    if (!observedItems || observedItems.size === 0) return undefined
+function getStableObservedBootItemId(
+    observedItems: Set<number> | undefined,
+    knownBootItemId?: number,
+) {
+    const observedBootItemIds = getObservedBootItemIds(observedItems)
+    if (observedBootItemIds.length === 0) return undefined
 
-    return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => observedItems.has(itemId))
+    if (knownBootItemId !== undefined) {
+        const knownBootFamilyAnchorItemId = getBootFamilyAnchorItemId(knownBootItemId)
+        if (knownBootFamilyAnchorItemId !== undefined) {
+            const sameFamilyObservedBootItemIds = observedBootItemIds.filter((itemId) =>
+                getBootFamilyAnchorItemId(itemId) === knownBootFamilyAnchorItemId
+            )
+            if (sameFamilyObservedBootItemIds.length > 0) return sameFamilyObservedBootItemIds[0]
+            return undefined
+        }
+
+        if (knownBootItemId === 1001 && observedBootItemIds.includes(1001)) return 1001
+    }
+
+    const observedBootFamilyAnchorItemIds = new Set<number>()
+    observedBootItemIds.forEach((itemId) => {
+        const bootFamilyAnchorItemId = getBootFamilyAnchorItemId(itemId)
+        if (bootFamilyAnchorItemId !== undefined) {
+            observedBootFamilyAnchorItemIds.add(bootFamilyAnchorItemId)
+        }
+    })
+
+    if (observedBootFamilyAnchorItemIds.size === 1) {
+        const [stableBootFamilyAnchorItemId] = Array.from(observedBootFamilyAnchorItemIds)
+        return observedBootItemIds.find((itemId) =>
+            getBootFamilyAnchorItemId(itemId) === stableBootFamilyAnchorItemId
+        )
+    }
+
+    if (observedBootFamilyAnchorItemIds.size === 0 && observedBootItemIds.includes(1001)) return 1001
+    return undefined
+}
+
+function getObservedBootItemIds(observedItems: Set<number> | undefined) {
+    if (!observedItems || observedItems.size === 0) return []
+    return BOOT_ITEM_PREFERENCE_ORDER.filter((itemId) => observedItems.has(itemId))
 }
 
 function isMidRole(participantRole: string | undefined) {
