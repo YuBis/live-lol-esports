@@ -166,12 +166,23 @@
     justify-content: space-between;
     gap: 0.5rem;
     min-height: 2rem;
+    min-width: 0;
 }
 
 .schedule-event-card .live-game-card-league-title {
     min-height: 0;
     flex: 1;
     justify-content: flex-start;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.schedule-event-card .live-game-card-league-title > span {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .schedule-event-time {
@@ -281,6 +292,7 @@
     font-weight: 800;
     letter-spacing: 0.04em;
     border: 1px solid transparent;
+    flex-shrink: 0;
 }
 
 .schedule-event-status-badge.live {

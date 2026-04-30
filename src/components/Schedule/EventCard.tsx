@@ -96,10 +96,17 @@ export function EventCard({ scheduleEvent, leagueLogoUrl }: Props) {
 }
 
 function getEventCardStatus(scheduleEvent: ScheduleEvent) {
+    const eventStartTime = new Date(scheduleEvent.startTime).getTime()
+    const now = Date.now()
+    const FUTURE_START_BUFFER_MS = 5 * 60 * 1000
+
+    if (eventStartTime > now + FUTURE_START_BUFFER_MS && !hasMatchOutcome(scheduleEvent)) {
+        return { label: "UPCOMING", className: "upcoming" }
+    }
     if (scheduleEvent.state === "inProgress" || isLiveBySeries(scheduleEvent)) {
         return { label: "LIVE", className: "live" }
     }
-    if (scheduleEvent.state === "completed" || hasMatchOutcome(scheduleEvent)) {
+    if (hasMatchOutcome(scheduleEvent) || scheduleEvent.state === "completed") {
         return { label: "FINAL", className: "final" }
     }
     return { label: "UPCOMING", className: "upcoming" }
