@@ -54,6 +54,9 @@ type ParticipantRoleByParticipantId = Map<number, string>
 type LastKnownBootItemByParticipantId = Map<number, number>
 type BackfillStatus = `idle` | `running` | `completed`
 const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
+const LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS = 45 * 60 * 1000
+const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL = 6
+const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 30 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 
@@ -319,13 +322,16 @@ export function Match({ match }: MatchRouteProps) {
 
             const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
             const currentTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
-            if (startTimestampValue === 0 || currentTimestampValue === 0 || currentTimestampValue <= startTimestampValue) return
-
-            const elapsedGameTime = currentTimestampValue - startTimestampValue
-            if (elapsedGameTime < LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) return
+            const backfillStartTimestampValue = getLiveDetailsBackfillStartTimestampValue(
+                startTimestampValue,
+                currentTimestampValue,
+                currentGame,
+                lastWindowFrame,
+            )
+            if (backfillStartTimestampValue === 0) return
 
             updateBackfillStatus(gameId, `running`)
-            void backfillObservedItemsFromGameStart(gameId, startTimestampValue, currentTimestampValue)
+            void backfillObservedItemsFromGameStart(gameId, backfillStartTimestampValue, currentTimestampValue)
         }
 
         async function backfillObservedItemsFromGameStart(gameId: string, startTimestampValue: number, endTimestampValue: number) {
@@ -1552,6 +1558,50 @@ function isSubsetWithCounts(candidate: number[], reference: number[]) {
     }
 
     return true
+}
+
+function getLiveDetailsBackfillStartTimestampValue(
+    initialWindowStartTimestampValue: number,
+    currentWindowTimestampValue: number,
+    currentGame: EventDetails[`match`][`games`][number],
+    lastWindowFrame: WindowFrame,
+) {
+    if (initialWindowStartTimestampValue === 0 || currentWindowTimestampValue === 0) return 0
+    if (currentWindowTimestampValue <= initialWindowStartTimestampValue) return 0
+
+    const elapsedGameTime = currentWindowTimestampValue - initialWindowStartTimestampValue
+    if (elapsedGameTime >= LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) {
+        return initialWindowStartTimestampValue
+    }
+
+    if (!shouldUseLiveDetailsBackfillFallback(currentGame, lastWindowFrame)) return 0
+
+    return Math.max(0, currentWindowTimestampValue - LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS)
+}
+
+function shouldUseLiveDetailsBackfillFallback(
+    currentGame: EventDetails[`match`][`games`][number],
+    lastWindowFrame: WindowFrame,
+) {
+    if (currentGame.state === `completed` || lastWindowFrame.gameState === `finished`) return true
+
+    const averageParticipantLevel = getAverageWindowParticipantLevel(lastWindowFrame)
+    const totalTeamGold = Number(lastWindowFrame.blueTeam.totalGold || 0) + Number(lastWindowFrame.redTeam.totalGold || 0)
+
+    return (
+        averageParticipantLevel >= LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL
+        || totalTeamGold >= LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD
+    )
+}
+
+function getAverageWindowParticipantLevel(lastWindowFrame: WindowFrame) {
+    const participants = lastWindowFrame.blueTeam.participants.concat(lastWindowFrame.redTeam.participants)
+    if (participants.length === 0) return 0
+
+    const totalLevels = participants.reduce((sum, participant) => {
+        return sum + (Number.isFinite(participant.level) ? participant.level : 0)
+    }, 0)
+    return totalLevels / participants.length
 }
 
 function getTimestampValue(timestamp: string | Date | undefined) {
