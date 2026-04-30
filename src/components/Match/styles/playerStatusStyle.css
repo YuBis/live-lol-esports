@@ -303,32 +303,34 @@ Gold bar
     align-items: center;
     gap: 0.5rem;
     font-variant-numeric: tabular-nums;
+    text-align: center;
 }
 
 .team-gold-value {
     font-size: 1.1rem;
     font-weight: 700;
     line-height: 1.1;
+    color: var(--text);
 }
 
-.blue-team-gold-value {
+.team-gold-value-blue,
+.team-gold-value-red {
+    text-align: center;
+}
+
+.gold-advantage-blue {
     color: var(--blue-twitter);
 }
 
-.red-team-gold-value {
+.gold-advantage-red {
     color: var(--red);
 }
 
-.live-game-stats-header-gold-values>.blue-team-gold-value {
-    text-align: left;
-}
-
-.live-game-stats-header-gold-values>.red-team-gold-value {
-    text-align: right;
+.gold-advantage-neutral {
+    color: var(--text);
 }
 
 .gold-lead-indicator {
-    color: var(--text);
     background: var(--gray-line);
     border-radius: 999px;
     font-size: 0.88rem;
@@ -602,6 +604,15 @@ svg.player-champion {
     max-width: 100%;
     border: 0px;
     cursor: pointer;
+}
+
+.footer-notes.backfill-status {
+    cursor: default;
+    font-weight: 500;
+}
+
+.footer-notes.backfill-status.running {
+    color: var(--green-positive);
 }
 
 .chat-toggle, .stream-toggle {

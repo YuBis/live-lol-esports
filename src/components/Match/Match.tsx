@@ -72,6 +72,7 @@ export function Match({ match }: MatchRouteProps) {
     const [championNameMap, setChampionNameMap] = useState<ChampionNameMap>({});
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
+    const [isBackfillInProgress, setIsBackfillInProgress] = useState<boolean>(false);
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -118,6 +119,7 @@ export function Match({ match }: MatchRouteProps) {
                     participantRoleByParticipantIdRef.current = new Map()
                     lastKnownBootByParticipantIdRef.current = new Map()
                     backfillStatusByGameIdRef.current = new Map()
+                    setIsBackfillInProgress(false)
                     firstWindowTimestampRef.current = ``
                     setLastDetailsFrame(undefined)
                 }
@@ -307,8 +309,12 @@ export function Match({ match }: MatchRouteProps) {
             const matchEventDetails = matchEventDetailsRef.current
             if (!matchEventDetails) return
             const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
-            if (!currentGame || currentGame.id !== gameId || currentGame.state !== `inProgress`) return
-            if (lastWindowFrame.gameState !== `in_game`) return
+            if (!currentGame || currentGame.id !== gameId) return
+            const isLiveOrCompletedGame = currentGame.state === `inProgress` || currentGame.state === `completed`
+            if (!isLiveOrCompletedGame) return
+
+            const isWindowInPlayableState = lastWindowFrame.gameState === `in_game` || lastWindowFrame.gameState === `finished`
+            if (!isWindowInPlayableState) return
 
             const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
             const currentTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
@@ -323,7 +329,7 @@ export function Match({ match }: MatchRouteProps) {
             const elapsedGameTime = currentTimestampValue - startTimestampValue
             if (elapsedGameTime < LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) return
 
-            backfillStatusByGameIdRef.current.set(gameId, `running`)
+            setBackfillStatus(gameId, `running`)
             void backfillObservedItemsFromGameStart(gameId, startTimestampValue, currentTimestampValue)
         }
 
@@ -331,7 +337,7 @@ export function Match({ match }: MatchRouteProps) {
             const alignedStart = alignTimestampToLiveStatsStep(startTimestampValue)
             const alignedEnd = alignTimestampToLiveStatsStep(endTimestampValue)
             if (alignedStart === 0 || alignedEnd === 0 || alignedEnd < alignedStart) {
-                backfillStatusByGameIdRef.current.set(gameId, `completed`)
+                setBackfillStatus(gameId, `completed`)
                 return
             }
 
@@ -363,8 +369,15 @@ export function Match({ match }: MatchRouteProps) {
                 }
             } finally {
                 if (!aborted && activeGameIdRef.current === gameId) {
-                    backfillStatusByGameIdRef.current.set(gameId, `completed`)
+                    setBackfillStatus(gameId, `completed`)
                 }
+            }
+        }
+
+        function setBackfillStatus(gameId: string, status: `running` | `completed`) {
+            backfillStatusByGameIdRef.current.set(gameId, status)
+            if (activeGameIdRef.current === gameId) {
+                setIsBackfillInProgress(status === `running`)
             }
         }
 
@@ -676,7 +689,7 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} isBackfillInProgress={isBackfillInProgress} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
@@ -1011,11 +1024,21 @@ function restoreMidBootOnUnexpectedMissingSlot(
     const fallbackBootItemId = previousBootItemId || lastKnownBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
-    return appendOrReplaceInferredItem(itemIds, fallbackBootItemId)
+    const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId)
+    return appendOrReplaceInferredItem(itemIds, preferredBootItemId)
 }
 
 function getBootItemId(itemIds: number[]) {
     return itemIds.find((itemId) => BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
+}
+
+function getPreferredMidRecoveredBootItemId(bootItemId: number) {
+    const bootsUpgradePair = AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS.find((inferencePair) =>
+        inferencePair.type === `boots`
+        && inferencePair.sourceItemId === bootItemId
+    )
+    if (!bootsUpgradePair) return bootItemId
+    return bootsUpgradePair.targetItemId
 }
 
 function isMidRole(participantRole: string | undefined) {

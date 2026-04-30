@@ -10,7 +10,6 @@ import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, R
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
 import { ReactComponent as KillSVG } from '../../assets/images/kill.svg';
-import { ReactComponent as GoldSVG } from '../../assets/images/gold.svg';
 import { ReactComponent as InhibitorSVG } from '../../assets/images/inhibitor.svg';
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
 
@@ -43,7 +42,8 @@ type Props = {
     runes: Rune[],
     championNameMap: {
         [championId: string]: string;
-    }
+    },
+    isBackfillInProgress?: boolean,
 }
 
 enum GameState {
@@ -52,7 +52,7 @@ enum GameState {
     finished = "game ended"
 }
 
-export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, isBackfillInProgress = false }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -432,11 +432,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </div>
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
-                            <span className="team-gold-value blue-team-gold-value">{formattedBlueTeamGold}</span>
-                            <span className={`gold-lead-indicator ${goldLead > 0 ? `blue-team-gold-value` : goldLead < 0 ? `red-team-gold-value` : ``}`}>
+                            <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
+                            <span className={`gold-lead-indicator ${goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`}`}>
                                 {`${goldLeadDirection} ${formattedGoldLead}`}
                             </span>
-                            <span className="team-gold-value red-team-gold-value">{formattedRedTeamGold}</span>
+                            <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
                         </div>
                         <div className="live-game-stats-header-gold-bar">
                             <div className="blue-team" style={{ flex: goldPercentage.goldBluePercentage }} />
@@ -664,6 +664,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         Copy Champion Names
                     </button>
                 </span>
+                {isBackfillInProgress ? (
+                    <span className="footer-notes backfill-status running">Backfill in progress: syncing historical items...</span>
+                ) : null}
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>
@@ -698,12 +701,6 @@ function HeaderStats(teamStats: TeamStats, teamColor: string) {
             <div className="team-stats towers">
                 <TowerSVG />
                 {teamStats.towers}
-            </div>
-            <div className="team-stats gold">
-                <GoldSVG />
-                <span>
-                    {Number(teamStats.totalGold).toLocaleString('en-us')}
-                </span>
             </div>
         </div>
     )
