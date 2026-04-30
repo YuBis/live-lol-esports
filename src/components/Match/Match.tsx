@@ -4,6 +4,7 @@ import {
     getEventDetailsResponse,
     getISODateMultiplyOf10,
     getGameDetailsResponse,
+    getGameDetailsSnapshotResponse,
     getWindowResponse,
     getScheduleResponse,
     getStandingsResponse,
@@ -49,6 +50,9 @@ type ChampionNameMap = {
 }
 
 type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
+const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
+const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 30 * 1000
+const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
@@ -77,8 +81,12 @@ export function Match({ match }: MatchRouteProps) {
     const lastFrameSuccessRef = useRef<boolean>(false);
     const currentTimestampRef = useRef<string>(``);
     const lastDetailsTimestampRef = useRef<string>(``);
+    const firstDetailsTimestampRef = useRef<string>(``);
     const lastDetailsFrameRef = useRef<DetailsFrame>();
     const observedDetailsItemsRef = useRef<ObservedDetailsItemsByParticipantId>(new Map())
+    const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
+    const activeGameIdRef = useRef<string>(``)
+    const firstWindowTimestampRef = useRef<string>(``)
     const firstWindowReceivedRef = useRef<boolean>(false);
     const championNamePatchRef = useRef<string>(``);
 
@@ -100,10 +108,14 @@ export function Match({ match }: MatchRouteProps) {
                 currentTimestampRef.current = ``
                 if (currentGameIndexRef.current !== newGameIndex) {
                     lastDetailsTimestampRef.current = ``
+                    firstDetailsTimestampRef.current = ``
                     lastDetailsFrameRef.current = undefined
                     observedDetailsItemsRef.current = new Map()
+                    backfillStatusByGameIdRef.current = new Map()
+                    firstWindowTimestampRef.current = ``
                     setLastDetailsFrame(undefined)
                 }
+                activeGameIdRef.current = gameId
                 getFirstWindow(gameId)
                 setGameIndex(newGameIndex)
                 currentGameIndexRef.current = newGameIndex
@@ -184,6 +196,7 @@ export function Match({ match }: MatchRouteProps) {
                 console.log(frames[0])
                 console.groupEnd()
                 firstWindowReceivedRef.current = true
+                firstWindowTimestampRef.current = normalizeTimestamp(frames[0].rfc460Timestamp)
                 setMetadata(response.data.gameMetadata)
                 setFirstWindowFrame(frames[0])
                 getItems(response.data.gameMetadata)
@@ -201,6 +214,7 @@ export function Match({ match }: MatchRouteProps) {
                 const lastWindowFrame = frames[frames.length - 1]
                 if (currentTimestampRef.current > lastWindowFrame.rfc460Timestamp) return;
                 currentTimestampRef.current = lastWindowFrame.rfc460Timestamp
+                maybeStartLiveDetailsBackfill(gameId, lastWindowFrame)
 
                 setLastWindowFrame(lastWindowFrame)
                 setMetadata(response.data.gameMetadata)
@@ -248,12 +262,85 @@ export function Match({ match }: MatchRouteProps) {
                 // Ignore stale details responses that arrive out-of-order.
                 if (incomingTimestamp !== 0 && currentTimestamp !== 0 && incomingTimestamp < currentTimestamp) return
 
+                if (!firstDetailsTimestampRef.current) {
+                    firstDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
+                }
                 const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current, observedDetailsItemsRef.current)
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 setLastDetailsFrame(stabilizedFrame)
             });
+        }
+
+        function maybeStartLiveDetailsBackfill(gameId: string, lastWindowFrame: WindowFrame) {
+            if (activeGameIdRef.current !== gameId) return
+
+            const backfillStatus = backfillStatusByGameIdRef.current.get(gameId)
+            if (backfillStatus === `running` || backfillStatus === `completed`) return
+
+            const matchEventDetails = matchEventDetailsRef.current
+            if (!matchEventDetails) return
+            const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
+            if (!currentGame || currentGame.id !== gameId || currentGame.state !== `inProgress`) return
+            if (lastWindowFrame.gameState !== `in_game`) return
+
+            const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
+            const currentTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
+            if (startTimestampValue === 0 || currentTimestampValue === 0 || currentTimestampValue <= startTimestampValue) return
+
+            const firstDetailsTimestampValue = getTimestampValue(firstDetailsTimestampRef.current)
+            if (firstDetailsTimestampValue === 0 || firstDetailsTimestampValue <= startTimestampValue) return
+
+            const viewerJoinedElapsed = firstDetailsTimestampValue - startTimestampValue
+            if (viewerJoinedElapsed < LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) return
+
+            const elapsedGameTime = currentTimestampValue - startTimestampValue
+            if (elapsedGameTime < LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) return
+
+            backfillStatusByGameIdRef.current.set(gameId, `running`)
+            void backfillObservedItemsFromGameStart(gameId, startTimestampValue, currentTimestampValue)
+        }
+
+        async function backfillObservedItemsFromGameStart(gameId: string, startTimestampValue: number, endTimestampValue: number) {
+            const alignedStart = alignTimestampToLiveStatsStep(startTimestampValue)
+            const alignedEnd = alignTimestampToLiveStatsStep(endTimestampValue)
+            if (alignedStart === 0 || alignedEnd === 0 || alignedEnd < alignedStart) {
+                backfillStatusByGameIdRef.current.set(gameId, `completed`)
+                return
+            }
+
+            let aborted = false
+            try {
+                for (let cursor = alignedStart; cursor <= alignedEnd; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
+                    if (activeGameIdRef.current !== gameId) {
+                        aborted = true
+                        break
+                    }
+
+                    const queryTimestamp = new Date(cursor).toISOString()
+                    const response = await getGameDetailsSnapshotResponse(gameId, queryTimestamp)
+                    if (!response) continue
+                    if (activeGameIdRef.current !== gameId) {
+                        aborted = true
+                        break
+                    }
+
+                    const frames: DetailsFrame[] = response.data.frames
+                    if (!frames || frames.length === 0) continue
+
+                    frames.forEach((frame) => {
+                        frame.participants.forEach((participant) => {
+                            const observedItems = getObservedItemsForParticipant(observedDetailsItemsRef.current, participant.participantId)
+                            recordObservedItems(observedItems, sanitizeItemIds(participant.items))
+                        })
+                    })
+                }
+            } finally {
+                if (!aborted && activeGameIdRef.current === gameId) {
+                    backfillStatusByGameIdRef.current.set(gameId, `completed`)
+                }
+            }
         }
 
         function getResults(eventDetails: EventDetails) {
@@ -976,4 +1063,9 @@ function normalizeTimestamp(timestamp: string | Date | undefined) {
     const parsedTimestamp = parsedDate.getTime()
     if (!Number.isFinite(parsedTimestamp)) return ``
     return parsedDate.toISOString()
+}
+
+function alignTimestampToLiveStatsStep(timestampValue: number) {
+    if (!Number.isFinite(timestampValue) || timestampValue <= 0) return 0
+    return timestampValue - (timestampValue % LIVE_STATS_STARTING_TIME_STEP_MS)
 }

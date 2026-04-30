@@ -82,6 +82,24 @@ export function getGameDetailsResponse(gameId: string, date: string, lastFrameSu
     })
 }
 
+export function getGameDetailsSnapshotResponse(gameId: string, date: string) {
+    return axios.get(`${API_URL_LIVE}/details/${gameId}`, {
+        params: {
+            "startingTime": date,
+        },
+        headers: {
+        },
+    }).catch(function (error) {
+        if (error.response) {
+            console.error(error.response.data);
+        } else if (error.request) {
+            console.error(error.request);
+        } else {
+            console.error('Error', error.message);
+        }
+    })
+}
+
 export function getEventDetailsResponse(gameId: string) {
     return axios.get(`${API_URL_PERSISTED}/getEventDetails`, {
         params: {
