@@ -99,6 +99,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
  */
 
 const TRINKET_IDS = [3340, 3363, 3364]
+const CONTROL_WARD_ITEM_ID = 2055
 const FALLBACK_CONSUMABLE_ITEM_IDS = [
     2003, // Health Potion
     2010, // Biscuit
@@ -140,12 +141,15 @@ function isConsumableItem(itemId: number, items: Item[]) {
     return FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
 }
 
-function isInstantConsumedLikelyItem(itemId: number, items: Item[]) {
-    const item = items[itemId]
-    if (!item) return FALLBACK_INSTANT_CONSUMED_ITEM_IDS.includes(itemId)
-
-    if (item.consumed) return true
+function isInstantConsumedLikelyItem(itemId: number, _items: Item[]) {
+    // Control Ward is also flagged as consumed in Data Dragon,
+    // but it occupies an inventory slot and should remain visible.
     return FALLBACK_INSTANT_CONSUMED_ITEM_IDS.includes(itemId)
+}
+
+function isTrimmableConsumableForOverflow(itemId: number, items: Item[]) {
+    if (!isConsumableItem(itemId, items)) return false
+    return itemId !== CONTROL_WARD_ITEM_ID
 }
 
 function applyRoleNonTrinketItemLimit(itemIds: number[], role: string | undefined, items: Item[]) {
@@ -154,6 +158,10 @@ function applyRoleNonTrinketItemLimit(itemIds: number[], role: string | undefine
 
     let filteredItems = itemIds.slice()
     filteredItems = trimItemsByPriority(filteredItems, maxNonTrinketItems, (itemId) => isInstantConsumedLikelyItem(itemId, items))
+
+    if (filteredItems.length > maxNonTrinketItems) {
+        filteredItems = trimItemsByPriority(filteredItems, maxNonTrinketItems, (itemId) => isTrimmableConsumableForOverflow(itemId, items))
+    }
 
     if (filteredItems.length > maxNonTrinketItems) {
         filteredItems = trimItemsByPriority(filteredItems, maxNonTrinketItems, (itemId) => isConsumableItem(itemId, items))
