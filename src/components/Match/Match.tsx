@@ -895,11 +895,13 @@ function stabilizeDetailsFrame(
             observedItems,
         )
         const inferredItems = applyAggressiveMissingItemInference(bootRestoredItems, previousItems, participant, observedItems, participantRole)
-        const lastKnownBoot = getBootItemId(inferredItems)
+        const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(inferredItems, previousItems, lastKnownBootItemId, observedItems)
+        const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
+        const lastKnownBoot = getBootItemId(normalizedTearItems)
         if (lastKnownBootByParticipantId && lastKnownBoot !== undefined) {
             lastKnownBootByParticipantId.set(participant.participantId, lastKnownBoot)
         }
-        return { ...participant, items: inferredItems }
+        return { ...participant, items: normalizedTearItems }
     })
 
     return {
@@ -965,6 +967,7 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     3176,
     3179,
 ]
+const BOOT_ITEM_PREFERENCE_ORDER = BASE_AND_UPGRADED_BOOT_ITEM_IDS.slice().reverse()
 const TEAR_OF_THE_GODDESS_ITEM_ID = 3070
 const TEAR_LINE_UPGRADE_INFERENCE_BRANCHES: TearLineUpgradeInferenceBranch[] = [
     {
@@ -999,6 +1002,7 @@ const TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS = TEAR_LINE_UPGRADE_INFERENCE_BRANCHE
     itemIds.push(branch.sourceItemId, branch.targetItemId)
     return itemIds
 }, [])
+const EARLY_STALE_TEAR_INVENTORY_ITEM_COUNT_THRESHOLD = 4
 
 function getObservedItemsForParticipant(observedItemsByParticipantId: ObservedDetailsItemsByParticipantId | undefined, participantId: number) {
     if (!observedItemsByParticipantId) return undefined
@@ -1284,7 +1288,113 @@ function restoreMidBootOnUnexpectedMissingSlot(
 }
 
 function getBootItemId(itemIds: number[]) {
-    return itemIds.find((itemId) => BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
+    return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
+}
+
+function normalizeUnexpectedDuplicateBootItems(
+    itemIds: number[],
+    previousItemIds: number[],
+    lastKnownBootItemId: number | undefined,
+    observedItems: Set<number> | undefined,
+) {
+    const currentBootItemIds = itemIds.filter((itemId) => BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
+    if (currentBootItemIds.length <= 1) return itemIds
+
+    const preferredBootItemId = getPreferredBootItemIdForNormalization(currentBootItemIds, previousItemIds, lastKnownBootItemId, observedItems)
+    if (preferredBootItemId === undefined) return itemIds
+
+    let keptPreferredBoot = false
+    return itemIds.filter((itemId) => {
+        if (!BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId)) return true
+        if (itemId !== preferredBootItemId) return false
+        if (keptPreferredBoot) return false
+        keptPreferredBoot = true
+        return true
+    })
+}
+
+function getPreferredBootItemIdForNormalization(
+    currentBootItemIds: number[],
+    previousItemIds: number[],
+    lastKnownBootItemId: number | undefined,
+    observedItems: Set<number> | undefined,
+) {
+    const previousBootItemId = getBootItemId(previousItemIds)
+    if (previousBootItemId !== undefined && currentBootItemIds.includes(previousBootItemId)) return previousBootItemId
+
+    if (lastKnownBootItemId !== undefined && currentBootItemIds.includes(lastKnownBootItemId)) return lastKnownBootItemId
+
+    const observedBootItemId = getPreferredObservedBootItemId(observedItems)
+    if (observedBootItemId !== undefined && currentBootItemIds.includes(observedBootItemId)) return observedBootItemId
+
+    return getBootItemId(currentBootItemIds)
+}
+
+function normalizeLikelyStaleTearBaseItem(
+    itemIds: number[],
+    previousItemIds: number[],
+    participant: DetailsFrame[`participants`][number],
+    observedItems: Set<number> | undefined,
+) {
+    if (!itemIds.includes(TEAR_OF_THE_GODDESS_ITEM_ID)) return itemIds
+
+    const tearLineItemIds = itemIds.filter((itemId) => TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS.includes(itemId))
+    if (tearLineItemIds.length === 0) return itemIds
+    if (tearLineItemIds.length >= 2) return itemIds
+
+    if (!previousItemIds.includes(TEAR_OF_THE_GODDESS_ITEM_ID)) return itemIds
+
+    const previousTearLineItemIds = previousItemIds.filter((itemId) => TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS.includes(itemId))
+    if (
+        previousTearLineItemIds.length !== 1
+        || previousTearLineItemIds[0] !== tearLineItemIds[0]
+    ) return itemIds
+
+    const activeBranch = getTearLineBranchByItemId(tearLineItemIds[0])
+    if (!activeBranch) return itemIds
+    if (hasEvidenceOfSecondaryTearBuild(itemIds, activeBranch, observedItems)) return itemIds
+
+    const droppedItemIds = getDroppedItemIds(previousItemIds, itemIds)
+    const droppedSameBranchHintCount =
+        countMatchedItemIds(droppedItemIds, activeBranch.componentHintItemIds)
+        + countMatchedItemIds(droppedItemIds, activeBranch.subComponentHintItemIds)
+    const hasSparseLateGameInventory =
+        (participant.level >= 13 || participant.totalGoldEarned >= 10000)
+        && getCoreItemIds(itemIds).length <= EARLY_STALE_TEAR_INVENTORY_ITEM_COUNT_THRESHOLD
+    const hadSparseInventoryPreviously = getCoreItemIds(previousItemIds).length <= EARLY_STALE_TEAR_INVENTORY_ITEM_COUNT_THRESHOLD
+
+    if (droppedSameBranchHintCount === 0 && !(hasSparseLateGameInventory && hadSparseInventoryPreviously)) return itemIds
+
+    let tearRemoved = false
+    return itemIds.filter((itemId) => {
+        if (itemId !== TEAR_OF_THE_GODDESS_ITEM_ID) return true
+        if (tearRemoved) return false
+        tearRemoved = true
+        return false
+    })
+}
+
+function getTearLineBranchByItemId(itemId: number) {
+    return TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.find((branch) =>
+        branch.sourceItemId === itemId || branch.targetItemId === itemId
+    )
+}
+
+function hasEvidenceOfSecondaryTearBuild(
+    itemIds: number[],
+    activeBranch: TearLineUpgradeInferenceBranch,
+    observedItems: Set<number> | undefined,
+) {
+    const otherBranches = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.filter((branch) => branch !== activeBranch)
+    return otherBranches.some((branch) => {
+        const hasCurrentBranchHint =
+            itemIds.some((itemId) => branch.componentHintItemIds.includes(itemId))
+            || itemIds.some((itemId) => branch.subComponentHintItemIds.includes(itemId))
+        if (hasCurrentBranchHint) return true
+
+        if (!observedItems || observedItems.size === 0) return false
+        return observedItems.has(branch.sourceItemId) || observedItems.has(branch.targetItemId)
+    })
 }
 
 function getPreferredMidRecoveredBootItemId(bootItemId: number) {
@@ -1299,8 +1409,7 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number) {
 function getPreferredObservedBootItemId(observedItems: Set<number> | undefined) {
     if (!observedItems || observedItems.size === 0) return undefined
 
-    const preferredBootItemIds = BASE_AND_UPGRADED_BOOT_ITEM_IDS.filter((itemId) => itemId !== 1001).concat(1001)
-    return preferredBootItemIds.find((itemId) => observedItems.has(itemId))
+    return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => observedItems.has(itemId))
 }
 
 function isMidRole(participantRole: string | undefined) {
