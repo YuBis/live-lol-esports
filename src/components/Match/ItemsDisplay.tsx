@@ -40,7 +40,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion }: 
 
     return (
         <div className="player-stats-items" key={`${participantId}`}>
-            {[...Array(6)].map((x, i) => {
+            {[...Array(7)].map((x, i) => {
 
                 if (itemsID[i] !== undefined) {
                     let currentItem = items[itemsID[i]]
