@@ -13,7 +13,12 @@ const API_URL_PERSISTED = "https://esports-api.lolesports.com/persisted/gw"
 const API_URL_LIVE = "https://feed.lolesports.com/livestats/v1"
 const API_KEY = "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z"
 
-let secondDelay = 60
+const DEFAULT_LIVE_DETAILS_DELAY_SECONDS = 20
+const MIN_LIVE_DETAILS_DELAY_SECONDS = 10
+const MAX_LIVE_DETAILS_DELAY_SECONDS = 240
+const SUCCESSFUL_REQUESTS_BEFORE_DELAY_DECREASE = 120
+
+let secondDelay = DEFAULT_LIVE_DETAILS_DELAY_SECONDS
 let count = 0
 let failureCount = 0
 const LIVE_STATS_STARTING_TIME_STEP_SECONDS = 10
@@ -49,9 +54,9 @@ export function getWindowResponse(gameId: string, date?: string) {
 }
 
 export function getGameDetailsResponse(gameId: string, date: string, lastFrameSuccess: boolean) {
-    if (count++ % 10 === 0) {
-        failureCount = 0
-        secondDelay -= 10
+    count++
+    if (count % SUCCESSFUL_REQUESTS_BEFORE_DELAY_DECREASE === 0 && lastFrameSuccess) {
+        secondDelay = Math.max(MIN_LIVE_DETAILS_DELAY_SECONDS, secondDelay - 10)
     }
     if (lastFrameSuccess) {
         failureCount = 0
@@ -69,9 +74,9 @@ export function getGameDetailsResponse(gameId: string, date: string, lastFrameSu
             // Request made and server responded
             console.error(error.response.data);
             if (!error.response.data.message.includes(`window with end time less than`) || failureCount < 6) return
-            count = 1
+            count = 0
             failureCount = 0
-            secondDelay += 10
+            secondDelay = Math.min(MAX_LIVE_DETAILS_DELAY_SECONDS, secondDelay + 10)
         } else if (error.request) {
             // The request was made but no response was received
             console.error(error.request);
@@ -160,7 +165,8 @@ export function getISODateMultiplyOf10() {
         date.setSeconds(date.getSeconds() - (date.getSeconds() % LIVE_STATS_STARTING_TIME_STEP_SECONDS));
     }
 
-    date.setSeconds(date.getSeconds() - secondDelay);
+    const boundedDelaySeconds = Math.max(MIN_LIVE_DETAILS_DELAY_SECONDS, Math.min(MAX_LIVE_DETAILS_DELAY_SECONDS, secondDelay))
+    date.setSeconds(date.getSeconds() - boundedDelaySeconds);
 
     return date.toISOString();
 }

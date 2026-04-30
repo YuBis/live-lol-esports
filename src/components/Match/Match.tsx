@@ -51,6 +51,7 @@ type ChampionNameMap = {
 
 type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
 type ParticipantRoleByParticipantId = Map<number, string>
+type LastKnownBootItemByParticipantId = Map<number, number>
 const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 30 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
@@ -86,6 +87,7 @@ export function Match({ match }: MatchRouteProps) {
     const lastDetailsFrameRef = useRef<DetailsFrame>();
     const observedDetailsItemsRef = useRef<ObservedDetailsItemsByParticipantId>(new Map())
     const participantRoleByParticipantIdRef = useRef<ParticipantRoleByParticipantId>(new Map())
+    const lastKnownBootByParticipantIdRef = useRef<LastKnownBootItemByParticipantId>(new Map())
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
     const activeGameIdRef = useRef<string>(``)
     const firstWindowTimestampRef = useRef<string>(``)
@@ -114,6 +116,7 @@ export function Match({ match }: MatchRouteProps) {
                     lastDetailsFrameRef.current = undefined
                     observedDetailsItemsRef.current = new Map()
                     participantRoleByParticipantIdRef.current = new Map()
+                    lastKnownBootByParticipantIdRef.current = new Map()
                     backfillStatusByGameIdRef.current = new Map()
                     firstWindowTimestampRef.current = ``
                     setLastDetailsFrame(undefined)
@@ -270,7 +273,13 @@ export function Match({ match }: MatchRouteProps) {
                 if (!firstDetailsTimestampRef.current) {
                     firstDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 }
-                const stabilizedFrame = stabilizeDetailsFrame(incomingLastFrame, lastDetailsFrameRef.current, observedDetailsItemsRef.current, participantRoleByParticipantIdRef.current)
+                const stabilizedFrame = stabilizeDetailsFrame(
+                    incomingLastFrame,
+                    lastDetailsFrameRef.current,
+                    observedDetailsItemsRef.current,
+                    participantRoleByParticipantIdRef.current,
+                    lastKnownBootByParticipantIdRef.current,
+                )
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
@@ -833,6 +842,7 @@ function stabilizeDetailsFrame(
     previousFrame?: DetailsFrame,
     observedItemsByParticipantId?: ObservedDetailsItemsByParticipantId,
     participantRoleByParticipantId?: ParticipantRoleByParticipantId,
+    lastKnownBootByParticipantId?: LastKnownBootItemByParticipantId,
 ): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
@@ -845,6 +855,7 @@ function stabilizeDetailsFrame(
         const currentItems = sanitizeItemIds(participant.items)
         const previousItems = previousItemsByParticipantId.get(participant.participantId) || []
         const participantRole = participantRoleByParticipantId?.get(participant.participantId)
+        const lastKnownBootItemId = lastKnownBootByParticipantId?.get(participant.participantId)
         const observedItems = getObservedItemsForParticipant(observedItemsByParticipantId, participant.participantId)
         recordObservedItems(observedItems, previousItems)
         recordObservedItems(observedItems, currentItems)
@@ -868,7 +879,17 @@ function stabilizeDetailsFrame(
             }
         }
 
-        const inferredItems = applyAggressiveMissingItemInference(stabilizedItems, previousItems, participant, observedItems, participantRole)
+        const bootRestoredItems = restoreMidBootOnUnexpectedMissingSlot(
+            stabilizedItems,
+            previousItems,
+            participantRole,
+            lastKnownBootItemId,
+        )
+        const inferredItems = applyAggressiveMissingItemInference(bootRestoredItems, previousItems, participant, observedItems, participantRole)
+        const lastKnownBoot = getBootItemId(inferredItems)
+        if (lastKnownBootByParticipantId && lastKnownBoot !== undefined) {
+            lastKnownBootByParticipantId.set(participant.participantId, lastKnownBoot)
+        }
         return { ...participant, items: inferredItems }
     })
 
@@ -905,6 +926,25 @@ const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
     { sourceItemId: 3020, targetItemId: 3175, type: `boots` }, // Sorcerer's Shoes -> Gunmetal Greaves
     { sourceItemId: 3009, targetItemId: 3176, type: `boots` }, // Boots of Swiftness -> Swiftmarch
     { sourceItemId: 3117, targetItemId: 3179, type: `boots` }, // Mobility Boots -> Forever Forward (variant)
+]
+const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
+    1001,
+    3005,
+    3006,
+    3009,
+    3020,
+    3047,
+    3111,
+    3117,
+    3158,
+    3170,
+    3171,
+    3172,
+    3173,
+    3174,
+    3175,
+    3176,
+    3179,
 ]
 
 function getObservedItemsForParticipant(observedItemsByParticipantId: ObservedDetailsItemsByParticipantId | undefined, participantId: number) {
@@ -958,6 +998,26 @@ function applyAggressiveMissingItemInference(
     return inferredItems
 }
 
+function restoreMidBootOnUnexpectedMissingSlot(
+    itemIds: number[],
+    previousItemIds: number[],
+    participantRole: string | undefined,
+    lastKnownBootItemId: number | undefined,
+) {
+    if (!isMidRole(participantRole)) return itemIds
+    if (getBootItemId(itemIds) !== undefined) return itemIds
+
+    const previousBootItemId = getBootItemId(previousItemIds)
+    const fallbackBootItemId = previousBootItemId || lastKnownBootItemId
+    if (fallbackBootItemId === undefined) return itemIds
+
+    return appendOrReplaceInferredItem(itemIds, fallbackBootItemId)
+}
+
+function getBootItemId(itemIds: number[]) {
+    return itemIds.find((itemId) => BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
+}
+
 function isMidRole(participantRole: string | undefined) {
     return participantRole?.toLowerCase() === `mid`
 }
@@ -976,9 +1036,9 @@ function canAggressivelyInferMissingItem(inferencePair: MissingItemInferencePair
     }
 
     if (sourceInCurrentItems) {
-        return participant.level >= 14 || participant.totalGoldEarned >= 10000 || currentCoreItems.length >= 4
+        return participant.level >= 13 || participant.totalGoldEarned >= 9000 || currentCoreItems.length >= 4
     }
-    return participant.level >= 15 || participant.totalGoldEarned >= 12000 || currentCoreItems.length >= 4
+    return participant.level >= 14 || participant.totalGoldEarned >= 10500 || currentCoreItems.length >= 4
 }
 
 function appendOrReplaceInferredItem(itemIds: number[], targetItemId: number) {

@@ -126,6 +126,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }
 
     const goldPercentage = getGoldPercentage(lastWindowFrame.blueTeam.totalGold, lastWindowFrame.redTeam.totalGold);
+    const goldLead = lastWindowFrame.blueTeam.totalGold - lastWindowFrame.redTeam.totalGold
+    const goldLeadDirection = getGoldLeadDirection(goldLead)
+    const formattedBlueTeamGold = formatGoldInK(lastWindowFrame.blueTeam.totalGold)
+    const formattedRedTeamGold = formatGoldInK(lastWindowFrame.redTeam.totalGold)
+    const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -426,8 +431,17 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         {HeaderStats(lastWindowFrame.redTeam, 'red-team')}
                     </div>
                     <div className="live-game-stats-header-gold">
-                        <div className="blue-team" style={{ flex: goldPercentage.goldBluePercentage }} />
-                        <div className="red-team" style={{ flex: goldPercentage.goldRedPercentage }} />
+                        <div className="live-game-stats-header-gold-values">
+                            <span className="team-gold-value blue-team-gold-value">{formattedBlueTeamGold}</span>
+                            <span className={`gold-lead-indicator ${goldLead > 0 ? `blue-team-gold-value` : goldLead < 0 ? `red-team-gold-value` : ``}`}>
+                                {`${goldLeadDirection} ${formattedGoldLead}`}
+                            </span>
+                            <span className="team-gold-value red-team-gold-value">{formattedRedTeamGold}</span>
+                        </div>
+                        <div className="live-game-stats-header-gold-bar">
+                            <div className="blue-team" style={{ flex: goldPercentage.goldBluePercentage }} />
+                            <div className="red-team" style={{ flex: goldPercentage.goldRedPercentage }} />
+                        </div>
                     </div>
                     <div className="live-game-stats-header-dragons">
                         <div className="blue-team">
@@ -522,7 +536,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                                {goldDifference !== 0 ? (
+                                                    <span className={`player-stats-gold-lead ${goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </td>
                                     </tr>
@@ -617,7 +635,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                                {goldDifference !== 0 ? (
+                                                    <span className={`player-stats-gold-lead ${goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </td>
                                     </tr>
@@ -805,6 +827,12 @@ function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
     }
 }
 
+function getFormattedGoldDifference(goldDifference: number) {
+    const formattedDifference = Number(Math.abs(goldDifference)).toLocaleString("en-us")
+    const sign = goldDifference > 0 ? `+` : `-`
+    return `(${sign}${formattedDifference})`
+}
+
 function getDragonSVG(dragonName: string, teamColor: string, index: number) {
     let key = `${teamColor}_${index}_${dragonName}`
     switch (dragonName) {
@@ -820,8 +848,27 @@ function getDragonSVG(dragonName: string, teamColor: string, index: number) {
 
 function getGoldPercentage(goldBlue: number, goldRed: number) {
     const total = goldBlue + goldRed;
-    return {
-        goldBluePercentage: ((goldBlue / 100) * total),
-        goldRedPercentage: ((goldRed / 100) * total),
+    if (total <= 0) {
+        return {
+            goldBluePercentage: 1,
+            goldRedPercentage: 1,
+        }
     }
+    return {
+        goldBluePercentage: goldBlue / total,
+        goldRedPercentage: goldRed / total,
+    }
+}
+
+function formatGoldInK(goldValue: number) {
+    const normalizedK = Number(goldValue) / 1000
+    const roundedK = Math.round(normalizedK * 10) / 10
+    const displayValue = Number.isInteger(roundedK) ? roundedK.toFixed(0) : roundedK.toFixed(1)
+    return `${displayValue}K`
+}
+
+function getGoldLeadDirection(goldLead: number) {
+    if (goldLead > 0) return `<`
+    if (goldLead < 0) return `>`
+    return `=`
 }

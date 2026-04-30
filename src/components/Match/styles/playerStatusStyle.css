@@ -293,14 +293,80 @@ Gold bar
 .live-game-stats-header-gold {
     margin: 1rem 0;
     display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
 }
 
-.live-game-stats-header-gold>.blue-team {
-    border-bottom: 4px solid var(--blue-twitter);
+.live-game-stats-header-gold-values {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    font-variant-numeric: tabular-nums;
 }
 
-.live-game-stats-header-gold>.red-team {
-    border-bottom: 4px solid var(--red);
+.team-gold-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.blue-team-gold-value {
+    color: var(--blue-twitter);
+}
+
+.red-team-gold-value {
+    color: var(--red);
+}
+
+.live-game-stats-header-gold-values>.blue-team-gold-value {
+    text-align: left;
+}
+
+.live-game-stats-header-gold-values>.red-team-gold-value {
+    text-align: right;
+}
+
+.gold-lead-indicator {
+    color: var(--text);
+    background: var(--gray-line);
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    padding: 0.25rem 0.8rem;
+    min-width: 6.5rem;
+    text-align: center;
+}
+
+.live-game-stats-header-gold-bar {
+    display: flex;
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--gray-line);
+}
+
+.live-game-stats-header-gold-bar>.blue-team {
+    background: var(--blue-twitter);
+}
+
+.live-game-stats-header-gold-bar>.red-team {
+    background: var(--red);
+}
+
+@media(max-width: 720px) {
+    .team-gold-value {
+        font-size: 1rem;
+    }
+
+    .gold-lead-indicator {
+        font-size: 0.8rem;
+        min-width: 5.5rem;
+        padding: 0.2rem 0.55rem;
+    }
 }
 
 /*
