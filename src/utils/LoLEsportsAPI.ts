@@ -116,6 +116,18 @@ export function getLeaguesResponse() {
     })
 }
 
+export function getTournamentsForLeagueResponse(leagueId: string) {
+    return axios.get(`${API_URL_PERSISTED}/getTournamentsForLeague`, {
+        params: {
+            "hl": "en-US",
+            "leagueId": leagueId,
+        },
+        headers: {
+            "x-api-key": API_KEY,
+        },
+    })
+}
+
 export function getDataDragonResponse(JSON_URL: string, formattedPatchVersion: string) {
     return axios.get(JSON_URL.replace(`PATCH_VERSION`, formattedPatchVersion))
 }

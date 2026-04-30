@@ -6,9 +6,13 @@ import {ScheduleEvent} from "../types/baseTypes";
 type Props = {
     scheduleEvent: ScheduleEvent;
     leagueLogoUrl?: string;
+    teamRanks?: {
+        blueRank?: number;
+        redRank?: number;
+    };
 }
 
-export function EventCard({ scheduleEvent, leagueLogoUrl }: Props) {
+export function EventCard({ scheduleEvent, leagueLogoUrl, teamRanks }: Props) {
     const blueWins = scheduleEvent.match.teams[0].result ? scheduleEvent.match.teams[0].result.gameWins : 0
     const redWins = scheduleEvent.match.teams[1].result ? scheduleEvent.match.teams[1].result.gameWins : 0
     const bestOfCount = scheduleEvent.match.strategy.count
@@ -36,6 +40,7 @@ export function EventCard({ scheduleEvent, leagueLogoUrl }: Props) {
                     <div className="live-game-card-team schedule-event-team">
                         {scheduleEvent.match.teams[0].code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image"/>) : (<img className="live-game-card-team-image" src={scheduleEvent.match.teams[0].image} alt={scheduleEvent.match.teams[0].name}/>) }
                         <span className="schedule-event-team-name-wrap">
+                            {teamRanks && teamRanks.blueRank ? <span className="schedule-event-rank-badge">#{teamRanks.blueRank}</span> : null}
                             <h4 className="schedule-event-team-name" title={scheduleEvent.match.teams[0].name}>
                                 {scheduleEvent.match.teams[0].name}
                             </h4>
@@ -74,6 +79,7 @@ export function EventCard({ scheduleEvent, leagueLogoUrl }: Props) {
                     <div className="live-game-card-team schedule-event-team">
                         {scheduleEvent.match.teams[1].code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image"/>) : (<img className="live-game-card-team-image" src={scheduleEvent.match.teams[1].image} alt={scheduleEvent.match.teams[1].name}/>) }
                         <span className="schedule-event-team-name-wrap">
+                            {teamRanks && teamRanks.redRank ? <span className="schedule-event-rank-badge">#{teamRanks.redRank}</span> : null}
                             <h4 className="schedule-event-team-name" title={scheduleEvent.match.teams[1].name}>
                                 {scheduleEvent.match.teams[1].name}
                             </h4>
