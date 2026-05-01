@@ -1103,7 +1103,7 @@ function formatGoldInK(goldValue: number) {
 }
 
 function getGoldLeadSymbol(goldLead: number) {
-    if (goldLead > 0) return `<`
-    if (goldLead < 0) return `>`
+    if (goldLead > 0) return `>`
+    if (goldLead < 0) return `<`
     return ``
 }

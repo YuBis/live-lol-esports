@@ -276,7 +276,9 @@ export function Match({ match }: MatchRouteProps) {
         }
 
         function getLiveWindow(gameId: string) {
-            let date = getISODateMultiplyOf10();
+            const date = isCurrentGameCompleted()
+                ? getCompletedGameSnapshotStartingTime(firstWindowTimestampRef.current)
+                : getISODateMultiplyOf10();
             getWindowResponse(gameId, date).then(response => {
                 if (response === undefined) return
                 let frames: WindowFrame[] = response.data.frames;
@@ -319,7 +321,9 @@ export function Match({ match }: MatchRouteProps) {
         }
 
         function getLastDetailsFrame(gameId: string) {
-            let date = getISODateMultiplyOf10();
+            const date = isCurrentGameCompleted()
+                ? getCompletedGameSnapshotStartingTime(firstWindowTimestampRef.current)
+                : getISODateMultiplyOf10();
             getGameDetailsResponse(gameId, date, lastFrameSuccessRef.current).then(response => {
                 lastFrameSuccessRef.current = false
                 if (response === undefined) return
@@ -2337,4 +2341,17 @@ function normalizeTimestamp(timestamp: string | Date | undefined) {
 function alignTimestampToLiveStatsStep(timestampValue: number) {
     if (!Number.isFinite(timestampValue) || timestampValue <= 0) return 0
     return timestampValue - (timestampValue % LIVE_STATS_STARTING_TIME_STEP_MS)
+}
+
+function getCompletedGameSnapshotStartingTime(firstWindowTimestamp: string) {
+    const firstWindowTimestampValue = getTimestampValue(firstWindowTimestamp)
+    if (firstWindowTimestampValue === 0) return getISODateMultiplyOf10()
+
+    // Query a point well after game start so completed games return their tail frames,
+    // instead of the default initial bootstrap frames.
+    const completedGameTailTimestampValue = alignTimestampToLiveStatsStep(
+        firstWindowTimestampValue + (4 * 60 * 60 * 1000)
+    )
+    if (completedGameTailTimestampValue === 0) return getISODateMultiplyOf10()
+    return new Date(completedGameTailTimestampValue).toISOString()
 }
