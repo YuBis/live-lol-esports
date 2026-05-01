@@ -79,6 +79,31 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [])
 
     useEffect(() => {
+        const updateDeathTimerCountdown = () => {
+            const nowMs = Date.now()
+            const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
+            deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
+                const remainingMs = deathTimerEndAtMs - nowMs
+                if (remainingMs <= 0) {
+                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+                    return
+                }
+                nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
+            })
+
+            setDeathTimerSecondsByParticipantId((previousState) =>
+                areNumericRecordValuesEqual(previousState, nextDeathTimerSecondsByParticipantId)
+                    ? previousState
+                    : nextDeathTimerSecondsByParticipantId
+            )
+        }
+
+        updateDeathTimerCountdown()
+        const tickerIntervalId = setInterval(updateDeathTimerCountdown, 1000)
+        return () => clearInterval(tickerIntervalId)
+    }, [])
+
+    useEffect(() => {
         previousKdaByParticipantIdRef.current.clear()
         previousVitalsByParticipantIdRef.current.clear()
         deathTimerEndAtMsByParticipantIdRef.current.clear()
@@ -92,24 +117,19 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             ...lastWindowFrame.blueTeam.participants,
             ...lastWindowFrame.redTeam.participants,
         ]
-        const participantHealthByParticipantId = new Map<number, number>()
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
-        const hasFrameTimestamp = Number.isFinite(frameTimestampMs)
+        const nowMs = Date.now()
         const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
 
         participants.forEach((participant) => {
-            participantHealthByParticipantId.set(participant.participantId, participant.currentHealth)
-
             const previousVitals = previousVitalsByParticipantIdRef.current.get(participant.participantId)
             if (
                 previousVitals
                 && participant.deaths > previousVitals.deaths
-                && hasFrameTimestamp
             ) {
                 const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
                 deathTimerEndAtMsByParticipantIdRef.current.set(
                     participant.participantId,
-                    frameTimestampMs + estimatedRespawnSeconds * 1000,
+                    nowMs + estimatedRespawnSeconds * 1000,
                 )
             }
 
@@ -139,31 +159,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 assists: participant.assists,
             })
         })
-
-        if (hasFrameTimestamp) {
-            const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
-            deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
-                const currentHealth = participantHealthByParticipantId.get(participantId) || 0
-                if (currentHealth > 0) {
-                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
-                    return
-                }
-
-                const remainingMs = deathTimerEndAtMs - frameTimestampMs
-                if (remainingMs <= 0) {
-                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
-                    return
-                }
-
-                nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
-            })
-
-            setDeathTimerSecondsByParticipantId((previousState) =>
-                areNumericRecordValuesEqual(previousState, nextDeathTimerSecondsByParticipantId)
-                    ? previousState
-                    : nextDeathTimerSecondsByParticipantId
-            )
-        }
 
         if (flashCellKeys.length === 0) return
 
@@ -198,7 +193,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     return nextState
                 })
                 flashClearTimersRef.current.delete(cellKey)
-            }, 1500)
+            }, 2000)
             flashClearTimersRef.current.set(cellKey, timerId)
         })
     }, [
