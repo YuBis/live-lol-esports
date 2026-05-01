@@ -14,7 +14,7 @@ import {
     ITEMS_JSON_URL,
     RUNES_JSON_URL
 } from "../../utils/LoLEsportsAPI";
-import { BUILD_LABEL } from "../../utils/generatedBuildInfo";
+import { BUILD_LABEL } from "../../utils/buildInfo";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Loading from '../../assets/images/loading.svg'
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
@@ -58,7 +58,7 @@ const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS = 45 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL = 6
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
-const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 30 * 1000
+const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 
 export function Match({ match }: MatchRouteProps) {
@@ -328,7 +328,10 @@ export function Match({ match }: MatchRouteProps) {
             if (!isWindowInPlayableState && !isCompletedGame) return
 
             const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
-            const currentTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
+            const windowTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
+            const detailsTimestampValue = getTimestampValue(lastDetailsTimestampRef.current)
+            if (isCompletedGame && detailsTimestampValue === 0) return
+            const currentTimestampValue = Math.max(windowTimestampValue, detailsTimestampValue)
             const backfillStartTimestampValue = getLiveDetailsBackfillStartTimestampValue(
                 startTimestampValue,
                 currentTimestampValue,
@@ -618,7 +621,7 @@ export function Match({ match }: MatchRouteProps) {
             if (!eventDetails.streams || !eventDetails.streams.length) {
                 let streamGameIndex = gameIndex ? gameIndex - 1 : 0
                 if (eventDetails.match.games[streamGameIndex] && eventDetails.match.games[streamGameIndex].state === "completed") {
-                    return (<span>No VODS currently available</span>)
+                    return null
                 } else {
                     eventDetails.streams = []
                 }
@@ -984,6 +987,7 @@ const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
     { sourceItemId: 3111, targetItemId: 3173, type: `boots` }, // Mercury's Treads -> Chainlaced Crushers
     { sourceItemId: 3047, targetItemId: 3174, type: `boots` }, // Plated Steelcaps -> Armored Advance
     { sourceItemId: 3020, targetItemId: 3175, type: `boots` }, // Sorcerer's Shoes -> Spellslinger's Shoes
+    { sourceItemId: 3008, targetItemId: 3168, type: `boots` }, // additional boot upgrade chain
     { sourceItemId: 3010, targetItemId: 3013, type: `boots` }, // Symbiotic Soles -> Synchronized Souls
     { sourceItemId: 3013, targetItemId: 3176, type: `boots` }, // Synchronized Souls -> Forever Forward
 ]
@@ -1001,6 +1005,7 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     1001,
     3005,
     3006,
+    3008,
     3009,
     3010,
     3013,
@@ -1009,6 +1014,7 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     3111,
     3117,
     3158,
+    3168,
     3170,
     3171,
     3172,

@@ -23,7 +23,7 @@ import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-eld
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
 import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
-import { BUILD_LABEL } from '../../utils/generatedBuildInfo';
+import { BUILD_LABEL } from '../../utils/buildInfo';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
@@ -245,7 +245,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
 
         if (!eventDetails.streams || !eventDetails.streams.length) {
             if (eventDetails.match.games[gameIndex - 1] && eventDetails.match.games[gameIndex - 1].state === "completed") {
-                return (<span>No VODS currently available</span>)
+                return null
             } else {
                 eventDetails.streams = []
             }
