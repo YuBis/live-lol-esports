@@ -12,7 +12,7 @@ function App() {
     const { theme } = useTheme();
 
     return (
-        <HashRouter basename="/live-lol-esports">
+        <HashRouter>
             <div className="theme-container" style={{ ...theme as React.CSSProperties }}>
                 <Navbar />
                 <div className="container">

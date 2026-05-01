@@ -330,7 +330,7 @@ export function Match({ match }: MatchRouteProps) {
             const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
             const windowTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
             const detailsTimestampValue = getTimestampValue(lastDetailsTimestampRef.current)
-            if (isCompletedGame && detailsTimestampValue === 0) return
+            if (isCompletedGame && detailsTimestampValue === 0 && windowTimestampValue === 0) return
             const currentTimestampValue = Math.max(windowTimestampValue, detailsTimestampValue)
             const backfillStartTimestampValue = getLiveDetailsBackfillStartTimestampValue(
                 startTimestampValue,
@@ -1024,6 +1024,10 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     3176,
 ]
 const BOOT_ITEM_PREFERENCE_ORDER = BASE_AND_UPGRADED_BOOT_ITEM_IDS.slice().reverse()
+const TIER3_BOOT_ITEM_IDS = [3168, 3170, 3171, 3172, 3173, 3174, 3175, 3176]
+const TIER2_BOOT_ITEM_IDS = BASE_AND_UPGRADED_BOOT_ITEM_IDS.filter((itemId) =>
+    itemId !== 1001 && !TIER3_BOOT_ITEM_IDS.includes(itemId)
+)
 const TEAR_OF_THE_GODDESS_ITEM_ID = 3070
 const TEAR_LINE_UPGRADE_INFERENCE_BRANCHES: TearLineUpgradeInferenceBranch[] = [
     {
@@ -1366,8 +1370,38 @@ function restoreMidBootOnUnexpectedMissingSlot(
     const fallbackBootItemId = knownBootItemId || observedBootItemId
     if (fallbackBootItemId === undefined) return itemIds
 
+    const inferredTier3FromTier2Drop = inferMidTier3BootFromMissingTier2(
+        itemIds,
+        previousItemIds,
+        fallbackBootItemId,
+        observedItems,
+    )
+    if (inferredTier3FromTier2Drop) return inferredTier3FromTier2Drop
+
     const preferredBootItemId = getPreferredMidRecoveredBootItemId(fallbackBootItemId, observedItems)
     return appendOrReplaceInferredItem(itemIds, preferredBootItemId)
+}
+
+function inferMidTier3BootFromMissingTier2(
+    currentItemIds: number[],
+    previousItemIds: number[],
+    fallbackBootItemId: number,
+    observedItems: Set<number> | undefined,
+) {
+    if (!TIER2_BOOT_ITEM_IDS.includes(fallbackBootItemId)) return undefined
+
+    const previousBootItemId = getBootItemId(previousItemIds)
+    if (previousBootItemId !== fallbackBootItemId) return undefined
+
+    const tier2BootWasObserved = observedItems?.has(fallbackBootItemId) ?? false
+    if (!tier2BootWasObserved) return undefined
+
+    // If six non-boot equipment slots are already filled, this may be an intentional boot sell.
+    if (getNonBootEquipmentItemIds(currentItemIds).length === 6) return undefined
+
+    const upgradedTier3BootItemId = getTerminalTier3BootUpgradeItemId(fallbackBootItemId)
+    if (upgradedTier3BootItemId === undefined) return undefined
+    return appendOrReplaceInferredItem(currentItemIds, upgradedTier3BootItemId)
 }
 
 function getBootItemId(itemIds: number[]) {
@@ -1599,6 +1633,22 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number, observedItems: S
     return preferredBootItemId
 }
 
+function getTerminalTier3BootUpgradeItemId(sourceBootItemId: number) {
+    let upgradedBootItemId = sourceBootItemId
+    const visitedBootItemIds = new Set<number>()
+
+    while (!visitedBootItemIds.has(upgradedBootItemId)) {
+        visitedBootItemIds.add(upgradedBootItemId)
+        const nextBootItemId = BOOT_UPGRADE_TARGET_BY_SOURCE_ITEM_ID.get(upgradedBootItemId)
+        if (!nextBootItemId) {
+            return TIER3_BOOT_ITEM_IDS.includes(upgradedBootItemId) ? upgradedBootItemId : undefined
+        }
+        upgradedBootItemId = nextBootItemId
+    }
+
+    return undefined
+}
+
 function getStableObservedBootItemId(
     observedItems: Set<number> | undefined,
     knownBootItemId?: number,
@@ -1756,6 +1806,10 @@ function shouldKeepPreviousOnSuspiciousDrop(currentItems: number[], previousItem
 
 function getCoreItemIds(itemIds: number[]) {
     return itemIds.filter((itemId) => !isTrinketItemId(itemId) && !isConsumableItemId(itemId))
+}
+
+function getNonBootEquipmentItemIds(itemIds: number[]) {
+    return getCoreItemIds(itemIds).filter((itemId) => !BASE_AND_UPGRADED_BOOT_ITEM_IDS.includes(itemId))
 }
 
 function isTrinketItemId(itemId: number) {

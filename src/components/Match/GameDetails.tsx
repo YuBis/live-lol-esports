@@ -1,5 +1,6 @@
 import './styles/playerStatusStyle.css'
 import '../Schedule/styles/scheduleStyle.css'
+import { Link } from 'react-router-dom'
 
 import { EventDetails } from "../types/baseTypes";
 
@@ -13,9 +14,9 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
         (eventDetails.match.games.length > 1) ? (
             <div className='game-selector'>
                 {eventDetails.match.games.map((game) => {
-                    return <a className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} href={`/live-lol-esports/#/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
+                    return <Link className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
                         <span className={`#/live/${game.state}`}>Game {game.number} - {capitalizeFirstLetter(game.state)}</span>
-                    </a>
+                    </Link>
                 })}
 
             </div>) : null
