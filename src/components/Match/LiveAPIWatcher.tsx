@@ -81,35 +81,35 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, gameMetadata, champ
 
         if (status.gameIndex === gameIndex) {
             if (status.inhibitors.blue !== lastWindowFrame.blueTeam.inhibitors) {
-                toastQueue.push({ blueTeam: true, sound: inib_red.default, message: "Destroyed an inhibitor", image: trueBlueTeam.image })
+                toastQueue.push({ blueTeam: true, sound: inib_red.default, message: "억제기 파괴", image: trueBlueTeam.image })
             }
 
             if (status.inhibitors.red !== lastWindowFrame.redTeam.inhibitors) {
-                toastQueue.push({ blueTeam: false, sound: inib_blue.default, message: "Destroyed an inhibitor", image: trueRedTeam.image })
+                toastQueue.push({ blueTeam: false, sound: inib_blue.default, message: "억제기 파괴", image: trueRedTeam.image })
             }
 
             if (status.barons.blue !== lastWindowFrame.blueTeam.barons) {
-                toastQueue.push({ blueTeam: true, sound: baron_blue.default, message: "Defeated the baron", image: trueBlueTeam.image })
+                toastQueue.push({ blueTeam: true, sound: baron_blue.default, message: "바론 처치", image: trueBlueTeam.image })
             }
 
             if (status.barons.red !== lastWindowFrame.redTeam.barons) {
-                toastQueue.push({ blueTeam: false, sound: baron_red.default, message: "Defeated the baron", image: trueRedTeam.image })
+                toastQueue.push({ blueTeam: false, sound: baron_red.default, message: "바론 처치", image: trueRedTeam.image })
             }
 
             if (status.dragons.blue !== lastWindowFrame.blueTeam.dragons.length) {
-                toastQueue.push({ blueTeam: true, sound: dragon_blue.default, message: "Defeated the dragon", image: trueBlueTeam.image })
+                toastQueue.push({ blueTeam: true, sound: dragon_blue.default, message: "드래곤 처치", image: trueBlueTeam.image })
             }
 
             if (status.dragons.red !== lastWindowFrame.redTeam.dragons.length) {
-                toastQueue.push({ blueTeam: false, sound: dragon_red.default, message: "Defeated the dragon", image: trueRedTeam.image })
+                toastQueue.push({ blueTeam: false, sound: dragon_red.default, message: "드래곤 처치", image: trueRedTeam.image })
             }
 
             if (status.towers.blue !== lastWindowFrame.blueTeam.towers) {
-                toastQueue.push({ blueTeam: true, sound: tower_red.default, message: "Destroyed a turret", image: trueBlueTeam.image })
+                toastQueue.push({ blueTeam: true, sound: tower_red.default, message: "포탑 파괴", image: trueBlueTeam.image })
             }
 
             if (status.towers.red !== lastWindowFrame.redTeam.towers) {
-                toastQueue.push({ blueTeam: false, sound: tower_blue.default, message: "Destroyed a turret", image: trueRedTeam.image })
+                toastQueue.push({ blueTeam: false, sound: tower_blue.default, message: "포탑 파괴", image: trueRedTeam.image })
             }
 
             for (let i = 0; i < status.participants.blue.length; i++) {
@@ -117,7 +117,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, gameMetadata, champ
                     toastQueue.push({
                         blueTeam: true,
                         sound: kill.default,
-                        message: "Killed an enemy",
+                        message: "적 처치",
                         image: `${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[status.participants.blue[i].participantId - 1].championId}.png`,
                         diff: lastWindowFrame.blueTeam.participants[i].kills - status.participants.blue[i].kills
                     })
@@ -129,7 +129,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, gameMetadata, champ
                     toastQueue.push({
                         blueTeam: false,
                         sound: kill.default,
-                        message: "Killed an enemy",
+                        message: "적 처치",
                         image: `${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[status.participants.red[i].participantId - 6].championId}.png`,
                         diff: lastWindowFrame.redTeam.participants[i].kills - status.participants.red[i].kills
                     })

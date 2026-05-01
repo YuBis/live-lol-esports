@@ -188,19 +188,22 @@ export function EventsSchedule() {
 
     let scheduledEvents = [
         {
-            emptyMessage: 'No Live Matches',
+            emptyMessage: '진행 중인 경기가 없습니다',
             scheduleEvents: liveEvents,
-            title: 'Live Matches',
+            sectionKey: 'live',
+            title: '경기 중',
         },
         {
-            emptyMessage: 'No Upcoming Matches',
+            emptyMessage: '예정된 경기가 없습니다',
             scheduleEvents: next7DaysEvents,
-            title: 'Upcoming Matches',
+            sectionKey: 'upcoming',
+            title: '경기 예정',
         },
         {
-            emptyMessage: 'No Recent Matches',
+            emptyMessage: '지난 경기가 없습니다',
             scheduleEvents: last7DaysEvents,
-            title: 'Recent Matches',
+            sectionKey: 'recent',
+            title: '지난 경기',
         }
     ]
     const listedEvents = getUniqueScheduleEvents(
@@ -235,6 +238,7 @@ export function EventsSchedule() {
                     key={scheduledEvent.title}
                     emptyMessage={scheduledEvent.emptyMessage}
                     scheduleEvents={scheduledEvent.scheduleEvents}
+                    sectionKey={scheduledEvent.sectionKey}
                     title={scheduledEvent.title}
                     selectedLeagueFilter={selectedLeagueFilter}
                     leagueImages={leagueImages}
@@ -248,14 +252,15 @@ export function EventsSchedule() {
 type EventCardProps = {
     emptyMessage: string;
     scheduleEvents: ScheduleEvent[];
+    sectionKey: string;
     title: string;
     selectedLeagueFilter: LeagueFilter;
     leagueImages: LeagueImageMap;
     teamRanksByEventKey: TeamRanksByEventKey;
 }
 
-function EventCards({ emptyMessage, scheduleEvents, title, selectedLeagueFilter, leagueImages, teamRanksByEventKey }: EventCardProps) {
-    const sortDirection = title === "Recent Matches" ? -1 : 1
+function EventCards({ emptyMessage, scheduleEvents, sectionKey, title, selectedLeagueFilter, leagueImages, teamRanksByEventKey }: EventCardProps) {
+    const sortDirection = sectionKey === "recent" ? -1 : 1
     const filteredEvents = scheduleEvents
         .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
         .filter((scheduleEvent) => matchesLeagueFilter(scheduleEvent, selectedLeagueFilter))

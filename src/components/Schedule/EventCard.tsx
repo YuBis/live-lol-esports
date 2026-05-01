@@ -107,15 +107,15 @@ function getEventCardStatus(scheduleEvent: ScheduleEvent) {
     const FUTURE_START_BUFFER_MS = 5 * 60 * 1000
 
     if (eventStartTime > now + FUTURE_START_BUFFER_MS && !hasMatchOutcome(scheduleEvent)) {
-        return { label: "UPCOMING", className: "upcoming" }
+        return { label: "예정", className: "upcoming" }
     }
     if (scheduleEvent.state === "inProgress" || isLiveBySeries(scheduleEvent)) {
-        return { label: "LIVE", className: "live" }
+        return { label: "진행", className: "live" }
     }
     if (hasMatchOutcome(scheduleEvent) || scheduleEvent.state === "completed") {
-        return { label: "FINAL", className: "final" }
+        return { label: "종료", className: "final" }
     }
-    return { label: "UPCOMING", className: "upcoming" }
+    return { label: "예정", className: "upcoming" }
 }
 
 function hasMatchOutcome(scheduleEvent: ScheduleEvent) {

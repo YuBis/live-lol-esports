@@ -340,7 +340,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                             </span>
                         </div>
                         <h1>
-                            <div className="gamestate-bg-game-disabled">STATS TEMPORARILY DISABLED</div>
+                            <div className="gamestate-bg-game-disabled">데이터 수집 중</div>
                             <div>{inGameTime}</div>
                             <div className="live-game-kill-score">
                                 <span className="blue-team-kills">{firstWindowFrame.blueTeam.totalKills}</span>
@@ -392,10 +392,10 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <span>{blueTeam.name.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
-                                    <span>Health</span>
+                                    <span>체력</span>
                                 </th>
                                 <th className="table-top-row-items" title="items">
-                                    <span>Items</span>
+                                    <span>아이템</span>
                                 </th>
                                 <th className="table-top-row" title="creep score">
                                     <span>CS</span>
@@ -410,7 +410,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <span>A</span>
                                 </th>
                                 <th className="table-top-row" title="gold">
-                                    <span>Gold</span>
+                                    <span>골드</span>
                                 </th>
                             </tr>
                         </thead>
@@ -482,10 +482,10 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <span>{redTeam.name.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
-                                    <span>Health</span>
+                                    <span>체력</span>
                                 </th>
                                 <th className="table-top-row-items" title="items">
-                                    <span>Items</span>
+                                    <span>아이템</span>
                                 </th>
                                 <th className="table-top-row" title="creep score">
                                     <span>CS</span>
@@ -500,7 +500,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <span>A</span>
                                 </th>
                                 <th className="table-top-row" title="gold">
-                                    <span>Gold</span>
+                                    <span>골드</span>
                                 </th>
                             </tr>
                         </thead>

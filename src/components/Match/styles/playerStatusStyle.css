@@ -483,10 +483,17 @@ Status dragons
     overflow-y: clip;
     padding-top: 300px;
     margin-top: -300px;
+    scrollbar-gutter: stable both-edges;
 }
 
 .status-live-game-card-table {
-    width: 100%;
+    --champion-col-width: 16rem;
+    --items-col-width: 13.5rem;
+    --cs-col-width: 4ch;
+    --kda-col-width: 3ch;
+    --gold-col-width: 12ch;
+    width: max-content;
+    min-width: 100%;
     table-layout: fixed;
 }
 
@@ -639,7 +646,7 @@ svg.player-champion {
 }
 
 .table-top-row-champion {
-    width: 16rem;
+    width: var(--champion-col-width);
 }
 
 .table-top-row-vida {
@@ -648,7 +655,7 @@ svg.player-champion {
 
 .table-top-row-items {
     height: 28px;
-    width: 13.5rem;
+    width: var(--items-col-width);
 }
 
 .table-top-row {
@@ -657,37 +664,37 @@ svg.player-champion {
 
 .status-live-game-card-table th[title="creep score"],
 .status-live-game-card-table .player-stats-row td:nth-child(4) {
-    width: 4ch;
-    min-width: 4ch;
-    max-width: 4ch;
+    width: var(--cs-col-width);
+    min-width: var(--cs-col-width);
+    max-width: var(--cs-col-width);
 }
 
 .status-live-game-card-table th.player-stats-kda,
 .status-live-game-card-table .player-stats-row td:nth-child(5),
 .status-live-game-card-table .player-stats-row td:nth-child(6),
 .status-live-game-card-table .player-stats-row td:nth-child(7) {
-    width: 3ch;
-    min-width: 3ch;
-    max-width: 3ch;
+    width: var(--kda-col-width);
+    min-width: var(--kda-col-width);
+    max-width: var(--kda-col-width);
 }
 
 .status-live-game-card-table th[title="items"],
 .status-live-game-card-table .player-stats-row td:nth-child(3) {
-    width: 13.5rem;
-    min-width: 13.5rem;
-    max-width: 13.5rem;
+    width: var(--items-col-width);
+    min-width: var(--items-col-width);
+    max-width: var(--items-col-width);
 }
 
 .status-live-game-card-table th[title="gold"],
 .status-live-game-card-table .player-stats-row td:last-child {
-    width: 12ch;
-    min-width: 12ch;
-    max-width: 12ch;
+    width: var(--gold-col-width);
+    min-width: var(--gold-col-width);
+    max-width: var(--gold-col-width);
 }
 
 .status-live-game-card-table .player-stats-row th:first-child {
-    width: 16rem;
-    min-width: 16rem;
+    width: var(--champion-col-width);
+    min-width: var(--champion-col-width);
 }
 
 .player-stats,
@@ -785,17 +792,17 @@ svg.player-champion {
 }
 
 .player-stats-kda-flash-kill {
-    animation: kda-flash-kill 1.5s ease-out;
+    animation: kda-flash-kill 2s ease-out;
     border-radius: 4px;
 }
 
 .player-stats-kda-flash-death {
-    animation: kda-flash-death 1.5s ease-out;
+    animation: kda-flash-death 2s ease-out;
     border-radius: 4px;
 }
 
 .player-stats-kda-flash-assist {
-    animation: kda-flash-assist 1.5s ease-out;
+    animation: kda-flash-assist 2s ease-out;
     border-radius: 4px;
 }
 
@@ -835,9 +842,9 @@ svg.player-champion {
 
 .player-stats-items {
     height: 28px;
-    width: 13.5rem;
-    min-width: 13.5rem;
-    max-width: 13.5rem;
+    width: var(--items-col-width);
+    min-width: var(--items-col-width);
+    max-width: var(--items-col-width);
 
     display: flex;
     justify-content: center;

@@ -920,7 +920,7 @@ export function Match({ match }: MatchRouteProps) {
                             </div>
                         </div>
                         {scheduleEvent && eventDetails ?
-                            (<h3>Game {getNextUnstartedGameIndex(eventDetails)} out of {eventDetails.match.strategy.count} will start at {new Date(scheduleEvent.startTime).toLocaleTimeString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</h3>)
+                            (<h3>경기 시작 예정 : {new Date(scheduleEvent.startTime).toLocaleTimeString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</h3>)
                             : null
                         }
 
@@ -992,12 +992,12 @@ function getNextUnstartedGameIndex(eventDetails: EventDetails) {
 
 function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFrame, scheduleEvent: ScheduleEvent): string {
     let gameStates = {
-        "in_game": "In Progress",
-        "paused": "Paused",
-        "finished": "Finished",
-        "completed": "Finished",
-        "unstarted": "Unstarted",
-        "inProgress": "In Progress"
+        "in_game": "진행 중",
+        "paused": "일시정지",
+        "finished": "종료",
+        "completed": "종료",
+        "unstarted": "미진행",
+        "inProgress": "진행 중"
     }
 
     if (eventDetails.match.games.length === 1) return gameStates[lastWindowFrame.gameState]

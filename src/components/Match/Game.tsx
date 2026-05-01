@@ -554,7 +554,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                             </span>
                         </div>
                         <h1>
-                            <div className={`gamestate-bg-${gameState.split(` `).join(`-`)}`}>{gameState.toUpperCase()}</div>
+                            <div className={`gamestate-bg-${gameState.split(` `).join(`-`)}`}>{getLiveGameStateLabel(gameState)}</div>
                             <div>{inGameTime}</div>
                             <div className="live-game-kill-score">
                                 <span className="blue-team-kills">{lastWindowFrame.blueTeam.totalKills}</span>
@@ -618,10 +618,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <span>{blueTeam.name.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
-                                    <span>Health</span>
+                                    <span>체력</span>
                                 </th>
                                 <th className="table-top-row-items" title="items">
-                                    <span>Items</span>
+                                    <span>아이템</span>
                                 </th>
                                 <th className="table-top-row" title="creep score">
                                     <span>CS</span>
@@ -636,7 +636,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <span>A</span>
                                 </th>
                                 <th className="table-top-row" title="gold">
-                                    <span>Gold</span>
+                                    <span>골드</span>
                                 </th>
                             </tr>
                         </thead>
@@ -721,10 +721,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <span>{redTeam.name.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
-                                    <span>Health</span>
+                                    <span>체력</span>
                                 </th>
                                 <th className="table-top-row-items" title="items">
-                                    <span>Items</span>
+                                    <span>아이템</span>
                                 </th>
                                 <th className="table-top-row" title="creep score">
                                     <span>CS</span>
@@ -739,7 +739,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <span>A</span>
                                 </th>
                                 <th className="table-top-row" title="gold">
-                                    <span>Gold</span>
+                                    <span>골드</span>
                                 </th>
                             </tr>
                         </thead>
@@ -1106,4 +1106,17 @@ function getGoldLeadSymbol(goldLead: number) {
     if (goldLead > 0) return `>`
     if (goldLead < 0) return `<`
     return ``
+}
+
+function getLiveGameStateLabel(gameState: string) {
+    switch (gameState) {
+        case GameState.in_game:
+            return `진행 중`
+        case GameState.paused:
+            return `일시정지`
+        case GameState.finished:
+            return `게임 종료`
+        default:
+            return gameState.toUpperCase()
+    }
 }
