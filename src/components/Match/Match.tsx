@@ -431,6 +431,9 @@ export function Match({ match }: MatchRouteProps) {
                 return
             }
 
+            const previousRawItemsByParticipantId = new Map<number, number[]>()
+            const previousRawTrinketByParticipantId = new Map<number, number>()
+            const pendingRawTrinketDropCountByParticipantId = new Map<number, number>()
             let aborted = false
             try {
                 for (let cursor = alignedStart; cursor <= alignedEnd; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
@@ -452,8 +455,65 @@ export function Match({ match }: MatchRouteProps) {
 
                     frames.forEach((frame) => {
                         frame.participants.forEach((participant) => {
+                            const participantId = participant.participantId
+                            const rawItemIds = sanitizeItemIds(participant.items)
+                            const currentRawTrinketItemId = getTrinketItemId(rawItemIds)
+                            const previousRawItemIds = previousRawItemsByParticipantId.get(participantId) || []
+                            const previousRawTrinketItemId = previousRawTrinketByParticipantId.get(participantId)
+                            const hadObservedRawTrinketBeforeFrame = hasObservedRawTrinketByParticipantIdRef.current.get(participantId) === true
+                            if (currentRawTrinketItemId !== undefined) {
+                                hasObservedRawTrinketByParticipantIdRef.current.set(participantId, true)
+                            }
+
                             const observedItems = getObservedItemsForParticipant(observedDetailsItemsRef.current, participant.participantId)
-                            recordObservedItems(observedItems, sanitizeItemIds(participant.items))
+                            recordObservedItems(observedItems, rawItemIds)
+
+                            if (currentRawTrinketItemId === undefined) {
+                                const droppedItemIds = getDroppedItemIds(previousRawItemIds, rawItemIds)
+                                const hasRawTrinketDrop =
+                                    previousRawTrinketItemId !== undefined
+                                    && droppedItemIds.includes(previousRawTrinketItemId)
+                                const previousPendingCount = pendingRawTrinketDropCountByParticipantId.get(participantId) || 0
+                                let nextPendingCount = 0
+                                if (hasRawTrinketDrop) {
+                                    nextPendingCount = 1
+                                } else if (previousPendingCount > 0) {
+                                    nextPendingCount = Math.min(previousPendingCount + 1, 2)
+                                }
+
+                                if (nextPendingCount > 0) {
+                                    pendingRawTrinketDropCountByParticipantId.set(participantId, nextPendingCount)
+                                } else {
+                                    pendingRawTrinketDropCountByParticipantId.delete(participantId)
+                                }
+
+                                const inferredHeraldCapture =
+                                    hadObservedRawTrinketBeforeFrame
+                                    && previousPendingCount === 1
+                                    && nextPendingCount === 2
+                                if (inferredHeraldCapture) {
+                                    const inferredTeamColor = participantId <= 5 ? `blue` : `red`
+                                    const oppositeTeamColor = inferredTeamColor === `blue` ? `red` : `blue`
+                                    if (!inferredHeraldByTeamRef.current[inferredTeamColor] && !inferredHeraldByTeamRef.current[oppositeTeamColor]) {
+                                        inferredHeraldByTeamRef.current[inferredTeamColor] = true
+                                        if (activeGameIdRef.current === gameId) {
+                                            setInferredHeraldKillCounts({
+                                                blue: inferredHeraldByTeamRef.current.blue ? 1 : 0,
+                                                red: inferredHeraldByTeamRef.current.red ? 1 : 0,
+                                            })
+                                        }
+                                    }
+                                }
+                            } else {
+                                pendingRawTrinketDropCountByParticipantId.delete(participantId)
+                            }
+
+                            previousRawItemsByParticipantId.set(participantId, rawItemIds)
+                            if (currentRawTrinketItemId !== undefined) {
+                                previousRawTrinketByParticipantId.set(participantId, currentRawTrinketItemId)
+                            } else {
+                                previousRawTrinketByParticipantId.delete(participantId)
+                            }
                         })
                     })
                 }
@@ -1668,7 +1728,7 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
     }
 
     const observedTrinketItemId = getObservedTrinketItemId(observedItems)
-    const fallbackTrinketItemId = lastKnownTrinketItemId || observedTrinketItemId
+    const fallbackTrinketItemId = selectPreferredFallbackTrinketItemId(lastKnownTrinketItemId, observedTrinketItemId)
     if (fallbackTrinketItemId !== undefined) {
         const restoredItems = appendOrReplaceInferredItem(itemIds, fallbackTrinketItemId)
         const restoredTrinketItemId = getTrinketItemId(restoredItems)
@@ -1681,8 +1741,7 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
         const droppedItemIds = getDroppedItemIds(previousItemIds, itemIds)
         const hasTrinketDrop =
             previousTrinketItemId !== undefined
-            && droppedItemIds.length === 1
-            && droppedItemIds[0] === previousTrinketItemId
+            && droppedItemIds.includes(previousTrinketItemId)
         const rawTrinketDisappearedBetweenFrames =
             previousRawTrinketItemId !== undefined
             && previousRawTrinketItemId === fallbackTrinketItemId
@@ -1733,6 +1792,26 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
 function getObservedTrinketItemId(observedItems: Set<number> | undefined) {
     if (!observedItems || observedItems.size === 0) return undefined
     return TRINKET_ITEM_PREFERENCE_ORDER.find((itemId) => observedItems.has(itemId))
+}
+
+function selectPreferredFallbackTrinketItemId(
+    lastKnownTrinketItemId: number | undefined,
+    observedTrinketItemId: number | undefined,
+) {
+    if (lastKnownTrinketItemId === undefined) return observedTrinketItemId
+    if (observedTrinketItemId === undefined) return lastKnownTrinketItemId
+    if (lastKnownTrinketItemId === observedTrinketItemId) return lastKnownTrinketItemId
+
+    // Prefer concrete observed trinkets over inferred default stealth ward.
+    if (lastKnownTrinketItemId === 3340 && observedTrinketItemId !== 3340) return observedTrinketItemId
+    if (observedTrinketItemId === 3340 && lastKnownTrinketItemId !== 3340) return lastKnownTrinketItemId
+
+    const lastKnownPriority = TRINKET_ITEM_PREFERENCE_ORDER.indexOf(lastKnownTrinketItemId)
+    const observedPriority = TRINKET_ITEM_PREFERENCE_ORDER.indexOf(observedTrinketItemId)
+    if (lastKnownPriority < 0) return observedTrinketItemId
+    if (observedPriority < 0) return lastKnownTrinketItemId
+
+    return observedPriority < lastKnownPriority ? observedTrinketItemId : lastKnownTrinketItemId
 }
 
 function hasObservedTrinketItem(observedItems: Set<number> | undefined) {
@@ -2347,10 +2426,12 @@ function getCompletedGameSnapshotStartingTime(firstWindowTimestamp: string) {
     const firstWindowTimestampValue = getTimestampValue(firstWindowTimestamp)
     if (firstWindowTimestampValue === 0) return getISODateMultiplyOf10()
 
-    // Query a point well after game start so completed games return their tail frames,
-    // instead of the default initial bootstrap frames.
+    // Query after game start to get tail frames for completed games.
+    // Clamp against (now - 60s) so we never request a future/too-fresh window.
+    const fourHoursAfterStartTimestampValue = firstWindowTimestampValue + (4 * 60 * 60 * 1000)
+    const safeNowTimestampValue = Date.now() - (60 * 1000)
     const completedGameTailTimestampValue = alignTimestampToLiveStatsStep(
-        firstWindowTimestampValue + (4 * 60 * 60 * 1000)
+        Math.min(fourHoursAfterStartTimestampValue, safeNowTimestampValue)
     )
     if (completedGameTailTimestampValue === 0) return getISODateMultiplyOf10()
     return new Date(completedGameTailTimestampValue).toISOString()
