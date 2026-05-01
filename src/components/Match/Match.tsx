@@ -322,11 +322,9 @@ export function Match({ match }: MatchRouteProps) {
             if (!matchEventDetails) return
             const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
             if (!currentGame || currentGame.id !== gameId) return
-            const isLiveOrCompletedGame = currentGame.state === `inProgress` || currentGame.state === `completed`
-            if (!isLiveOrCompletedGame) return
-
+            const isCompletedGame = currentGame.state === `completed` || lastWindowFrame.gameState === `finished`
             const isWindowInPlayableState = lastWindowFrame.gameState === `in_game` || lastWindowFrame.gameState === `finished`
-            if (!isWindowInPlayableState) return
+            if (!isWindowInPlayableState && !isCompletedGame) return
 
             const startTimestampValue = getTimestampValue(firstWindowTimestampRef.current)
             const currentTimestampValue = getTimestampValue(lastWindowFrame.rfc460Timestamp)
@@ -336,7 +334,14 @@ export function Match({ match }: MatchRouteProps) {
                 currentGame,
                 lastWindowFrame,
             )
-            if (backfillStartTimestampValue === 0) return
+            if (backfillStartTimestampValue === 0) {
+                if (isCompletedGame) {
+                    // Completed games may provide static window timestamps.
+                    // Avoid leaving the status in "pending" forever.
+                    updateBackfillStatus(gameId, `completed`)
+                }
+                return
+            }
 
             updateBackfillStatus(gameId, `running`)
             void backfillObservedItemsFromGameStart(gameId, backfillStartTimestampValue, currentTimestampValue)
@@ -1789,15 +1794,29 @@ function getLiveDetailsBackfillStartTimestampValue(
     currentGame: EventDetails[`match`][`games`][number],
     lastWindowFrame: WindowFrame,
 ) {
-    if (initialWindowStartTimestampValue === 0 || currentWindowTimestampValue === 0) return 0
-    if (currentWindowTimestampValue <= initialWindowStartTimestampValue) return 0
+    if (currentWindowTimestampValue === 0) return 0
+
+    const shouldFallback = shouldUseLiveDetailsBackfillFallback(currentGame, lastWindowFrame)
+    if (initialWindowStartTimestampValue === 0) {
+        return shouldFallback
+            ? Math.max(0, currentWindowTimestampValue - LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS)
+            : 0
+    }
+
+    if (currentWindowTimestampValue <= initialWindowStartTimestampValue) {
+        // Some finished games return nearly static window snapshots.
+        // In that case, rely on fallback lookback instead of skipping forever.
+        return shouldFallback
+            ? Math.max(0, currentWindowTimestampValue - LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS)
+            : 0
+    }
 
     const elapsedGameTime = currentWindowTimestampValue - initialWindowStartTimestampValue
     if (elapsedGameTime >= LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS) {
         return initialWindowStartTimestampValue
     }
 
-    if (!shouldUseLiveDetailsBackfillFallback(currentGame, lastWindowFrame)) return 0
+    if (!shouldFallback) return 0
 
     return Math.max(0, currentWindowTimestampValue - LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS)
 }
