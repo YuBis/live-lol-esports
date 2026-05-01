@@ -646,6 +646,12 @@ svg.player-champion {
     vertical-align: middle;
 }
 
+#streamDropdown,
+.streamDiv,
+.chatDiv {
+    display: none !important;
+}
+
 .footer-notes {
     padding: 0px 8px;
     color: var(--text);
@@ -671,6 +677,12 @@ svg.player-champion {
 
 .footer-notes.backfill-status.idle {
     color: var(--text);
+}
+
+.footer-notes.build-revision {
+    cursor: default;
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    letter-spacing: 0.2px;
 }
 
 .chat-toggle, .stream-toggle {

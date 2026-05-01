@@ -24,6 +24,7 @@ import { ItemsDisplay } from "./ItemsDisplay";
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
 import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
+import { BUILD_LABEL } from '../../utils/generatedBuildInfo';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
@@ -676,6 +677,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </button>
                 </span>
                 <span className={`footer-notes backfill-status ${backfillStatusClassName}`}>{backfillStatusLabel}</span>
+                <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
+                    Revision: {BUILD_LABEL}
+                </span>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>

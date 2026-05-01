@@ -32,6 +32,9 @@
     "web-vitals": "^1.0.1"
   },
   "scripts": {
+    "write-build-info": "node scripts/write-build-info.js",
+    "prestart": "npm run write-build-info",
+    "prebuild": "npm run write-build-info",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "start": "react-scripts start",

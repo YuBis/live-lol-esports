@@ -23,6 +23,7 @@ import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-eld
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
 import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
+import { BUILD_LABEL } from '../../utils/generatedBuildInfo';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
@@ -565,6 +566,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                     <button type="button" className="copy-champion-names" onClick={copyChampionNames}>
                         Copy Champion Names
                     </button>
+                </span>
+                <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
+                    Revision: {BUILD_LABEL}
                 </span>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>

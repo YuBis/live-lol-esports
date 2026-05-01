@@ -14,6 +14,7 @@ import {
     ITEMS_JSON_URL,
     RUNES_JSON_URL
 } from "../../utils/LoLEsportsAPI";
+import { BUILD_LABEL } from "../../utils/generatedBuildInfo";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Loading from '../../assets/images/loading.svg'
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
@@ -801,6 +802,9 @@ export function Match({ match }: MatchRouteProps) {
                                     <button type="button" className="copy-champion-names" onClick={copyChampionNames}>
                                         Copy Champion Names
                                     </button>
+                                </span>
+                                <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
+                                    Revision: {BUILD_LABEL}
                                 </span>
                             </div>
                         ) : null}
