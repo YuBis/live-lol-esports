@@ -20,7 +20,7 @@
 .mini-health-bar>div {
     flex: 1;
     border-radius: 4px;
-    min-width: 5rem;
+    min-width: 4.5rem;
     background: var(--gray-line);
     position: relative;
 }
@@ -487,6 +487,13 @@ Status dragons
 
 .status-live-game-card-table {
     width: 100%;
+    table-layout: fixed;
+}
+
+.status-live-game-card-table th,
+.status-live-game-card-table td {
+    padding: 0 2px;
+    box-sizing: border-box;
 }
 
 .player-champion-info {
@@ -512,6 +519,8 @@ Status dragons
 
 .player-champion-info-name > span:first-child {
     display: block;
+    width: 100%;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -520,6 +529,8 @@ Status dragons
 .player-card-player-name {
     display: block;
     font-size: 10px;
+    width: 100%;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -606,7 +617,7 @@ svg.player-champion {
 
 .table-top-row-vida {
     height: 28px;
-    width: 12rem;
+    width: 10.8rem;
 }
 
 .table-top-row-items {
@@ -627,6 +638,11 @@ svg.player-champion {
 .status-live-game-card-table .player-stats-row td:last-child {
     width: 7.5rem;
     min-width: 7.5rem;
+}
+
+.status-live-game-card-table .player-stats-row th:first-child {
+    width: 16rem;
+    min-width: 16rem;
 }
 
 .player-stats,
@@ -655,6 +671,12 @@ svg.player-champion {
     font-weight: 500;
     white-space: nowrap;
     font-size: 10px;
+    display: inline-block;
+    min-width: 4.25rem;
+}
+
+.player-stats-gold-lead.placeholder {
+    visibility: hidden;
 }
 
 .chatDiv, .streamDiv {
@@ -718,6 +740,44 @@ svg.player-champion {
 
 .player-stats-kda {
     width: 28px;
+}
+
+.player-stats-kda-flash-kill {
+    animation: kda-flash-kill 0.5s ease-out;
+    border-radius: 4px;
+}
+
+.player-stats-kda-flash-death {
+    animation: kda-flash-death 0.5s ease-out;
+    border-radius: 4px;
+}
+
+@keyframes kda-flash-kill {
+    0% {
+        background-color: rgba(34, 197, 94, 0.85);
+        color: #ffffff;
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45);
+    }
+
+    100% {
+        background-color: transparent;
+        color: inherit;
+        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+    }
+}
+
+@keyframes kda-flash-death {
+    0% {
+        background-color: rgba(220, 38, 38, 0.85);
+        color: #ffffff;
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+    }
+
+    100% {
+        background-color: transparent;
+        color: inherit;
+        box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+    }
 }
 
 /*

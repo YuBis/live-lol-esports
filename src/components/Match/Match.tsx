@@ -59,6 +59,10 @@ type InferredHeraldByTeam = {
     blue: boolean,
     red: boolean,
 }
+type MagicalFootwearTiming = {
+    unlockAfterMs: number,
+    takedownReductionMs: number,
+}
 const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS = 45 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL = 6
@@ -66,7 +70,14 @@ const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
-const EYE_OF_THE_HERALD_ITEM_ID = 3513
+const HERALD_INFERENCE_MIN_GAME_TIME_MS = 8 * 60 * 1000
+const HERALD_INFERENCE_MAX_GAME_TIME_MS = 25 * 60 * 1000
+const MAGICAL_FOOTWEAR_RUNE_ID = 8304
+const SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID = 2422
+const DEFAULT_MAGICAL_FOOTWEAR_TIMING: MagicalFootwearTiming = {
+    unlockAfterMs: 12 * 60 * 1000,
+    takedownReductionMs: 45 * 1000,
+}
 
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
@@ -103,6 +114,7 @@ export function Match({ match }: MatchRouteProps) {
     const participantRoleByParticipantIdRef = useRef<ParticipantRoleByParticipantId>(new Map())
     const lastKnownBootByParticipantIdRef = useRef<LastKnownBootItemByParticipantId>(new Map())
     const lastKnownTrinketByParticipantIdRef = useRef<LastKnownTrinketItemByParticipantId>(new Map())
+    const magicalFootwearTimingRef = useRef<MagicalFootwearTiming>(DEFAULT_MAGICAL_FOOTWEAR_TIMING)
     const inferredHeraldByTeamRef = useRef<InferredHeraldByTeam>({ blue: false, red: false })
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
     const activeGameIdRef = useRef<string>(``)
@@ -304,6 +316,7 @@ export function Match({ match }: MatchRouteProps) {
                     lastKnownTrinketByParticipantIdRef.current,
                     getElapsedGameTimeMs(firstWindowTimestampRef.current, incomingLastFrame.rfc460Timestamp),
                     inferredHeraldByTeamRef.current,
+                    magicalFootwearTimingRef.current,
                 )
                 setInferredHeraldKillCounts({
                     blue: inferredHeraldByTeamRef.current.blue ? 1 : 0,
@@ -456,7 +469,9 @@ export function Match({ match }: MatchRouteProps) {
         function getRunes(metadata: GameMetadata) {
             const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
             getDataDragonResponse(RUNES_JSON_URL, formattedPatchVersion).then(response => {
-                setRunes(response.data)
+                const incomingRunes = response.data
+                setRunes(incomingRunes)
+                magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes(incomingRunes)
             })
         }
 
@@ -903,6 +918,7 @@ function stabilizeDetailsFrame(
     lastKnownTrinketByParticipantId?: LastKnownTrinketItemByParticipantId,
     elapsedGameTimeMs?: number,
     inferredHeraldByTeam?: InferredHeraldByTeam,
+    magicalFootwearTiming: MagicalFootwearTiming = DEFAULT_MAGICAL_FOOTWEAR_TIMING,
 ): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
@@ -960,20 +976,28 @@ function stabilizeDetailsFrame(
         )
         const normalizedBootRegressionItems = normalizeSuspiciousBootRegression(inferredItems, previousItems, lastKnownBootItemId)
         const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(normalizedBootRegressionItems, previousItems, lastKnownBootItemId, observedItems)
-        const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
+        const magicalFootwearRecoveredItems = inferMagicalFootwearOnUnlock(
+            dedupedBootItems,
+            participant,
+            elapsedGameTimeMs,
+            magicalFootwearTiming,
+        )
+        const magicalFootwearNormalizedItems = removeInjectedMagicalFootwearWhenUpgraded(magicalFootwearRecoveredItems)
+        const normalizedTearItems = normalizeLikelyStaleTearBaseItem(magicalFootwearNormalizedItems, previousItems, participant, observedItems)
         const trinketRestoreResult = restoreMissingTrinketOnUnexpectedMissingSlot(
             normalizedTearItems,
             previousItems,
             observedItems,
             lastKnownTrinketItemId,
             elapsedGameTimeMs,
+            participantRole,
         )
         const trinketRestoredItems = trinketRestoreResult.itemIds
         if (inferredHeraldByTeam && trinketRestoreResult.inferredHeraldCapture) {
-            if (participant.participantId <= 5) {
-                inferredHeraldByTeam.blue = true
-            } else {
-                inferredHeraldByTeam.red = true
+            const inferredTeamColor = participant.participantId <= 5 ? `blue` : `red`
+            const oppositeTeamColor = inferredTeamColor === `blue` ? `red` : `blue`
+            if (!inferredHeraldByTeam[inferredTeamColor] && !inferredHeraldByTeam[oppositeTeamColor]) {
+                inferredHeraldByTeam[inferredTeamColor] = true
             }
         }
 
@@ -1003,6 +1027,37 @@ function stabilizeDetailsFrame(
 function sanitizeItemIds(itemIds: number[] | undefined) {
     if (!Array.isArray(itemIds)) return []
     return itemIds.filter((itemId) => Number.isFinite(itemId) && itemId > 0)
+}
+
+function getMagicalFootwearTimingFromRunes(runes: Rune[] | undefined): MagicalFootwearTiming {
+    if (!Array.isArray(runes) || runes.length === 0) return DEFAULT_MAGICAL_FOOTWEAR_TIMING
+
+    const magicalFootwearRune = getAllSlottedRunes(runes).find((slottedRune) => slottedRune.id === MAGICAL_FOOTWEAR_RUNE_ID)
+    if (!magicalFootwearRune?.longDesc) return DEFAULT_MAGICAL_FOOTWEAR_TIMING
+
+    const normalizedLongDescription = stripHtmlTags(magicalFootwearRune.longDesc).replace(/&nbsp;/gi, ` `)
+    const minuteMatch = normalizedLongDescription.match(/(\d+)\s*(?:min|minutes?|분)/i)
+    const secondMatch = normalizedLongDescription.match(/(\d+)\s*(?:s|sec|seconds?|초)/i)
+
+    const parsedUnlockAfterMinutes = Number(minuteMatch?.[1])
+    const parsedTakedownReductionSeconds = Number(secondMatch?.[1])
+
+    return {
+        unlockAfterMs: Number.isFinite(parsedUnlockAfterMinutes) && parsedUnlockAfterMinutes > 0
+            ? parsedUnlockAfterMinutes * 60 * 1000
+            : DEFAULT_MAGICAL_FOOTWEAR_TIMING.unlockAfterMs,
+        takedownReductionMs: Number.isFinite(parsedTakedownReductionSeconds) && parsedTakedownReductionSeconds > 0
+            ? parsedTakedownReductionSeconds * 1000
+            : DEFAULT_MAGICAL_FOOTWEAR_TIMING.takedownReductionMs,
+    }
+}
+
+function getAllSlottedRunes(runes: Rune[]) {
+    return runes.flatMap((rune) => rune.slots.flatMap((slot) => slot.runes))
+}
+
+function stripHtmlTags(text: string) {
+    return text.replace(/<[^>]*>/g, ` `)
 }
 
 const TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
@@ -1052,6 +1107,7 @@ const BOOT_SOURCE_ITEM_ID_BY_TARGET_ITEM_ID = new Map<number, number>(
 )
 const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
     1001,
+    SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID,
     3005,
     3006,
     3008,
@@ -1075,7 +1131,9 @@ const BASE_AND_UPGRADED_BOOT_ITEM_IDS = [
 const BOOT_ITEM_PREFERENCE_ORDER = BASE_AND_UPGRADED_BOOT_ITEM_IDS.slice().reverse()
 const TIER3_BOOT_ITEM_IDS = [3168, 3170, 3171, 3172, 3173, 3174, 3175, 3176]
 const TIER2_BOOT_ITEM_IDS = BASE_AND_UPGRADED_BOOT_ITEM_IDS.filter((itemId) =>
-    itemId !== 1001 && !TIER3_BOOT_ITEM_IDS.includes(itemId)
+    itemId !== 1001
+    && itemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID
+    && !TIER3_BOOT_ITEM_IDS.includes(itemId)
 )
 const TEAR_OF_THE_GODDESS_ITEM_ID = 3070
 const TEAR_LINE_UPGRADE_INFERENCE_BRANCHES: TearLineUpgradeInferenceBranch[] = [
@@ -1470,6 +1528,36 @@ function getTrinketItemId(itemIds: number[]) {
     return TRINKET_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
 }
 
+function inferMagicalFootwearOnUnlock(
+    itemIds: number[],
+    participant: DetailsFrame[`participants`][number],
+    elapsedGameTimeMs: number | undefined,
+    magicalFootwearTiming: MagicalFootwearTiming,
+) {
+    const hasMagicalFootwearRune = participant.perkMetadata?.perks?.includes(MAGICAL_FOOTWEAR_RUNE_ID)
+    if (!hasMagicalFootwearRune) return itemIds
+    if (!Number.isFinite(elapsedGameTimeMs)) return itemIds
+    if (itemIds.includes(SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID)) return itemIds
+    if (hasTier2OrTier3Boot(itemIds)) return itemIds
+    if (getBootItemId(itemIds) !== undefined) return itemIds
+
+    const takedownCount = Math.max(0, participant.kills + participant.assists)
+    const unlockAfterMs = Math.max(0, magicalFootwearTiming.unlockAfterMs - takedownCount * magicalFootwearTiming.takedownReductionMs)
+    if (Number(elapsedGameTimeMs) < unlockAfterMs) return itemIds
+
+    return appendInferredItemIfSlotAvailable(itemIds, SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID)
+}
+
+function hasTier2OrTier3Boot(itemIds: number[]) {
+    return itemIds.some((itemId) => TIER2_BOOT_ITEM_IDS.includes(itemId) || TIER3_BOOT_ITEM_IDS.includes(itemId))
+}
+
+function removeInjectedMagicalFootwearWhenUpgraded(itemIds: number[]) {
+    if (!itemIds.includes(SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID)) return itemIds
+    if (!hasTier2OrTier3Boot(itemIds)) return itemIds
+    return itemIds.filter((itemId) => itemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID)
+}
+
 type TrinketRestoreResult = {
     itemIds: number[],
     inferredHeraldCapture: boolean,
@@ -1481,6 +1569,7 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
     observedItems: Set<number> | undefined,
     lastKnownTrinketItemId: number | undefined,
     elapsedGameTimeMs: number | undefined,
+    participantRole: string | undefined,
 ): TrinketRestoreResult {
     const currentTrinketItemId = getTrinketItemId(itemIds)
     if (currentTrinketItemId !== undefined) {
@@ -1498,16 +1587,24 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
             hadPreviousTrinket
             && previousTrinketItemId === fallbackTrinketItemId
             && !itemIds.includes(previousTrinketItemId)
-        const hasCurrentHeraldEye = itemIds.includes(EYE_OF_THE_HERALD_ITEM_ID)
-        const hasComparableInventorySnapshot =
-            previousItemIds.length > 0
-            && itemIds.length > 0
-            && itemIds.length >= previousItemIds.length - 1
-            && itemIds.length <= previousItemIds.length
+        const droppedItemIds = getDroppedItemIds(previousItemIds, itemIds)
+        const hasOnlyTrinketDrop =
+            previousTrinketItemId !== undefined
+            && droppedItemIds.length === 1
+            && droppedItemIds[0] === previousTrinketItemId
+        const hasNoUnexpectedInventoryExpansion = isSubsetWithCounts(itemIds, previousItemIds)
+        const isLikelyHeraldCarrierRole = participantRole?.toLowerCase() === `jungle` || participantRole?.toLowerCase() === `top`
+        const isWithinHeraldInferenceWindow =
+            Number.isFinite(elapsedGameTimeMs)
+            && Number(elapsedGameTimeMs) >= HERALD_INFERENCE_MIN_GAME_TIME_MS
+            && Number(elapsedGameTimeMs) <= HERALD_INFERENCE_MAX_GAME_TIME_MS
         const inferredHeraldCapture =
             restoredTrinketItemId === fallbackTrinketItemId
             && trinketDisappearedBetweenFrames
-            && (hasCurrentHeraldEye || hasComparableInventorySnapshot)
+            && hasOnlyTrinketDrop
+            && hasNoUnexpectedInventoryExpansion
+            && isLikelyHeraldCarrierRole
+            && isWithinHeraldInferenceWindow
         return {
             itemIds: restoredItems,
             inferredHeraldCapture,
@@ -1887,6 +1984,12 @@ function appendOrReplaceInferredItem(itemIds: number[], targetItemId: number) {
     const replacementIndex = getPreferredInferenceReplacementIndex(itemIds)
     if (replacementIndex < 0) return itemIds
     return replaceItemAtIndex(itemIds, replacementIndex, targetItemId)
+}
+
+function appendInferredItemIfSlotAvailable(itemIds: number[], targetItemId: number) {
+    if (itemIds.includes(targetItemId)) return itemIds
+    if (itemIds.length >= MAX_INVENTORY_ITEM_SLOTS) return itemIds
+    return [...itemIds, targetItemId]
 }
 
 function getDroppedItemIds(previousItemIds: number[], currentItemIds: number[]) {

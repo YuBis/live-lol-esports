@@ -3,7 +3,7 @@ import '../Schedule/styles/scheduleStyle.css'
 
 import { GameDetails } from "./GameDetails"
 import { MiniHealthBar } from "./MiniHealthBar";
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from 'react-toastify';
 import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, SlottedRune } from "../types/baseTypes";
 
@@ -59,10 +59,58 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
+    const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
+    const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number }>>(new Map())
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
+
+    useEffect(() => {
+        const flashCellKeys: string[] = []
+        const participants = [
+            ...lastWindowFrame.blueTeam.participants,
+            ...lastWindowFrame.redTeam.participants,
+        ]
+
+        participants.forEach((participant) => {
+            const previousKda = previousKdaByParticipantIdRef.current.get(participant.participantId)
+            if (previousKda) {
+                if (participant.kills > previousKda.kills) {
+                    flashCellKeys.push(`k_${participant.participantId}`)
+                }
+                if (participant.deaths > previousKda.deaths) {
+                    flashCellKeys.push(`d_${participant.participantId}`)
+                }
+            }
+            previousKdaByParticipantIdRef.current.set(participant.participantId, {
+                kills: participant.kills,
+                deaths: participant.deaths,
+            })
+        })
+
+        if (flashCellKeys.length === 0) return
+
+        setKdaFlashByCell((previousState) => {
+            const nextState = { ...previousState }
+            flashCellKeys.forEach((cellKey) => {
+                nextState[cellKey] = true
+            })
+            return nextState
+        })
+
+        const timerId = setTimeout(() => {
+            setKdaFlashByCell((previousState) => {
+                const nextState = { ...previousState }
+                flashCellKeys.forEach((cellKey) => {
+                    delete nextState[cellKey]
+                })
+                return nextState
+            })
+        }, 500)
+
+        return () => clearTimeout(timerId)
+    }, [lastWindowFrame.rfc460Timestamp, lastWindowFrame.blueTeam.participants, lastWindowFrame.redTeam.participants])
 
     useEffect(() => {
         const currentGameState: GameState = GameState[lastWindowFrame.gameState as keyof typeof GameState]
@@ -505,6 +553,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                             {lastWindowFrame.blueTeam.participants.map((player: WindowParticipant, index) => {
                                 let goldDifference = getGoldDifference(player, lastWindowFrame);
                                 let championDetails = lastDetailsFrame.participants[index]
+                                const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
+                                const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
@@ -539,10 +589,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className=" player-stats">{player.creepScore}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.kills}</div>
+                                            <div className={` player-stats player-stats-kda ${killFlashClassName}`}>{player.kills}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.deaths}</div>
+                                            <div className={` player-stats player-stats-kda ${deathFlashClassName}`}>{player.deaths}</div>
                                         </td>
                                         <td>
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
@@ -550,11 +600,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference !== 0 ? (
-                                                    <span className={`player-stats-gold-lead ${goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`}`}>
-                                                        {getFormattedGoldDifference(goldDifference)}
-                                                    </span>
-                                                ) : null}
+                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
+                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -604,6 +652,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                             {lastWindowFrame.redTeam.participants.map((player: WindowParticipant, index) => {
                                 let goldDifference = getGoldDifference(player, lastWindowFrame);
                                 let championDetails = lastDetailsFrame.participants[index + 5]
+                                const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
+                                const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
 
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
@@ -638,10 +688,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className=" player-stats">{player.creepScore}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.kills}</div>
+                                            <div className={` player-stats player-stats-kda ${killFlashClassName}`}>{player.kills}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.deaths}</div>
+                                            <div className={` player-stats player-stats-kda ${deathFlashClassName}`}>{player.deaths}</div>
                                         </td>
                                         <td>
                                             <div className=" player-stats player-stats-kda">{player.assists}</div>
@@ -649,11 +699,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference !== 0 ? (
-                                                    <span className={`player-stats-gold-lead ${goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`}`}>
-                                                        {getFormattedGoldDifference(goldDifference)}
-                                                    </span>
-                                                ) : null}
+                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
+                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>

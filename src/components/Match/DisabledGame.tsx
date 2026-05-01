@@ -456,7 +456,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
+                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -544,7 +546,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                {goldDifference > 0 ? <span className="player-stats-gold-lead">{`(+${Number(goldDifference).toLocaleString("en-us")})`}</span> : null}
+                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
+                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -664,8 +668,20 @@ function getDragonSVG(dragonName: string, teamColor: string, index: number) {
 
 function getGoldPercentage(goldBlue: number, goldRed: number) {
     const total = goldBlue + goldRed;
-    return {
-        goldBluePercentage: ((goldBlue / 100) * total),
-        goldRedPercentage: ((goldRed / 100) * total),
+    if (total <= 0) {
+        return {
+            goldBluePercentage: 1,
+            goldRedPercentage: 1,
+        }
     }
+    return {
+        goldBluePercentage: goldBlue / total,
+        goldRedPercentage: goldRed / total,
+    }
+}
+
+function getFormattedGoldDifference(goldDifference: number) {
+    const formattedDifference = Number(Math.abs(goldDifference)).toLocaleString("en-us")
+    const sign = goldDifference > 0 ? `+` : `-`
+    return `(${sign}${formattedDifference})`
 }
