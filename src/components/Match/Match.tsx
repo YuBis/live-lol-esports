@@ -53,13 +53,19 @@ type ChampionNameMap = {
 type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
 type ParticipantRoleByParticipantId = Map<number, string>
 type LastKnownBootItemByParticipantId = Map<number, number>
+type LastKnownTrinketItemByParticipantId = Map<number, number>
 type BackfillStatus = `idle` | `running` | `completed`
+type InferredHeraldByTeam = {
+    blue: boolean,
+    red: boolean,
+}
 const LIVE_DETAILS_BACKFILL_MINIMUM_GAME_TIME_MS = 5 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_LOOKBACK_MS = 45 * 60 * 1000
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL = 6
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
+const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
 
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
@@ -78,6 +84,7 @@ export function Match({ match }: MatchRouteProps) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>(`idle`);
+    const [inferredHeraldKillCounts, setInferredHeraldKillCounts] = useState<{ blue: number, red: number }>({ blue: 0, red: 0 });
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -94,6 +101,8 @@ export function Match({ match }: MatchRouteProps) {
     const observedDetailsItemsRef = useRef<ObservedDetailsItemsByParticipantId>(new Map())
     const participantRoleByParticipantIdRef = useRef<ParticipantRoleByParticipantId>(new Map())
     const lastKnownBootByParticipantIdRef = useRef<LastKnownBootItemByParticipantId>(new Map())
+    const lastKnownTrinketByParticipantIdRef = useRef<LastKnownTrinketItemByParticipantId>(new Map())
+    const inferredHeraldByTeamRef = useRef<InferredHeraldByTeam>({ blue: false, red: false })
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
     const activeGameIdRef = useRef<string>(``)
     const firstWindowTimestampRef = useRef<string>(``)
@@ -123,6 +132,9 @@ export function Match({ match }: MatchRouteProps) {
                     observedDetailsItemsRef.current = new Map()
                     participantRoleByParticipantIdRef.current = new Map()
                     lastKnownBootByParticipantIdRef.current = new Map()
+                    lastKnownTrinketByParticipantIdRef.current = new Map()
+                    inferredHeraldByTeamRef.current = { blue: false, red: false }
+                    setInferredHeraldKillCounts({ blue: 0, red: 0 })
                     backfillStatusByGameIdRef.current = new Map()
                     setBackfillStatus(`idle`)
                     firstWindowTimestampRef.current = ``
@@ -288,7 +300,14 @@ export function Match({ match }: MatchRouteProps) {
                     participantRoleByParticipantIdRef.current,
                     lastKnownBootByParticipantIdRef.current,
                     isCurrentGameCompleted(),
+                    lastKnownTrinketByParticipantIdRef.current,
+                    getElapsedGameTimeMs(firstWindowTimestampRef.current, incomingLastFrame.rfc460Timestamp),
+                    inferredHeraldByTeamRef.current,
                 )
+                setInferredHeraldKillCounts({
+                    blue: inferredHeraldByTeamRef.current.blue ? 1 : 0,
+                    red: inferredHeraldByTeamRef.current.red ? 1 : 0,
+                })
                 lastFrameSuccessRef.current = true
                 lastDetailsFrameRef.current = stabilizedFrame
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
@@ -709,14 +728,14 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, firstWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} />
+                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} inferredHeraldKillCounts={inferredHeraldKillCounts} />
             </div>
         );
     } else if (eventDetails !== undefined) {
@@ -880,6 +899,9 @@ function stabilizeDetailsFrame(
     participantRoleByParticipantId?: ParticipantRoleByParticipantId,
     lastKnownBootByParticipantId?: LastKnownBootItemByParticipantId,
     isCompletedGame?: boolean,
+    lastKnownTrinketByParticipantId?: LastKnownTrinketItemByParticipantId,
+    elapsedGameTimeMs?: number,
+    inferredHeraldByTeam?: InferredHeraldByTeam,
 ): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
     if (previousFrame) {
@@ -893,6 +915,7 @@ function stabilizeDetailsFrame(
         const previousItems = previousItemsByParticipantId.get(participant.participantId) || []
         const participantRole = participantRoleByParticipantId?.get(participant.participantId)
         const lastKnownBootItemId = lastKnownBootByParticipantId?.get(participant.participantId)
+        const lastKnownTrinketItemId = lastKnownTrinketByParticipantId?.get(participant.participantId)
         const observedItems = getObservedItemsForParticipant(observedItemsByParticipantId, participant.participantId)
         recordObservedItems(observedItems, previousItems)
         recordObservedItems(observedItems, currentItems)
@@ -937,7 +960,22 @@ function stabilizeDetailsFrame(
         const normalizedBootRegressionItems = normalizeSuspiciousBootRegression(inferredItems, previousItems, lastKnownBootItemId)
         const dedupedBootItems = normalizeUnexpectedDuplicateBootItems(normalizedBootRegressionItems, previousItems, lastKnownBootItemId, observedItems)
         const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
-        const currentBootItemId = getBootItemId(normalizedTearItems)
+        const trinketRestoreResult = restoreMissingTrinketOnUnexpectedMissingSlot(
+            normalizedTearItems,
+            observedItems,
+            lastKnownTrinketItemId,
+            elapsedGameTimeMs,
+        )
+        const trinketRestoredItems = trinketRestoreResult.itemIds
+        if (inferredHeraldByTeam && trinketRestoreResult.inferredHeraldCapture) {
+            if (participant.participantId <= 5) {
+                inferredHeraldByTeam.blue = true
+            } else {
+                inferredHeraldByTeam.red = true
+            }
+        }
+
+        const currentBootItemId = getBootItemId(trinketRestoredItems)
         const resolvedKnownBootItemId = resolveKnownBootItemId(currentBootItemId, lastKnownBootItemId)
         const shouldStoreResolvedBoot =
             resolvedKnownBootItemId !== undefined
@@ -945,7 +983,13 @@ function stabilizeDetailsFrame(
         if (lastKnownBootByParticipantId && shouldStoreResolvedBoot) {
             lastKnownBootByParticipantId.set(participant.participantId, resolvedKnownBootItemId)
         }
-        return { ...participant, items: normalizedTearItems }
+
+        const currentTrinketItemId = getTrinketItemId(trinketRestoredItems)
+        if (lastKnownTrinketByParticipantId && currentTrinketItemId !== undefined) {
+            lastKnownTrinketByParticipantId.set(participant.participantId, currentTrinketItemId)
+        }
+
+        return { ...participant, items: trinketRestoredItems }
     })
 
     return {
@@ -960,6 +1004,7 @@ function sanitizeItemIds(itemIds: number[] | undefined) {
 }
 
 const TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
+const TRINKET_ITEM_PREFERENCE_ORDER = [3364, 3363, 3340, 3330, 3348, 3349, 6702]
 const CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055]
 const MAX_INVENTORY_ITEM_SLOTS = 8
 
@@ -1385,8 +1430,6 @@ function restoreMidBootOnUnexpectedMissingSlot(
 
     const inferredTier3FromTier2Drop = inferMidTier3BootFromMissingTier2(
         itemIds,
-        previousItemIds,
-        fallbackBootItemId,
         observedItems,
     )
     if (inferredTier3FromTier2Drop) return inferredTier3FromTier2Drop
@@ -1397,28 +1440,84 @@ function restoreMidBootOnUnexpectedMissingSlot(
 
 function inferMidTier3BootFromMissingTier2(
     currentItemIds: number[],
-    previousItemIds: number[],
-    fallbackBootItemId: number,
     observedItems: Set<number> | undefined,
 ) {
-    if (!TIER2_BOOT_ITEM_IDS.includes(fallbackBootItemId)) return undefined
-
-    const previousBootItemId = getBootItemId(previousItemIds)
-    if (previousBootItemId !== fallbackBootItemId) return undefined
-
-    const tier2BootWasObserved = observedItems?.has(fallbackBootItemId) ?? false
-    if (!tier2BootWasObserved) return undefined
+    const observedTier2BootItemId = getObservedTier2BootItemId(observedItems)
+    if (observedTier2BootItemId === undefined) return undefined
 
     // If six non-boot equipment slots are already filled, this may be an intentional boot sell.
     if (getNonBootEquipmentItemIds(currentItemIds).length === 6) return undefined
 
-    const upgradedTier3BootItemId = getTerminalTier3BootUpgradeItemId(fallbackBootItemId)
+    const upgradedTier3BootItemId = getTerminalTier3BootUpgradeItemId(observedTier2BootItemId)
     if (upgradedTier3BootItemId === undefined) return undefined
     return appendOrReplaceInferredItem(currentItemIds, upgradedTier3BootItemId)
 }
 
+function getObservedTier2BootItemId(observedItems: Set<number> | undefined) {
+    if (!observedItems || observedItems.size === 0) return undefined
+    return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) =>
+        TIER2_BOOT_ITEM_IDS.includes(itemId) && observedItems.has(itemId)
+    )
+}
+
 function getBootItemId(itemIds: number[]) {
     return BOOT_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
+}
+
+function getTrinketItemId(itemIds: number[]) {
+    return TRINKET_ITEM_PREFERENCE_ORDER.find((itemId) => itemIds.includes(itemId))
+}
+
+type TrinketRestoreResult = {
+    itemIds: number[],
+    inferredHeraldCapture: boolean,
+}
+
+function restoreMissingTrinketOnUnexpectedMissingSlot(
+    itemIds: number[],
+    observedItems: Set<number> | undefined,
+    lastKnownTrinketItemId: number | undefined,
+    elapsedGameTimeMs: number | undefined,
+): TrinketRestoreResult {
+    const currentTrinketItemId = getTrinketItemId(itemIds)
+    if (currentTrinketItemId !== undefined) {
+        return { itemIds, inferredHeraldCapture: false }
+    }
+
+    const observedTrinketItemId = getObservedTrinketItemId(observedItems)
+    const fallbackTrinketItemId = lastKnownTrinketItemId || observedTrinketItemId
+    if (fallbackTrinketItemId !== undefined) {
+        const restoredItems = appendOrReplaceInferredItem(itemIds, fallbackTrinketItemId)
+        const restoredTrinketItemId = getTrinketItemId(restoredItems)
+        const inferredHeraldCapture = restoredTrinketItemId === fallbackTrinketItemId
+        return {
+            itemIds: restoredItems,
+            inferredHeraldCapture,
+        }
+    }
+
+    const shouldInferDefaultStealthWard =
+        Number.isFinite(elapsedGameTimeMs)
+        && Number(elapsedGameTimeMs) >= TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS
+        && !hasObservedTrinketItem(observedItems)
+    if (!shouldInferDefaultStealthWard) {
+        return { itemIds, inferredHeraldCapture: false }
+    }
+
+    return {
+        itemIds: appendOrReplaceInferredItem(itemIds, 3340),
+        inferredHeraldCapture: false,
+    }
+}
+
+function getObservedTrinketItemId(observedItems: Set<number> | undefined) {
+    if (!observedItems || observedItems.size === 0) return undefined
+    return TRINKET_ITEM_PREFERENCE_ORDER.find((itemId) => observedItems.has(itemId))
+}
+
+function hasObservedTrinketItem(observedItems: Set<number> | undefined) {
+    if (!observedItems || observedItems.size === 0) return false
+    return TRINKET_ITEM_IDS.some((itemId) => observedItems.has(itemId))
 }
 
 function resolveKnownBootItemId(previousBootItemId: number | undefined, lastKnownBootItemId: number | undefined) {
@@ -1696,7 +1795,11 @@ function getStableObservedBootItemId(
             return undefined
         }
 
-        if (knownBootItemId === 1001 && observedBootItemIds.includes(1001)) return 1001
+        if (knownBootItemId === 1001) {
+            const observedUpgradedBootItemIds = observedBootItemIds.filter((itemId) => itemId !== 1001)
+            if (observedUpgradedBootItemIds.length > 0) return observedUpgradedBootItemIds[0]
+            if (observedBootItemIds.includes(1001)) return 1001
+        }
     }
 
     const observedBootFamilyAnchorItemIds = new Set<number>()
@@ -1944,6 +2047,15 @@ function getTimestampValue(timestamp: string | Date | undefined) {
     if (!timestamp) return 0
     const value = new Date(timestamp).getTime()
     return Number.isFinite(value) ? value : 0
+}
+
+function getElapsedGameTimeMs(startTimestamp: string | Date | undefined, currentTimestamp: string | Date | undefined) {
+    const startTimestampValue = getTimestampValue(startTimestamp)
+    const currentTimestampValue = getTimestampValue(currentTimestamp)
+    if (startTimestampValue === 0 || currentTimestampValue === 0 || currentTimestampValue < startTimestampValue) {
+        return undefined
+    }
+    return currentTimestampValue - startTimestampValue
 }
 
 function normalizeTimestamp(timestamp: string | Date | undefined) {

@@ -8,6 +8,7 @@ import { EventDetails, GameMetadata, Record, TeamStats, WindowFrame, WindowParti
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
+import { ReactComponent as HeraldSVG } from '../../assets/images/herald-icon.svg';
 import { ReactComponent as KillSVG } from '../../assets/images/kill.svg';
 import { ReactComponent as GoldSVG } from '../../assets/images/gold.svg';
 import { ReactComponent as InhibitorSVG } from '../../assets/images/inhibitor.svg';
@@ -36,10 +37,11 @@ type Props = {
     records?: Record[],
     championNameMap: {
         [championId: string]: string;
-    }
+    },
+    inferredHeraldKillCounts?: { blue: number, red: number },
 }
 
-export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap }: Props) {
+export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const chatData = localStorage.getItem("chat");
@@ -361,8 +363,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </div>
                     </div>
                     <div className="live-game-stats-header-status">
-                        {HeaderStats(firstWindowFrame.blueTeam, 'blue-team')}
-                        {HeaderStats(firstWindowFrame.redTeam, 'red-team')}
+                        {HeaderStats(firstWindowFrame.blueTeam, 'blue-team', inferredHeraldKillCounts.blue)}
+                        {HeaderStats(firstWindowFrame.redTeam, 'red-team', inferredHeraldKillCounts.red)}
                     </div>
                     <div className="live-game-stats-header-gold">
                         <div className="blue-team" style={{ flex: goldPercentage.goldBluePercentage }} />
@@ -590,7 +592,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     );
 }
 
-function HeaderStats(teamStats: TeamStats, teamColor: string) {
+function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKills: number) {
     return (
         <div className={teamColor}>
             <div className="team-stats inhibitors">
@@ -600,6 +602,10 @@ function HeaderStats(teamStats: TeamStats, teamColor: string) {
             <div className="team-stats barons">
                 <BaronSVG />
                 {teamStats.barons}
+            </div>
+            <div className="team-stats heralds">
+                <HeraldSVG />
+                {inferredHeraldKills}
             </div>
             <div className="team-stats towers">
                 <TowerSVG />

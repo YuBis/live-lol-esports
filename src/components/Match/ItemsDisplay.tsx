@@ -75,17 +75,34 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
             }
 
 
-            {trinket !== -1 ?
-                (
-                    <div className="player-stats-item">
+            {trinket !== -1 ? (() => {
+                const trinketElementId = `item_${participantId}_trinket_${trinket}`
+                const trinketItem = items[trinket]
+                if (!trinketItem) {
+                    return (
+                        <div className="player-stats-item">
+                            <img alt="" src={`${itemsUrlWithPatchVersion}${trinket}.png`} />
+                        </div>
+                    )
+                }
+
+                return (
+                    <div className="player-stats-item"
+                        id={trinketElementId}
+                        onMouseEnter={() => showItemDescription(trinketElementId)}
+                        onMouseLeave={() => hideItemDescription(trinketElementId)}
+                        onTouchStart={() => showItemDescription(trinketElementId)}
+                        onTouchEnd={() => hideItemDescription(trinketElementId)}>
+                        <div className="itemDescription">
+                            <div className="itemName">{trinketItem.name}</div>
+                            {formatItemDescription(trinketItem)}
+                        </div>
                         <img alt="" src={`${itemsUrlWithPatchVersion}${trinket}.png`} />
                     </div>
                 )
-                :
-                (
-                    <div className="player-stats-item empty" />
-                )
-            }
+            })() : (
+                <div className="player-stats-item empty" />
+            )}
 
         </div>
     );
@@ -274,6 +291,7 @@ function getItemTotalGold(itemId: number, items: Item[]) {
 }
 
 function formatItemDescription(item: Item) {
+    if (!item.description) return null
     let splitDescription = item.description.split(`<li>`).join(`<br>`).split(`<br>`)
     return splitDescription.map(description => {
         return (

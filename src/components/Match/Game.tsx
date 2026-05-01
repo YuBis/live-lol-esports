@@ -9,6 +9,7 @@ import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, R
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
+import { ReactComponent as HeraldSVG } from '../../assets/images/herald-icon.svg';
 import { ReactComponent as KillSVG } from '../../assets/images/kill.svg';
 import { ReactComponent as InhibitorSVG } from '../../assets/images/inhibitor.svg';
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
@@ -45,6 +46,7 @@ type Props = {
         [championId: string]: string;
     },
     backfillStatus?: `idle` | `running` | `completed`,
+    inferredHeraldKillCounts?: { blue: number, red: number },
 }
 
 enum GameState {
@@ -53,7 +55,7 @@ enum GameState {
     finished = "game ended"
 }
 
-export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle` }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -436,8 +438,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </div>
                     </div>
                     <div className="live-game-stats-header-status">
-                        {HeaderStats(lastWindowFrame.blueTeam, 'blue-team')}
-                        {HeaderStats(lastWindowFrame.redTeam, 'red-team')}
+                        {HeaderStats(lastWindowFrame.blueTeam, 'blue-team', inferredHeraldKillCounts.blue)}
+                        {HeaderStats(lastWindowFrame.redTeam, 'red-team', inferredHeraldKillCounts.red)}
                     </div>
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
@@ -700,7 +702,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     );
 }
 
-function HeaderStats(teamStats: TeamStats, teamColor: string) {
+function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKills: number) {
     return (
         <div className={teamColor}>
             <div className="team-stats inhibitors">
@@ -710,6 +712,10 @@ function HeaderStats(teamStats: TeamStats, teamColor: string) {
             <div className="team-stats barons">
                 <BaronSVG />
                 {teamStats.barons}
+            </div>
+            <div className="team-stats heralds">
+                <HeraldSVG />
+                {inferredHeraldKills}
             </div>
             <div className="team-stats towers">
                 <TowerSVG />

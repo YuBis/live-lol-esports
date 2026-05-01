@@ -61,10 +61,11 @@ span.mini-current-health {
 }
 
 .live-game-kill-score {
-    display: flex;
+    display: grid;
+    grid-template-columns: 3ch auto 3ch;
     justify-content: center;
     align-items: center;
-    gap: 0.5rem;
+    column-gap: 0.5rem;
     margin-top: 0.35rem;
     font-size: 3.3rem;
     font-weight: 700;
@@ -83,10 +84,12 @@ span.mini-current-health {
 
 .live-game-kill-score .blue-team-kills {
     color: var(--blue-twitter);
+    text-align: right;
 }
 
 .live-game-kill-score .red-team-kills {
     color: var(--red);
+    text-align: left;
 }
 
 .live-game-stats-header-team-images>div {
