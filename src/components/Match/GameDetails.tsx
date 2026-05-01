@@ -27,6 +27,7 @@ function formatGameStateLabel(state: string): string {
     const normalizedState = state.toLowerCase()
     if (normalizedState === `completed`) return `종료`
     if (normalizedState === `inprogress`) return `진행 중`
-    if (normalizedState === `unstarted`) return `미진행`
+    if (normalizedState === `unstarted`) return `예정`
+    if (normalizedState === `unneeded`) return `미진행`
     return state
 }

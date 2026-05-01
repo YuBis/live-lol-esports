@@ -996,8 +996,9 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
         "paused": "일시정지",
         "finished": "종료",
         "completed": "종료",
-        "unstarted": "미진행",
-        "inProgress": "진행 중"
+        "unstarted": "예정",
+        "inProgress": "진행 중",
+        "unneeded": "미진행",
     }
 
     if (eventDetails.match.games.length === 1) return gameStates[lastWindowFrame.gameState]

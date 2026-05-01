@@ -1,3 +1,5 @@
+@import url('https://cdn.jsdelivr.net/npm/pretendard/dist/web/static/pretendard.css');
+
 * {
     margin: 0;
     padding: 0;
@@ -42,7 +44,10 @@ body,
 input,
 textarea,
 button {
-    font: 400 1rem 'Inter', sans-serif;
+    font-family: 'Pretendard Variable', 'Pretendard', 'Inter', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.45;
 }
 
 span,
