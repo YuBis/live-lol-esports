@@ -60,7 +60,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
-    const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number }>>(new Map())
+    const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
@@ -91,10 +91,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 if (participant.deaths > previousKda.deaths) {
                     flashCellKeys.push(`d_${participant.participantId}`)
                 }
+                if (participant.assists > previousKda.assists) {
+                    flashCellKeys.push(`a_${participant.participantId}`)
+                }
             }
             previousKdaByParticipantIdRef.current.set(participant.participantId, {
                 kills: participant.kills,
                 deaths: participant.deaths,
+                assists: participant.assists,
             })
         })
 
@@ -131,7 +135,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     return nextState
                 })
                 flashClearTimersRef.current.delete(cellKey)
-            }, 1200)
+            }, 1500)
             flashClearTimersRef.current.set(cellKey, timerId)
         })
     }, [lastWindowFrame.rfc460Timestamp, lastWindowFrame.blueTeam.participants, lastWindowFrame.redTeam.participants])
@@ -579,6 +583,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 let championDetails = lastDetailsFrame.participants[index]
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
+                                const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
@@ -619,7 +624,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className={` player-stats player-stats-kda ${deathFlashClassName}`}>{player.deaths}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.assists}</div>
+                                            <div className={` player-stats player-stats-kda ${assistFlashClassName}`}>{player.assists}</div>
                                         </td>
                                         <td>
                                             <div className="player-stats player-stats-gold">
@@ -678,6 +683,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 let championDetails = lastDetailsFrame.participants[index + 5]
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
+                                const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
 
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
@@ -718,7 +724,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className={` player-stats player-stats-kda ${deathFlashClassName}`}>{player.deaths}</div>
                                         </td>
                                         <td>
-                                            <div className=" player-stats player-stats-kda">{player.assists}</div>
+                                            <div className={` player-stats player-stats-kda ${assistFlashClassName}`}>{player.assists}</div>
                                         </td>
                                         <td>
                                             <div className="player-stats player-stats-gold">

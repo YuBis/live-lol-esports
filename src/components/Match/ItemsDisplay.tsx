@@ -118,6 +118,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
 const TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const BOOT_ITEM_IDS = [
     1001,
+    2422,
     3005,
     3006,
     3008,

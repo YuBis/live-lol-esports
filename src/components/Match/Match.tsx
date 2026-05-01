@@ -70,7 +70,6 @@ const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
-const HERALD_INFERENCE_MIN_GAME_TIME_MS = 8 * 60 * 1000
 const MAGICAL_FOOTWEAR_RUNE_ID = 8304
 const SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID = 2422
 const DEFAULT_MAGICAL_FOOTWEAR_TIMING: MagicalFootwearTiming = {
@@ -1568,7 +1567,7 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
     observedItems: Set<number> | undefined,
     lastKnownTrinketItemId: number | undefined,
     elapsedGameTimeMs: number | undefined,
-    participantRole: string | undefined,
+    _participantRole: string | undefined,
 ): TrinketRestoreResult {
     const currentTrinketItemId = getTrinketItemId(itemIds)
     if (currentTrinketItemId !== undefined) {
@@ -1587,20 +1586,14 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
             && previousTrinketItemId === fallbackTrinketItemId
             && !itemIds.includes(previousTrinketItemId)
         const droppedItemIds = getDroppedItemIds(previousItemIds, itemIds)
-        const hasPrimaryTrinketDropPattern =
+        const hasTrinketDrop =
             previousTrinketItemId !== undefined
-            && droppedItemIds.includes(previousTrinketItemId)
-            && droppedItemIds.length <= 2
-        const isLikelyHeraldCarrierRole = participantRole?.toLowerCase() === `jungle` || participantRole?.toLowerCase() === `top`
-        const isAfterHeraldSpawnWindow =
-            Number.isFinite(elapsedGameTimeMs)
-            && Number(elapsedGameTimeMs) >= HERALD_INFERENCE_MIN_GAME_TIME_MS
+            && droppedItemIds.length === 1
+            && droppedItemIds[0] === previousTrinketItemId
         const inferredHeraldCapture =
             restoredTrinketItemId === fallbackTrinketItemId
             && trinketDisappearedBetweenFrames
-            && hasPrimaryTrinketDropPattern
-            && isLikelyHeraldCarrierRole
-            && isAfterHeraldSpawnWindow
+            && hasTrinketDrop
         return {
             itemIds: restoredItems,
             inferredHeraldCapture,
@@ -1635,6 +1628,14 @@ function resolveKnownBootItemId(previousBootItemId: number | undefined, lastKnow
     if (previousBootItemId === undefined) return lastKnownBootItemId
     if (lastKnownBootItemId === undefined) return previousBootItemId
     if (previousBootItemId === lastKnownBootItemId) return previousBootItemId
+
+    // Prefer real purchased boots over Magical Footwear snapshot once an upgrade appears.
+    if (lastKnownBootItemId === SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID && previousBootItemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID && previousBootItemId !== 1001) {
+        return previousBootItemId
+    }
+    if (previousBootItemId === SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID && lastKnownBootItemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID && lastKnownBootItemId !== 1001) {
+        return lastKnownBootItemId
+    }
 
     if (previousBootItemId === 1001 && lastKnownBootItemId !== 1001) return lastKnownBootItemId
     if (lastKnownBootItemId === 1001 && previousBootItemId !== 1001) return previousBootItemId
@@ -1722,6 +1723,15 @@ function normalizeSuspiciousBootRegression(
     const knownBootItemId = resolveKnownBootItemId(getBootItemId(previousItemIds), lastKnownBootItemId)
     if (knownBootItemId === undefined || knownBootItemId === currentBootItemId) return itemIds
 
+    // Do not force-regress a newly observed upgraded boot back to Magical Footwear.
+    if (
+        knownBootItemId === SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID
+        && currentBootItemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID
+        && currentBootItemId !== 1001
+    ) {
+        return itemIds
+    }
+
     const knownFamilyAnchorItemId = getBootFamilyAnchorItemId(knownBootItemId)
     const currentFamilyAnchorItemId = getBootFamilyAnchorItemId(currentBootItemId)
 
@@ -1745,6 +1755,11 @@ function getPreferredBootItemIdForNormalization(
     lastKnownBootItemId: number | undefined,
     observedItems: Set<number> | undefined,
 ) {
+    const nonMagicalCurrentBootItemIds = currentBootItemIds.filter((itemId) => itemId !== SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID)
+    if (currentBootItemIds.includes(SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID) && nonMagicalCurrentBootItemIds.length > 0) {
+        return getBootItemId(nonMagicalCurrentBootItemIds)
+    }
+
     const previousBootItemId = getBootItemId(previousItemIds)
     const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
     if (knownBootItemId !== undefined && currentBootItemIds.includes(knownBootItemId)) return knownBootItemId
