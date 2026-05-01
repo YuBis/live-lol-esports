@@ -54,6 +54,8 @@ type ObservedDetailsItemsByParticipantId = Map<number, Set<number>>
 type ParticipantRoleByParticipantId = Map<number, string>
 type LastKnownBootItemByParticipantId = Map<number, number>
 type LastKnownTrinketItemByParticipantId = Map<number, number>
+type PendingHeraldTrinketDropCountByParticipantId = Map<number, number>
+type HasObservedRawTrinketByParticipantId = Map<number, boolean>
 type BackfillStatus = `idle` | `running` | `completed`
 type InferredHeraldByTeam = {
     blue: boolean,
@@ -112,6 +114,8 @@ export function Match({ match }: MatchRouteProps) {
     const participantRoleByParticipantIdRef = useRef<ParticipantRoleByParticipantId>(new Map())
     const lastKnownBootByParticipantIdRef = useRef<LastKnownBootItemByParticipantId>(new Map())
     const lastKnownTrinketByParticipantIdRef = useRef<LastKnownTrinketItemByParticipantId>(new Map())
+    const pendingHeraldTrinketDropCountByParticipantIdRef = useRef<PendingHeraldTrinketDropCountByParticipantId>(new Map())
+    const hasObservedRawTrinketByParticipantIdRef = useRef<HasObservedRawTrinketByParticipantId>(new Map())
     const magicalFootwearTimingRef = useRef<MagicalFootwearTiming>(DEFAULT_MAGICAL_FOOTWEAR_TIMING)
     const inferredHeraldByTeamRef = useRef<InferredHeraldByTeam>({ blue: false, red: false })
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
@@ -121,6 +125,27 @@ export function Match({ match }: MatchRouteProps) {
     const championNamePatchRef = useRef<string>(``);
 
     useEffect(() => {
+        // Reset volatile per-game caches immediately on match route changes.
+        matchEventDetailsRef.current = undefined
+        currentTimestampRef.current = ``
+        lastDetailsTimestampRef.current = ``
+        firstDetailsTimestampRef.current = ``
+        lastDetailsFrameRef.current = undefined
+        observedDetailsItemsRef.current = new Map()
+        participantRoleByParticipantIdRef.current = new Map()
+        lastKnownBootByParticipantIdRef.current = new Map()
+        lastKnownTrinketByParticipantIdRef.current = new Map()
+        pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
+        hasObservedRawTrinketByParticipantIdRef.current = new Map()
+        inferredHeraldByTeamRef.current = { blue: false, red: false }
+        backfillStatusByGameIdRef.current = new Map()
+        activeGameIdRef.current = ``
+        firstWindowTimestampRef.current = ``
+        firstWindowReceivedRef.current = false
+        setBackfillStatus(`idle`)
+        setInferredHeraldKillCounts({ blue: 0, red: 0 })
+        setLastDetailsFrame(undefined)
+
         const initialGameIndex = getInitialGameIndex();
         if (initialGameIndex > 0) {
             currentGameIndexRef.current = initialGameIndex
@@ -134,9 +159,10 @@ export function Match({ match }: MatchRouteProps) {
 
             let newGameIndex = getGameIndex(matchEventDetails)
             let gameId = matchEventDetails.match.games[newGameIndex - 1].id
-            if (currentGameIndexRef.current !== newGameIndex || !firstWindowReceivedRef.current) {
+            const hasGameIdChanged = activeGameIdRef.current !== `` && activeGameIdRef.current !== gameId
+            if (currentGameIndexRef.current !== newGameIndex || hasGameIdChanged || !firstWindowReceivedRef.current) {
                 currentTimestampRef.current = ``
-                if (currentGameIndexRef.current !== newGameIndex) {
+                if (currentGameIndexRef.current !== newGameIndex || hasGameIdChanged) {
                     lastDetailsTimestampRef.current = ``
                     firstDetailsTimestampRef.current = ``
                     lastDetailsFrameRef.current = undefined
@@ -144,6 +170,8 @@ export function Match({ match }: MatchRouteProps) {
                     participantRoleByParticipantIdRef.current = new Map()
                     lastKnownBootByParticipantIdRef.current = new Map()
                     lastKnownTrinketByParticipantIdRef.current = new Map()
+                    pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
+                    hasObservedRawTrinketByParticipantIdRef.current = new Map()
                     inferredHeraldByTeamRef.current = { blue: false, red: false }
                     setInferredHeraldKillCounts({ blue: 0, red: 0 })
                     backfillStatusByGameIdRef.current = new Map()
@@ -314,6 +342,8 @@ export function Match({ match }: MatchRouteProps) {
                     lastKnownTrinketByParticipantIdRef.current,
                     getElapsedGameTimeMs(firstWindowTimestampRef.current, incomingLastFrame.rfc460Timestamp),
                     inferredHeraldByTeamRef.current,
+                    pendingHeraldTrinketDropCountByParticipantIdRef.current,
+                    hasObservedRawTrinketByParticipantIdRef.current,
                     magicalFootwearTimingRef.current,
                 )
                 setInferredHeraldKillCounts({
@@ -916,6 +946,8 @@ function stabilizeDetailsFrame(
     lastKnownTrinketByParticipantId?: LastKnownTrinketItemByParticipantId,
     elapsedGameTimeMs?: number,
     inferredHeraldByTeam?: InferredHeraldByTeam,
+    pendingHeraldTrinketDropCountByParticipantId?: PendingHeraldTrinketDropCountByParticipantId,
+    hasObservedRawTrinketByParticipantId?: HasObservedRawTrinketByParticipantId,
     magicalFootwearTiming: MagicalFootwearTiming = DEFAULT_MAGICAL_FOOTWEAR_TIMING,
 ): DetailsFrame {
     const previousItemsByParticipantId = new Map<number, number[]>()
@@ -931,9 +963,13 @@ function stabilizeDetailsFrame(
         const participantRole = participantRoleByParticipantId?.get(participant.participantId)
         const lastKnownBootItemId = lastKnownBootByParticipantId?.get(participant.participantId)
         const lastKnownTrinketItemId = lastKnownTrinketByParticipantId?.get(participant.participantId)
+        const hadObservedRawTrinketBeforeFrame = hasObservedRawTrinketByParticipantId?.get(participant.participantId) === true
         const observedItems = getObservedItemsForParticipant(observedItemsByParticipantId, participant.participantId)
         recordObservedItems(observedItems, previousItems)
         recordObservedItems(observedItems, currentItems)
+        if (getTrinketItemId(currentItems) !== undefined && hasObservedRawTrinketByParticipantId) {
+            hasObservedRawTrinketByParticipantId.set(participant.participantId, true)
+        }
 
         let stabilizedItems = currentItems
         if (currentItems.length === 0 && previousItems.length > 0) {
@@ -995,6 +1031,9 @@ function stabilizeDetailsFrame(
             lastKnownTrinketItemId,
             elapsedGameTimeMs,
             participantRole,
+            participant.participantId,
+            pendingHeraldTrinketDropCountByParticipantId || new Map(),
+            hadObservedRawTrinketBeforeFrame,
         )
         const trinketRestoredItems = trinketRestoreResult.itemIds
         if (inferredHeraldByTeam && trinketRestoreResult.inferredHeraldCapture) {
@@ -1595,9 +1634,13 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
     lastKnownTrinketItemId: number | undefined,
     elapsedGameTimeMs: number | undefined,
     _participantRole: string | undefined,
+    participantId: number,
+    pendingHeraldTrinketDropCountByParticipantId: PendingHeraldTrinketDropCountByParticipantId,
+    hadObservedRawTrinketBeforeFrame: boolean,
 ): TrinketRestoreResult {
     const currentTrinketItemId = getTrinketItemId(itemIds)
     if (currentTrinketItemId !== undefined) {
+        pendingHeraldTrinketDropCountByParticipantId.delete(participantId)
         return { itemIds, inferredHeraldCapture: false }
     }
 
@@ -1617,10 +1660,21 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
             previousTrinketItemId !== undefined
             && droppedItemIds.length === 1
             && droppedItemIds[0] === previousTrinketItemId
-        const inferredHeraldCapture =
+        const isPendingHeraldTrinketDropCandidate =
             restoredTrinketItemId === fallbackTrinketItemId
             && trinketDisappearedBetweenFrames
             && hasTrinketDrop
+        const previousPendingCount = pendingHeraldTrinketDropCountByParticipantId.get(participantId) || 0
+        const nextPendingCount = isPendingHeraldTrinketDropCandidate ? previousPendingCount + 1 : 0
+        if (nextPendingCount > 0) {
+            pendingHeraldTrinketDropCountByParticipantId.set(participantId, nextPendingCount)
+        } else {
+            pendingHeraldTrinketDropCountByParticipantId.delete(participantId)
+        }
+        const inferredHeraldCapture =
+            isPendingHeraldTrinketDropCandidate
+            && hadObservedRawTrinketBeforeFrame
+            && nextPendingCount >= 2
         return {
             itemIds: restoredItems,
             inferredHeraldCapture,
@@ -1632,9 +1686,11 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
         && Number(elapsedGameTimeMs) >= TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS
         && !hasObservedTrinketItem(observedItems)
     if (!shouldInferDefaultStealthWard) {
+        pendingHeraldTrinketDropCountByParticipantId.delete(participantId)
         return { itemIds, inferredHeraldCapture: false }
     }
 
+    pendingHeraldTrinketDropCountByParticipantId.delete(participantId)
     return {
         itemIds: appendOrReplaceInferredItem(itemIds, 3340),
         inferredHeraldCapture: false,
