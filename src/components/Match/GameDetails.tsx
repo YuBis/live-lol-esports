@@ -15,7 +15,7 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
             <div className='game-selector'>
                 {eventDetails.match.games.map((game) => {
                     return <Link className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
-                        <span className={`#/live/${game.state}`}>Game {game.number} - {capitalizeFirstLetter(game.state)}</span>
+                        <span className={`#/live/${game.state}`}>Game {game.number} - {formatGameStateLabel(game.state)}</span>
                     </Link>
                 })}
 
@@ -23,6 +23,10 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
     )
 }
 
-function capitalizeFirstLetter(string: string): string {
-    return string.charAt(0).toUpperCase() + string.slice(1);
+function formatGameStateLabel(state: string): string {
+    const normalizedState = state.toLowerCase()
+    if (normalizedState === `completed`) return `종료`
+    if (normalizedState === `inprogress`) return `진행 중`
+    if (normalizedState === `unstarted`) return `미진행`
+    return state
 }
