@@ -662,9 +662,9 @@ svg.player-champion {
 
 .status-live-game-card-table th[title="gold"],
 .status-live-game-card-table .player-stats-row td:last-child {
-    width: 15ch;
-    min-width: 15ch;
-    max-width: 15ch;
+    width: 12ch;
+    min-width: 12ch;
+    max-width: 12ch;
 }
 
 .status-live-game-card-table .player-stats-row th:first-child {
@@ -694,19 +694,13 @@ svg.player-champion {
     width: 100%;
     font-variant-numeric: tabular-nums;
     overflow: hidden;
-}
-
-.player-stats-gold-lead {
-    color: var(--green-positive);
-    font-weight: 500;
     white-space: nowrap;
-    font-size: 10px;
-    display: inline-block;
-    min-width: 4.25rem;
+    text-overflow: ellipsis;
 }
 
-.player-stats-gold-lead.placeholder {
-    visibility: hidden;
+.player-stats-gold-diff {
+    display: inline-block;
+    white-space: nowrap;
 }
 
 .chatDiv, .streamDiv {

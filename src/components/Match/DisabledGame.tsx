@@ -456,8 +456,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
-                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                    {getFormattedGoldDifference(goldDifference)}
                                                 </span>
                                             </div>
                                         </td>
@@ -546,8 +546,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
-                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                    {getFormattedGoldDifference(goldDifference)}
                                                 </span>
                                             </div>
                                         </td>
@@ -682,6 +682,6 @@ function getGoldPercentage(goldBlue: number, goldRed: number) {
 
 function getFormattedGoldDifference(goldDifference: number) {
     const formattedDifference = Number(Math.abs(goldDifference)).toLocaleString("en-us")
-    const sign = goldDifference > 0 ? `+` : `-`
+    const sign = goldDifference > 0 ? `+` : goldDifference < 0 ? `-` : ``
     return `(${sign}${formattedDifference})`
 }

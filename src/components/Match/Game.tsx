@@ -61,10 +61,19 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [videoParameter, setVideoParameter] = useState<string>();
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number }>>(new Map())
+    const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
+
+    useEffect(() => {
+        const flashClearTimers = flashClearTimersRef.current
+        return () => {
+            flashClearTimers.forEach((timerId) => clearTimeout(timerId))
+            flashClearTimers.clear()
+        }
+    }, [])
 
     useEffect(() => {
         const flashCellKeys: string[] = []
@@ -94,22 +103,37 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         setKdaFlashByCell((previousState) => {
             const nextState = { ...previousState }
             flashCellKeys.forEach((cellKey) => {
-                nextState[cellKey] = true
+                nextState[cellKey] = false
             })
             return nextState
         })
 
-        const timerId = setTimeout(() => {
+        requestAnimationFrame(() => {
             setKdaFlashByCell((previousState) => {
                 const nextState = { ...previousState }
                 flashCellKeys.forEach((cellKey) => {
-                    delete nextState[cellKey]
+                    nextState[cellKey] = true
                 })
                 return nextState
             })
-        }, 1200)
+        })
 
-        return () => clearTimeout(timerId)
+        flashCellKeys.forEach((cellKey) => {
+            const existingTimerId = flashClearTimersRef.current.get(cellKey)
+            if (existingTimerId) {
+                clearTimeout(existingTimerId)
+            }
+            const timerId = setTimeout(() => {
+                setKdaFlashByCell((previousState) => {
+                    if (!previousState[cellKey]) return previousState
+                    const nextState = { ...previousState }
+                    delete nextState[cellKey]
+                    return nextState
+                })
+                flashClearTimersRef.current.delete(cellKey)
+            }, 1200)
+            flashClearTimersRef.current.set(cellKey, timerId)
+        })
     }, [lastWindowFrame.rfc460Timestamp, lastWindowFrame.blueTeam.participants, lastWindowFrame.redTeam.participants])
 
     useEffect(() => {
@@ -600,8 +624,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
-                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                    {getFormattedGoldDifference(goldDifference)}
                                                 </span>
                                             </div>
                                         </td>
@@ -699,8 +723,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <td>
                                             <div className="player-stats player-stats-gold">
                                                 <span>{Number(player.totalGold).toLocaleString('en-us')}</span>
-                                                <span className={`player-stats-gold-lead ${goldDifference !== 0 ? (goldDifference > 0 ? `player-gold-positive` : `player-gold-negative`) : `placeholder`}`}>
-                                                    {goldDifference !== 0 ? getFormattedGoldDifference(goldDifference) : `(0)`}
+                                                <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                    {getFormattedGoldDifference(goldDifference)}
                                                 </span>
                                             </div>
                                         </td>
@@ -893,7 +917,7 @@ function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
 
 function getFormattedGoldDifference(goldDifference: number) {
     const formattedDifference = Number(Math.abs(goldDifference)).toLocaleString("en-us")
-    const sign = goldDifference > 0 ? `+` : `-`
+    const sign = goldDifference > 0 ? `+` : goldDifference < 0 ? `-` : ``
     return `(${sign}${formattedDifference})`
 }
 
