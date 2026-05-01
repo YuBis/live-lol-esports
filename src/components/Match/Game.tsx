@@ -564,8 +564,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
+                                                    <span className=" player-champion-info-level">{player.level}</span>
                                                 </div>
-                                                <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
                                                     <span>{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
                                                     <span
@@ -664,8 +664,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
+                                                    <span className=" player-champion-info-level">{player.level}</span>
                                                 </div>
-                                                <span className=" player-champion-info-level">{player.level}</span>
                                                 <div className=" player-champion-info-name">
                                                     <span>{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
                                                     <span className=" player-card-player-name">{getChampionDisplayName(gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId)}</span>

@@ -71,7 +71,6 @@ const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
 const HERALD_INFERENCE_MIN_GAME_TIME_MS = 8 * 60 * 1000
-const HERALD_INFERENCE_MAX_GAME_TIME_MS = 25 * 60 * 1000
 const MAGICAL_FOOTWEAR_RUNE_ID = 8304
 const SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID = 2422
 const DEFAULT_MAGICAL_FOOTWEAR_TIMING: MagicalFootwearTiming = {
@@ -1588,23 +1587,20 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
             && previousTrinketItemId === fallbackTrinketItemId
             && !itemIds.includes(previousTrinketItemId)
         const droppedItemIds = getDroppedItemIds(previousItemIds, itemIds)
-        const hasOnlyTrinketDrop =
+        const hasPrimaryTrinketDropPattern =
             previousTrinketItemId !== undefined
-            && droppedItemIds.length === 1
-            && droppedItemIds[0] === previousTrinketItemId
-        const hasNoUnexpectedInventoryExpansion = isSubsetWithCounts(itemIds, previousItemIds)
+            && droppedItemIds.includes(previousTrinketItemId)
+            && droppedItemIds.length <= 2
         const isLikelyHeraldCarrierRole = participantRole?.toLowerCase() === `jungle` || participantRole?.toLowerCase() === `top`
-        const isWithinHeraldInferenceWindow =
+        const isAfterHeraldSpawnWindow =
             Number.isFinite(elapsedGameTimeMs)
             && Number(elapsedGameTimeMs) >= HERALD_INFERENCE_MIN_GAME_TIME_MS
-            && Number(elapsedGameTimeMs) <= HERALD_INFERENCE_MAX_GAME_TIME_MS
         const inferredHeraldCapture =
             restoredTrinketItemId === fallbackTrinketItemId
             && trinketDisappearedBetweenFrames
-            && hasOnlyTrinketDrop
-            && hasNoUnexpectedInventoryExpansion
+            && hasPrimaryTrinketDropPattern
             && isLikelyHeraldCarrierRole
-            && isWithinHeraldInferenceWindow
+            && isAfterHeraldSpawnWindow
         return {
             itemIds: restoredItems,
             inferredHeraldCapture,
