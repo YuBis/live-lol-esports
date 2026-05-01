@@ -626,12 +626,11 @@ svg.player-champion {
 
 .table-top-row-vida {
     height: 28px;
-    width: 10.8rem;
 }
 
 .table-top-row-items {
     height: 28px;
-    width: 14rem;
+    width: 13.5rem;
 }
 
 .table-top-row {
@@ -640,13 +639,32 @@ svg.player-champion {
 
 .status-live-game-card-table th[title="creep score"],
 .status-live-game-card-table .player-stats-row td:nth-child(4) {
-    width: 2.25rem;
-    min-width: 2.25rem;
+    width: 4ch;
+    min-width: 4ch;
+    max-width: 4ch;
 }
 
+.status-live-game-card-table th.player-stats-kda,
+.status-live-game-card-table .player-stats-row td:nth-child(5),
+.status-live-game-card-table .player-stats-row td:nth-child(6),
+.status-live-game-card-table .player-stats-row td:nth-child(7) {
+    width: 3ch;
+    min-width: 3ch;
+    max-width: 3ch;
+}
+
+.status-live-game-card-table th[title="items"],
+.status-live-game-card-table .player-stats-row td:nth-child(3) {
+    width: 13.5rem;
+    min-width: 13.5rem;
+    max-width: 13.5rem;
+}
+
+.status-live-game-card-table th[title="gold"],
 .status-live-game-card-table .player-stats-row td:last-child {
-    width: 7.5rem;
-    min-width: 7.5rem;
+    width: 15ch;
+    min-width: 15ch;
+    max-width: 15ch;
 }
 
 .status-live-game-card-table .player-stats-row th:first-child {
@@ -673,6 +691,9 @@ svg.player-champion {
     gap: 2px;
     font-size: 11px;
     padding: 0px 4px;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
 }
 
 .player-stats-gold-lead {
@@ -752,12 +773,12 @@ svg.player-champion {
 }
 
 .player-stats-kda-flash-kill {
-    animation: kda-flash-kill 1s ease-out;
+    animation: kda-flash-kill 1.2s ease-out;
     border-radius: 4px;
 }
 
 .player-stats-kda-flash-death {
-    animation: kda-flash-death 1s ease-out;
+    animation: kda-flash-death 1.2s ease-out;
     border-radius: 4px;
 }
 
@@ -787,6 +808,9 @@ svg.player-champion {
 
 .player-stats-items {
     height: 28px;
+    width: 13.5rem;
+    min-width: 13.5rem;
+    max-width: 13.5rem;
 
     display: flex;
     justify-content: center;
@@ -798,7 +822,8 @@ svg.player-champion {
 }
 
 .player-stats-item {
-    flex: 1;
+    flex: 0 0 26px;
+    width: 26px;
 
     display: flex;
     align-items: center;

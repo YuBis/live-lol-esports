@@ -107,7 +107,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 })
                 return nextState
             })
-        }, 500)
+        }, 1200)
 
         return () => clearTimeout(timerId)
     }, [lastWindowFrame.rfc460Timestamp, lastWindowFrame.blueTeam.participants, lastWindowFrame.redTeam.participants])
