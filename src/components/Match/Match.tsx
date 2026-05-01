@@ -955,7 +955,7 @@ function sanitizeItemIds(itemIds: number[] | undefined) {
     return itemIds.filter((itemId) => Number.isFinite(itemId) && itemId > 0)
 }
 
-const TRINKET_ITEM_IDS = [3340, 3363, 3364]
+const TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055]
 const MAX_INVENTORY_ITEM_SLOTS = 8
 
@@ -1155,7 +1155,8 @@ function inferTearLineUpgradeFromComponentDrop(
     const selectedBranch = selectTearLineUpgradeInferenceBranch(candidateBranches, droppedItemIds, observedItems, participant)
     if (!selectedBranch) return currentItemIds
 
-    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems)
+    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems, currentItemIds)
+    if (targetItemId === undefined) return currentItemIds
     return appendOrReplaceInferredItem(currentItemIds, targetItemId)
 }
 
@@ -1176,7 +1177,8 @@ function inferTearLineUpgradeFromObservedHistory(
     const selectedBranch = selectTearLineUpgradeInferenceBranchFromObservedHistory(candidateBranches, observedItems, participant)
     if (!selectedBranch) return currentItemIds
 
-    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems)
+    const targetItemId = getPreferredTearLineRecoveredItemId(selectedBranch, participant, observedItems, currentItemIds)
+    if (targetItemId === undefined) return currentItemIds
     return appendOrReplaceInferredItem(currentItemIds, targetItemId)
 }
 
@@ -1327,7 +1329,16 @@ function getPreferredTearLineRecoveredItemId(
     branch: TearLineUpgradeInferenceBranch,
     participant: DetailsFrame[`participants`][number],
     observedItems: Set<number>,
+    currentItemIds: number[],
 ) {
+    const hasCurrentTear = currentItemIds.includes(TEAR_OF_THE_GODDESS_ITEM_ID)
+    const sourceWasObserved = observedItems.has(branch.sourceItemId)
+    if (hasCurrentTear && !sourceWasObserved) {
+        // Prevent speculative source-tier tear upgrades (e.g. 3003/3004/3119)
+        // while Tear is still explicitly present in the current inventory payload.
+        return undefined
+    }
+
     if (observedItems.has(branch.targetItemId)) return branch.targetItemId
     if (observedItems.has(branch.sourceItemId)) return branch.sourceItemId
 

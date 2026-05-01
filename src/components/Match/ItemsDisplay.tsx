@@ -32,13 +32,13 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
 
     let trinket = -1;
     const itemIds = dedupeConsumableItems(lastFrameItems, items)
-    const foundTrinket = itemIds.find((itemId) => TRINKET_IDS.includes(itemId))
+    const foundTrinket = itemIds.find((itemId) => isTrinketItemId(itemId, items))
     if (foundTrinket !== undefined) {
         trinket = foundTrinket
     }
 
     const itemsID = itemIds
-        .filter((itemId) => !TRINKET_IDS.includes(itemId))
+        .filter((itemId) => !isTrinketItemId(itemId, items))
         .sort((a, b) => sortItemsByGoldDesc(a, b, items))
     const constrainedItems = applyRoleNonTrinketItemLimit(itemsID, role, items)
 
@@ -98,7 +98,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
     adicionamos o id 3513 (arauto) ao seus itens
  */
 
-const TRINKET_IDS = [3340, 3363, 3364]
+const TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const BOOT_ITEM_IDS = [
     1001,
     3005,
@@ -162,6 +162,12 @@ function isConsumableItem(itemId: number, items: Item[]) {
     if (item.consumed) return true
     if (item.tags && item.tags.includes("Consumable")) return true
     return FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
+}
+
+function isTrinketItemId(itemId: number, items: Item[]) {
+    const item = items[itemId]
+    if (item?.tags && item.tags.includes("Trinket")) return true
+    return TRINKET_ITEM_IDS.includes(itemId)
 }
 
 function isInstantConsumedLikelyItem(itemId: number, _items: Item[]) {

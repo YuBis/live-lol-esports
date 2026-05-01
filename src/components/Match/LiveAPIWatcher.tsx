@@ -68,7 +68,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, gameMetadata, champ
 
     useEffect(() => {
         const soundData = localStorage.getItem("sound");
-        const isMuted = soundData === "mute";
+        const isMuted = soundData !== "unmute";
         const status = statusRef.current
 
         const toastQueue: Array<{

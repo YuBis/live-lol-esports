@@ -8,12 +8,16 @@ export function SoundToggler() {
 
     useEffect(() => {
         const soundData = localStorage.getItem("sound");
-        if(soundData) {
-            if (soundData === "mute") {
-                setToggled(false);
-            } else if (soundData === "unmute") {
-                setToggled(true)
-            }
+        if (!soundData) {
+            localStorage.setItem("sound", "mute");
+            setToggled(false);
+            return
+        }
+
+        if (soundData === "mute") {
+            setToggled(false);
+        } else if (soundData === "unmute") {
+            setToggled(true)
         }
     }, [])
 

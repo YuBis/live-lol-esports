@@ -480,6 +480,7 @@ Status dragons
     text-align: left;
     display: flex;
     align-items: center;
+    min-width: 0;
 }
 
 .player-champion-info-level {
@@ -491,17 +492,24 @@ Status dragons
     margin-left: 0.5rem;
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
+    overflow: hidden;
 }
 
 .player-champion-info-name > span:first-child {
+    display: block;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .player-card-player-name {
+    display: block;
     font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .player-champion-wrapper {
