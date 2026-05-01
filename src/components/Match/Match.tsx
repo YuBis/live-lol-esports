@@ -339,11 +339,9 @@ export function Match({ match }: MatchRouteProps) {
                 lastWindowFrame,
             )
             if (backfillStartTimestampValue === 0) {
-                if (isCompletedGame) {
-                    // Completed games may provide static window timestamps.
-                    // Avoid leaving the status in "pending" forever.
-                    updateBackfillStatus(gameId, `completed`)
-                }
+                // Keep waiting in "pending" state until timeline timestamps become available.
+                // Some refresh paths briefly return skeletal payloads before full sync catches up.
+                // Marking "completed" here prevents future retries and can freeze backfill forever.
                 return
             }
 
