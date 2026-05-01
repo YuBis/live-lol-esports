@@ -147,6 +147,7 @@ export function Match({ match }: MatchRouteProps) {
                 if (eventDetails === undefined) return undefined;
                 let newGameIndex = getGameIndex(eventDetails)
                 let gameId = eventDetails.match.games[newGameIndex - 1].id
+                activeGameIdRef.current = gameId
                 console.log(`Current Game ID: ${gameId}`)
                 console.groupCollapsed(`Event Details`)
                 console.log(eventDetails)
@@ -314,6 +315,9 @@ export function Match({ match }: MatchRouteProps) {
         }
 
         function maybeStartLiveDetailsBackfill(gameId: string, lastWindowFrame: WindowFrame) {
+            if (!activeGameIdRef.current) {
+                activeGameIdRef.current = gameId
+            }
             if (activeGameIdRef.current !== gameId) return
 
             const backfillStatus = backfillStatusByGameIdRef.current.get(gameId)
@@ -1376,7 +1380,7 @@ function restoreMidBootOnUnexpectedMissingSlot(
     const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
     const observedBootItemId = getStableObservedBootItemId(observedItems, knownBootItemId)
     if (isCompletedGame && knownBootItemId === undefined && observedBootItemId === 1001) return itemIds
-    const fallbackBootItemId = knownBootItemId || observedBootItemId
+    const fallbackBootItemId = selectPreferredMidFallbackBootItemId(knownBootItemId, observedBootItemId)
     if (fallbackBootItemId === undefined) return itemIds
 
     const inferredTier3FromTier2Drop = inferMidTier3BootFromMissingTier2(
@@ -1640,6 +1644,23 @@ function getPreferredMidRecoveredBootItemId(bootItemId: number, observedItems: S
     }
 
     return preferredBootItemId
+}
+
+function selectPreferredMidFallbackBootItemId(
+    knownBootItemId: number | undefined,
+    observedBootItemId: number | undefined,
+) {
+    if (knownBootItemId === undefined) return observedBootItemId
+    if (observedBootItemId === undefined) return knownBootItemId
+
+    if (knownBootItemId === observedBootItemId) return knownBootItemId
+    if (knownBootItemId === 1001 && observedBootItemId !== 1001) return observedBootItemId
+    if (observedBootItemId === 1001 && knownBootItemId !== 1001) return knownBootItemId
+
+    if (isBootUpgradeOf(observedBootItemId, knownBootItemId)) return observedBootItemId
+    if (isBootUpgradeOf(knownBootItemId, observedBootItemId)) return knownBootItemId
+
+    return knownBootItemId
 }
 
 function getTerminalTier3BootUpgradeItemId(sourceBootItemId: number) {
