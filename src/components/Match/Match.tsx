@@ -954,7 +954,7 @@ function stabilizeDetailsFrame(
             }
         }
 
-        const bootRestoredItems = restoreMidBootOnUnexpectedMissingSlot(
+        const midBootRestoredItems = restoreMidBootOnUnexpectedMissingSlot(
             stabilizedItems,
             previousItems,
             participant,
@@ -962,6 +962,12 @@ function stabilizeDetailsFrame(
             lastKnownBootItemId,
             observedItems,
             isCompletedGame,
+        )
+        const bootRestoredItems = restoreBottomBootOnUnexpectedMissingSlot(
+            midBootRestoredItems,
+            previousItems,
+            participantRole,
+            lastKnownBootItemId,
         )
         const inferredItems = applyAggressiveMissingItemInference(
             bootRestoredItems,
@@ -1496,6 +1502,27 @@ function restoreMidBootOnUnexpectedMissingSlot(
     return appendOrReplaceInferredItem(itemIds, preferredBootItemId)
 }
 
+function restoreBottomBootOnUnexpectedMissingSlot(
+    itemIds: number[],
+    previousItemIds: number[],
+    participantRole: string | undefined,
+    lastKnownBootItemId: number | undefined,
+) {
+    if (!isBottomRole(participantRole)) return itemIds
+    if (getBootItemId(itemIds) !== undefined) return itemIds
+
+    const previousBootItemId = getBootItemId(previousItemIds)
+    if (previousBootItemId === undefined) return itemIds
+    if (!isBottomRecoverableBootItemId(previousBootItemId)) return itemIds
+
+    const knownBootItemId = resolveKnownBootItemId(previousBootItemId, lastKnownBootItemId)
+    const fallbackBootItemId = selectPreferredBottomFallbackBootItemId(previousBootItemId, knownBootItemId)
+    if (fallbackBootItemId === undefined) return itemIds
+    if (!isBottomRecoverableBootItemId(fallbackBootItemId)) return itemIds
+
+    return appendOrReplaceInferredItem(itemIds, fallbackBootItemId)
+}
+
 function inferMidTier3BootFromMissingTier2(
     currentItemIds: number[],
     observedItems: Set<number> | undefined,
@@ -1888,6 +1915,22 @@ function selectPreferredMidFallbackBootItemId(
     return knownBootItemId
 }
 
+function selectPreferredBottomFallbackBootItemId(
+    previousBootItemId: number,
+    knownBootItemId: number | undefined,
+) {
+    if (knownBootItemId === undefined) return previousBootItemId
+    if (!isBottomRecoverableBootItemId(knownBootItemId)) return previousBootItemId
+    if (knownBootItemId === previousBootItemId) return previousBootItemId
+
+    const previousIsTier2 = TIER2_BOOT_ITEM_IDS.includes(previousBootItemId)
+    const knownIsTier2 = TIER2_BOOT_ITEM_IDS.includes(knownBootItemId)
+    if (previousIsTier2 && !knownIsTier2) return previousBootItemId
+    if (!previousIsTier2 && knownIsTier2) return knownBootItemId
+
+    return previousBootItemId
+}
+
 function getTerminalTier3BootUpgradeItemId(sourceBootItemId: number) {
     let upgradedBootItemId = sourceBootItemId
     const visitedBootItemIds = new Set<number>()
@@ -1954,6 +1997,14 @@ function getObservedBootItemIds(observedItems: Set<number> | undefined) {
 
 function isMidRole(participantRole: string | undefined) {
     return participantRole?.toLowerCase() === `mid`
+}
+
+function isBottomRole(participantRole: string | undefined) {
+    return participantRole?.toLowerCase() === `bottom`
+}
+
+function isBottomRecoverableBootItemId(itemId: number) {
+    return itemId === 1001 || itemId === SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID || TIER2_BOOT_ITEM_IDS.includes(itemId)
 }
 
 function isBootInferencePairAllowedByKnownBoot(inferencePair: MissingItemInferencePair, knownBootItemId: number | undefined) {

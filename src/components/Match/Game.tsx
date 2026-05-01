@@ -60,7 +60,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
+    const [deathTimerSecondsByParticipantId, setDeathTimerSecondsByParticipantId] = useState<{ [participantId: number]: number }>({})
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
+    const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
+    const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
     const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
@@ -76,13 +79,48 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [])
 
     useEffect(() => {
+        previousKdaByParticipantIdRef.current.clear()
+        previousVitalsByParticipantIdRef.current.clear()
+        deathTimerEndAtMsByParticipantIdRef.current.clear()
+        setKdaFlashByCell({})
+        setDeathTimerSecondsByParticipantId({})
+    }, [gameIndex, firstWindowFrame.rfc460Timestamp])
+
+    useEffect(() => {
         const flashCellKeys: string[] = []
         const participants = [
             ...lastWindowFrame.blueTeam.participants,
             ...lastWindowFrame.redTeam.participants,
         ]
+        const participantHealthByParticipantId = new Map<number, number>()
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const hasFrameTimestamp = Number.isFinite(frameTimestampMs)
+        const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
 
         participants.forEach((participant) => {
+            participantHealthByParticipantId.set(participant.participantId, participant.currentHealth)
+
+            const previousVitals = previousVitalsByParticipantIdRef.current.get(participant.participantId)
+            if (
+                previousVitals
+                && participant.deaths > previousVitals.deaths
+                && hasFrameTimestamp
+            ) {
+                const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
+                deathTimerEndAtMsByParticipantIdRef.current.set(
+                    participant.participantId,
+                    frameTimestampMs + estimatedRespawnSeconds * 1000,
+                )
+            }
+
+            if (participant.currentHealth > 0) {
+                deathTimerEndAtMsByParticipantIdRef.current.delete(participant.participantId)
+            }
+            previousVitalsByParticipantIdRef.current.set(participant.participantId, {
+                deaths: participant.deaths,
+                currentHealth: participant.currentHealth,
+            })
+
             const previousKda = previousKdaByParticipantIdRef.current.get(participant.participantId)
             if (previousKda) {
                 if (participant.kills > previousKda.kills) {
@@ -101,6 +139,31 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 assists: participant.assists,
             })
         })
+
+        if (hasFrameTimestamp) {
+            const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
+            deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
+                const currentHealth = participantHealthByParticipantId.get(participantId) || 0
+                if (currentHealth > 0) {
+                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+                    return
+                }
+
+                const remainingMs = deathTimerEndAtMs - frameTimestampMs
+                if (remainingMs <= 0) {
+                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+                    return
+                }
+
+                nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
+            })
+
+            setDeathTimerSecondsByParticipantId((previousState) =>
+                areNumericRecordValuesEqual(previousState, nextDeathTimerSecondsByParticipantId)
+                    ? previousState
+                    : nextDeathTimerSecondsByParticipantId
+            )
+        }
 
         if (flashCellKeys.length === 0) return
 
@@ -138,7 +201,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             }, 1500)
             flashClearTimersRef.current.set(cellKey, timerId)
         })
-    }, [lastWindowFrame.rfc460Timestamp, lastWindowFrame.blueTeam.participants, lastWindowFrame.redTeam.participants])
+    }, [
+        firstWindowFrame.rfc460Timestamp,
+        lastWindowFrame.rfc460Timestamp,
+        lastWindowFrame.blueTeam.participants,
+        lastWindowFrame.redTeam.participants,
+    ])
 
     useEffect(() => {
         const currentGameState: GameState = GameState[lastWindowFrame.gameState as keyof typeof GameState]
@@ -584,13 +652,16 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
+                                const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
+                                const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
                                             <div className="player-champion-info">
                                                 <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                 {getParticipantRuneTypes(championDetails, runes)}
-                                                <div className='player-champion-wrapper'>
+                                                <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
+                                                    {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
                                                     <span className=" player-champion-info-level">{player.level}</span>
@@ -684,6 +755,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
+                                const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
+                                const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
 
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
@@ -691,7 +764,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <div className="player-champion-info">
                                                 <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                 {getParticipantRuneTypes(championDetails, runes)}
-                                                <div className='player-champion-wrapper'>
+                                                <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
+                                                    {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
                                                     <span className=" player-champion-info-level">{player.level}</span>
@@ -891,6 +965,78 @@ function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
             })}
         </div>
     )
+}
+
+const SUMMONERS_RIFT_BASE_RESPAWN_SECONDS_BY_LEVEL = [
+    0,
+    10,
+    10,
+    12,
+    12,
+    14,
+    16,
+    20,
+    25,
+    28,
+    32.5,
+    35,
+    37.5,
+    40,
+    42.5,
+    45,
+    47.5,
+    50,
+    52.5,
+]
+
+function getElapsedGameTimeSeconds(startTimestamp: string, currentTimestamp: string) {
+    const startMs = Date.parse(startTimestamp)
+    const currentMs = Date.parse(currentTimestamp)
+    if (!Number.isFinite(startMs) || !Number.isFinite(currentMs)) return 0
+    return Math.max(0, Math.floor((currentMs - startMs) / 1000))
+}
+
+function getEstimatedRespawnSeconds(level: number, elapsedGameTimeSeconds: number) {
+    const boundedLevel = Math.min(18, Math.max(1, Math.floor(level)))
+    const baseRespawnSeconds = SUMMONERS_RIFT_BASE_RESPAWN_SECONDS_BY_LEVEL[boundedLevel]
+    const timeIncreaseFactor = getSummonersRiftRespawnTimeIncreaseFactor(elapsedGameTimeSeconds)
+    const estimatedRespawnSeconds = baseRespawnSeconds + baseRespawnSeconds * timeIncreaseFactor
+    return Math.max(1, Math.ceil(estimatedRespawnSeconds))
+}
+
+function getSummonersRiftRespawnTimeIncreaseFactor(elapsedGameTimeSeconds: number) {
+    const elapsedGameMinutes = Math.max(0, elapsedGameTimeSeconds) / 60
+    if (elapsedGameMinutes < 15) return 0
+
+    if (elapsedGameMinutes < 30) {
+        const halfMinuteSteps = Math.ceil(2 * (elapsedGameMinutes - 15))
+        return Math.min(0.5, (halfMinuteSteps * 0.425) / 100)
+    }
+
+    if (elapsedGameMinutes < 45) {
+        const halfMinuteSteps = Math.ceil(2 * (elapsedGameMinutes - 30))
+        const factor = (12.75 + halfMinuteSteps * 0.3) / 100
+        return Math.min(0.5, factor)
+    }
+
+    if (elapsedGameMinutes < 55) {
+        const halfMinuteSteps = Math.ceil(2 * (elapsedGameMinutes - 45))
+        const factor = (21.75 + halfMinuteSteps * 1.45) / 100
+        return Math.min(0.5, factor)
+    }
+
+    return 0.5
+}
+
+function areNumericRecordValuesEqual(
+    left: { [key: number]: number },
+    right: { [key: number]: number },
+) {
+    const leftKeys = Object.keys(left)
+    const rightKeys = Object.keys(right)
+    if (leftKeys.length !== rightKeys.length) return false
+
+    return leftKeys.every((key) => left[Number(key)] === right[Number(key)])
 }
 
 function getInGameTime(startTime: string, currentTime: string) {

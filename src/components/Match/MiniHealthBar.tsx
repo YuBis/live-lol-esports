@@ -16,5 +16,6 @@ export function MiniHealthBar({ currentHealth, maxHealth }: Props) {
 }
 
 function percentage(partialValue: number, totalValue: number) {
+    if (totalValue <= 0) return 0
     return (100 * partialValue) / totalValue;
 }
