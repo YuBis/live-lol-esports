@@ -55,7 +55,7 @@ span.mini-current-health {
     text-align: center;
 }
 
-.live-game-stats-header-team-images>h1>div {
+.live-game-stats-header-team-images>h1>div:not(.live-game-kill-score) {
     font-weight: 500;
     font-size: 1rem;
 }
