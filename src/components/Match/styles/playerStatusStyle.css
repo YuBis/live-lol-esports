@@ -223,6 +223,11 @@ span.mini-current-health {
     justify-content: center;
 }
 
+.team-stats>svg {
+    width: 24px;
+    height: 24px;
+}
+
 .gamestate-bg-in-game {
     background-color: var(--green);
     animation: pulse 2s infinite;

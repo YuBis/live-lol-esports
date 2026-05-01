@@ -66,6 +66,7 @@ const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
+const EYE_OF_THE_HERALD_ITEM_ID = 3513
 
 export function Match({ match }: MatchRouteProps) {
     const [eventDetails, setEventDetails] = useState<EventDetails>();
@@ -962,6 +963,7 @@ function stabilizeDetailsFrame(
         const normalizedTearItems = normalizeLikelyStaleTearBaseItem(dedupedBootItems, previousItems, participant, observedItems)
         const trinketRestoreResult = restoreMissingTrinketOnUnexpectedMissingSlot(
             normalizedTearItems,
+            previousItems,
             observedItems,
             lastKnownTrinketItemId,
             elapsedGameTimeMs,
@@ -1475,6 +1477,7 @@ type TrinketRestoreResult = {
 
 function restoreMissingTrinketOnUnexpectedMissingSlot(
     itemIds: number[],
+    previousItemIds: number[],
     observedItems: Set<number> | undefined,
     lastKnownTrinketItemId: number | undefined,
     elapsedGameTimeMs: number | undefined,
@@ -1489,7 +1492,22 @@ function restoreMissingTrinketOnUnexpectedMissingSlot(
     if (fallbackTrinketItemId !== undefined) {
         const restoredItems = appendOrReplaceInferredItem(itemIds, fallbackTrinketItemId)
         const restoredTrinketItemId = getTrinketItemId(restoredItems)
-        const inferredHeraldCapture = restoredTrinketItemId === fallbackTrinketItemId
+        const previousTrinketItemId = getTrinketItemId(previousItemIds)
+        const hadPreviousTrinket = previousTrinketItemId !== undefined
+        const trinketDisappearedBetweenFrames =
+            hadPreviousTrinket
+            && previousTrinketItemId === fallbackTrinketItemId
+            && !itemIds.includes(previousTrinketItemId)
+        const hasCurrentHeraldEye = itemIds.includes(EYE_OF_THE_HERALD_ITEM_ID)
+        const hasComparableInventorySnapshot =
+            previousItemIds.length > 0
+            && itemIds.length > 0
+            && itemIds.length >= previousItemIds.length - 1
+            && itemIds.length <= previousItemIds.length
+        const inferredHeraldCapture =
+            restoredTrinketItemId === fallbackTrinketItemId
+            && trinketDisappearedBetweenFrames
+            && (hasCurrentHeraldEye || hasComparableInventorySnapshot)
         return {
             itemIds: restoredItems,
             inferredHeraldCapture,
