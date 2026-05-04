@@ -9,6 +9,7 @@ import {
     getScheduleResponse,
     getStandingsResponse,
     getDataDragonResponse,
+    getDataDragonVersionsResponse,
     getFormattedPatchVersion,
     CHAMPIONS_JSON_URL,
     ITEMS_JSON_URL,
@@ -563,13 +564,27 @@ export function Match({ match }: MatchRouteProps) {
                 setItems(response.data.data)
             })
         }
-        function getRunes(metadata: GameMetadata) {
+        async function getRunes(metadata: GameMetadata) {
             const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
-            getDataDragonResponse(RUNES_JSON_URL, formattedPatchVersion).then(response => {
-                const incomingRunes = response.data
-                setRunes(incomingRunes)
-                magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes(incomingRunes)
-            })
+            const patchMajorMinorVersion = getPatchMajorMinorVersion(metadata.patchVersion)
+            const candidateVersions = await getDataDragonRuneVersionCandidates(formattedPatchVersion, patchMajorMinorVersion)
+
+            const runeDataUrlCandidates = getRuneDataUrlCandidates(candidateVersions)
+            for (const runeDataUrlCandidate of runeDataUrlCandidates) {
+                try {
+                    const response = await getDataDragonResponse(runeDataUrlCandidate.jsonUrl, runeDataUrlCandidate.version)
+                    const incomingRunes = response.data
+                    if (!Array.isArray(incomingRunes) || incomingRunes.length === 0) continue
+                    setRunes(incomingRunes)
+                    magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes(incomingRunes)
+                    return
+                } catch (error) {
+                    console.error(`Failed to load runes for ${runeDataUrlCandidate.version} (${runeDataUrlCandidate.locale})`, error)
+                }
+            }
+
+            setRunes([])
+            magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes([])
         }
 
         function getChampionNameMap(metadata: GameMetadata) {
@@ -1004,6 +1019,61 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
     if (eventDetails.match.games.length === 1) return gameStates[lastWindowFrame.gameState]
     let gamesFinished = eventDetails.match.games.filter(game => game.state === `completed` || game.state === `unneeded`)
     return gameStates[gamesFinished.length >= eventDetails.match.games.length ? `completed` : scheduleEvent.state]
+}
+
+function getPatchMajorMinorVersion(patchVersion: string) {
+    const patchVersionParts = String(patchVersion || ``).split(`.`)
+    if (patchVersionParts.length < 2) return undefined
+
+    const majorPatchVersion = Number.parseInt(patchVersionParts[0], 10)
+    const minorPatchVersion = Number.parseInt(patchVersionParts[1], 10)
+    if (!Number.isFinite(majorPatchVersion) || !Number.isFinite(minorPatchVersion)) return undefined
+
+    return `${majorPatchVersion}.${minorPatchVersion}`
+}
+
+async function getDataDragonRuneVersionCandidates(preferredVersion: string, patchMajorMinorVersion?: string) {
+    const candidateVersions = [preferredVersion]
+
+    try {
+        const response = await getDataDragonVersionsResponse()
+        const availableVersions = Array.isArray(response.data)
+            ? response.data.filter((version) => typeof version === `string`)
+            : []
+
+        if (patchMajorMinorVersion) {
+            const samePatchVersion = availableVersions.find((version) => version.startsWith(`${patchMajorMinorVersion}.`))
+            if (samePatchVersion) {
+                candidateVersions.push(samePatchVersion)
+            }
+        }
+
+        if (availableVersions.length > 0) {
+            candidateVersions.push(availableVersions[0])
+        }
+    } catch (error) {
+        console.error(`Failed to fetch Data Dragon version list`, error)
+    }
+
+    return Array.from(new Set(candidateVersions.filter((version) => Boolean(version))))
+}
+
+function getRuneDataUrlCandidates(candidateVersions: string[]) {
+    const locales = [`ko_KR`, `en_US`]
+    const urlCandidates: Array<{ version: string, locale: string, jsonUrl: string }> = []
+
+    candidateVersions.forEach((candidateVersion) => {
+        locales.forEach((locale) => {
+            const jsonUrl = RUNES_JSON_URL.replace(`/ko_KR/`, `/${locale}/`)
+            urlCandidates.push({
+                version: candidateVersion,
+                locale,
+                jsonUrl,
+            })
+        })
+    })
+
+    return urlCandidates
 }
 
 function stabilizeDetailsFrame(

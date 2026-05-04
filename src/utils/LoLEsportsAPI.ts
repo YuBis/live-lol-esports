@@ -8,6 +8,7 @@ export const CHAMPIONS_URL = "https://ddragon.leagueoflegends.com/cdn/PATCH_VERS
 export const CHAMPIONS_JSON_URL = "https://ddragon.leagueoflegends.com/cdn/PATCH_VERSION/data/ko_KR/champion.json"
 export const RUNES_JSON_URL = "https://ddragon.leagueoflegends.com/cdn/PATCH_VERSION/data/ko_KR/runesReforged.json"
 export const ITEMS_JSON_URL = `https://ddragon.leagueoflegends.com/cdn/PATCH_VERSION/data/ko_KR/item.json`
+export const DATA_DRAGON_VERSIONS_URL = "https://ddragon.leagueoflegends.com/api/versions.json"
 
 const API_URL_PERSISTED = "https://esports-api.lolesports.com/persisted/gw"
 const API_URL_LIVE = "https://feed.lolesports.com/livestats/v1"
@@ -154,6 +155,10 @@ export function getTournamentsForLeagueResponse(leagueId: string) {
 
 export function getDataDragonResponse(JSON_URL: string, formattedPatchVersion: string) {
     return axios.get(JSON_URL.replace(`PATCH_VERSION`, formattedPatchVersion))
+}
+
+export function getDataDragonVersionsResponse() {
+    return axios.get(DATA_DRAGON_VERSIONS_URL)
 }
 
 
