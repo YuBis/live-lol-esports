@@ -27,6 +27,7 @@ import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { GameDetails } from './GameDetails';
 import { StreamToggler } from '../Navbar/StreamToggler';
 import { DisabledGame } from './DisabledGame';
+import runesFallbackData from './styles/runes.json';
 
 type MatchRouteProps = {
     match: {
@@ -583,8 +584,9 @@ export function Match({ match }: MatchRouteProps) {
                 }
             }
 
-            setRunes([])
-            magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes([])
+            const fallbackRunes = runesFallbackData as unknown as Rune[]
+            setRunes(fallbackRunes)
+            magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes(fallbackRunes)
         }
 
         function getChampionNameMap(metadata: GameMetadata) {
