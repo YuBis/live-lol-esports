@@ -61,6 +61,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [videoParameter, setVideoParameter] = useState<string>();
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
     const [deathTimerSecondsByParticipantId, setDeathTimerSecondsByParticipantId] = useState<{ [participantId: number]: number }>({})
+    const [selectedRuneKeyByParticipantId, setSelectedRuneKeyByParticipantId] = useState<{ [participantId: number]: string }>({})
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
     const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
@@ -109,6 +110,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         deathTimerEndAtMsByParticipantIdRef.current.clear()
         setKdaFlashByCell({})
         setDeathTimerSecondsByParticipantId({})
+        setSelectedRuneKeyByParticipantId({})
     }, [gameIndex, firstWindowFrame.rfc460Timestamp])
 
     useEffect(() => {
@@ -711,7 +713,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}_stats`} className='champion-stats-row'>
                                         <td colSpan={8}>
                                             <span>
-                                                {getFormattedChampionStats(championDetails, runes)}
+                                                {getFormattedChampionStats(
+                                                    championDetails,
+                                                    runes,
+                                                    selectedRuneKeyByParticipantId[championDetails.participantId],
+                                                    (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                        ...previousState,
+                                                        [championDetails.participantId]: runeKey,
+                                                    })),
+                                                )}
                                             </span>
                                         </td>
                                     </tr>
@@ -814,7 +824,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     <tr key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}_stats`} className='champion-stats-row'>
                                         <td colSpan={8}>
                                             <span>
-                                                {getFormattedChampionStats(championDetails, runes)}
+                                                {getFormattedChampionStats(
+                                                    championDetails,
+                                                    runes,
+                                                    selectedRuneKeyByParticipantId[championDetails.participantId],
+                                                    (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                        ...previousState,
+                                                        [championDetails.participantId]: runeKey,
+                                                    })),
+                                                )}
                                             </span>
                                         </td>
                                     </tr>
@@ -878,7 +896,12 @@ function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKill
     )
 }
 
-function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) {
+function getFormattedChampionStats(
+    championDetails: Participant,
+    runes: Rune[],
+    selectedRuneKey: string | undefined,
+    onSelectRuneKey: (runeKey: string) => void,
+) {
     return (
         <div className="champion-stats-content">
             <div className='footer-notes'>Attack Damage: {championDetails.attackDamage}</div>
@@ -892,7 +915,7 @@ function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) 
             <div className='footer-notes'>Damage Share: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
             <div className='footer-notes'>Kill Participation: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
             <div className='footer-notes'>Skill Order: {championDetails.abilities.join('->')}</div>
-            {getFormattedRunes(championDetails, runes)}
+            {getFormattedRunes(championDetails, runes, selectedRuneKey, onSelectRuneKey)}
         </div>
     )
 }
@@ -938,84 +961,180 @@ function getSlottedRunes(runes: Rune[]): Array<SlottedRune> {
     return slottedRunes
 }
 
-function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
+type RuneDetailPanelData = {
+    key: string
+    name: string
+    iconUrl?: string
+    descriptionHtml?: string
+    descriptionText?: string
+    glyph?: string
+    tone?: `offense` | `utility` | `defense`
+}
+
+function getFormattedRunes(
+    championDetails: Participant,
+    runes: Rune[],
+    selectedRuneKey: string | undefined,
+    onSelectRuneKey: (runeKey: string) => void,
+) {
     const selectedPerkIds = new Set<number>(championDetails.perkMetadata.perks)
+    const primaryKeystonePerkId = championDetails.perkMetadata.perks[0]
     const primaryStyle = runes.find((rune) => rune.id === championDetails.perkMetadata.styleId)
     const subStyle = runes.find((rune) => rune.id === championDetails.perkMetadata.subStyleId)
     const statShardPerkIds = championDetails.perkMetadata.perks.filter((perkId) => STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]).slice(0, 3)
+    const runeDetailsByKey: { [runeKey: string]: RuneDetailPanelData } = {}
+    let fallbackSelectedRuneKey = ``
+
+    const registerRuneDetail = (detail: RuneDetailPanelData) => {
+        runeDetailsByKey[detail.key] = detail
+    }
 
     return (
         <div className="rune-list rune-style-layout">
-            <section className="rune-style-column">
-                <div className="rune-style-title">Primary Rune</div>
-                <div className="rune-style-grid">
-                    {primaryStyle ? (
-                        primaryStyle.slots.map((slot, slotIndex) => (
-                            <div className="rune-style-row" key={`primary_slot_${slotIndex}`}>
-                                {slot.runes.map((slottedRune) => {
-                                    const isSelected = selectedPerkIds.has(slottedRune.id)
-                                    return (
-                                        <img
-                                            key={`primary_rune_${slottedRune.id}`}
-                                            className={`rune-style-icon ${isSelected ? `selected` : `muted`}`}
-                                            src={getRuneUrlFromIcon(runes, slottedRune.icon)}
-                                            alt={slottedRune.name}
-                                            title={slottedRune.name}
-                                        />
-                                    )
-                                })}
-                            </div>
-                        ))
-                    ) : (
-                        <div className="rune-style-empty">No primary rune data</div>
-                    )}
-                </div>
-            </section>
-
-            <section className="rune-style-column">
-                <div className="rune-style-title">Secondary Rune</div>
-                <div className="rune-style-grid">
-                    {subStyle ? (
-                        subStyle.slots
-                            .filter((_, slotIndex) => slotIndex > 0)
-                            .map((slot, slotIndex) => (
-                                <div className="rune-style-row" key={`sub_slot_${slotIndex}`}>
+            <div className="rune-style-board">
+                <section className="rune-style-column">
+                    <div className="rune-style-title">Primary Rune</div>
+                    <div className="rune-style-grid">
+                        {primaryStyle ? (
+                            primaryStyle.slots.map((slot, slotIndex) => (
+                                <div className="rune-style-row" key={`primary_slot_${slotIndex}`}>
                                     {slot.runes.map((slottedRune) => {
                                         const isSelected = selectedPerkIds.has(slottedRune.id)
+                                        const runeKey = `rune_${slottedRune.id}`
+                                        const isKeystone = slotIndex === 0
+                                        const isActive = (selectedRuneKey ?? `rune_${primaryKeystonePerkId}`) === runeKey
+                                        registerRuneDetail({
+                                            key: runeKey,
+                                            name: slottedRune.name,
+                                            iconUrl: getRuneUrlFromIcon(runes, slottedRune.icon),
+                                            descriptionHtml: slottedRune.longDesc,
+                                        })
+                                        if (!fallbackSelectedRuneKey && slottedRune.id === primaryKeystonePerkId) {
+                                            fallbackSelectedRuneKey = runeKey
+                                        }
                                         return (
-                                            <img
-                                                key={`sub_rune_${slottedRune.id}`}
-                                                className={`rune-style-icon ${isSelected ? `selected` : `muted`}`}
-                                                src={getRuneUrlFromIcon(runes, slottedRune.icon)}
-                                                alt={slottedRune.name}
+                                            <button
+                                                type="button"
+                                                key={`primary_rune_${slottedRune.id}`}
+                                                className={`rune-style-item-button ${isActive ? `active` : ``}`}
+                                                onClick={() => onSelectRuneKey(runeKey)}
                                                 title={slottedRune.name}
-                                            />
+                                            >
+                                                <img
+                                                    className={`rune-style-icon ${isSelected ? `selected` : `muted`} ${isKeystone ? `keystone` : ``}`}
+                                                    src={getRuneUrlFromIcon(runes, slottedRune.icon)}
+                                                    alt={slottedRune.name}
+                                                />
+                                            </button>
                                         )
                                     })}
                                 </div>
                             ))
-                    ) : (
-                        <div className="rune-style-empty">No secondary rune data</div>
-                    )}
-                </div>
-            </section>
+                        ) : (
+                            <div className="rune-style-empty">No primary rune data</div>
+                        )}
+                    </div>
+                </section>
 
-            <div className="rune-shard-row">
-                {statShardPerkIds.map((perkId) => {
-                    const shard = STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]
-                    if (!shard) return null
-                    const shortLabel = STAT_SHARD_SHORT_LABEL_BY_PERK_ID[perkId] ?? `S`
-                    return (
-                        <div
-                            className="rune-shard-chip"
-                            key={`stat_shard_${perkId}`}
-                            title={`${shard.name}: ${shard.description}`}
-                        >
-                            {shortLabel}
-                        </div>
-                    )
-                })}
+                <section className="rune-style-column">
+                    <div className="rune-style-title">Secondary Rune</div>
+                    <div className="rune-style-grid">
+                        {subStyle ? (
+                            subStyle.slots
+                                .filter((_, slotIndex) => slotIndex > 0)
+                                .map((slot, slotIndex) => (
+                                    <div className="rune-style-row" key={`sub_slot_${slotIndex}`}>
+                                        {slot.runes.map((slottedRune) => {
+                                            const isSelected = selectedPerkIds.has(slottedRune.id)
+                                            const runeKey = `rune_${slottedRune.id}`
+                                            const isActive = (selectedRuneKey ?? `rune_${primaryKeystonePerkId}`) === runeKey
+                                            registerRuneDetail({
+                                                key: runeKey,
+                                                name: slottedRune.name,
+                                                iconUrl: getRuneUrlFromIcon(runes, slottedRune.icon),
+                                                descriptionHtml: slottedRune.longDesc,
+                                            })
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={`sub_rune_${slottedRune.id}`}
+                                                    className={`rune-style-item-button ${isActive ? `active` : ``}`}
+                                                    onClick={() => onSelectRuneKey(runeKey)}
+                                                    title={slottedRune.name}
+                                                >
+                                                    <img
+                                                        className={`rune-style-icon ${isSelected ? `selected` : `muted`}`}
+                                                        src={getRuneUrlFromIcon(runes, slottedRune.icon)}
+                                                        alt={slottedRune.name}
+                                                    />
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                ))
+                        ) : (
+                            <div className="rune-style-empty">No secondary rune data</div>
+                        )}
+                    </div>
+                </section>
+
+                <div className="rune-shard-row">
+                    {statShardPerkIds.map((perkId) => {
+                        const shard = STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]
+                        if (!shard) return null
+                        const shardPresentation = STAT_SHARD_PRESENTATION_BY_PERK_ID[perkId]
+                        const runeKey = `shard_${perkId}`
+                        const isActive = selectedRuneKey === runeKey
+                        registerRuneDetail({
+                            key: runeKey,
+                            name: shard.name,
+                            descriptionText: shard.description,
+                            glyph: shardPresentation?.glyph ?? `S`,
+                            tone: shardPresentation?.tone,
+                        })
+                        return (
+                            <button
+                                type="button"
+                                className={`rune-style-item-button rune-shard-button ${isActive ? `active` : ``}`}
+                                key={`stat_shard_${perkId}`}
+                                title={`${shard.name}: ${shard.description}`}
+                                onClick={() => onSelectRuneKey(runeKey)}
+                            >
+                                <div className={`rune-shard-badge ${shardPresentation ? `rune-shard-${shardPresentation.tone}` : ``}`}>
+                                    <span className="rune-shard-glyph">{shardPresentation ? shardPresentation.glyph : `S`}</span>
+                                </div>
+                            </button>
+                        )
+                    })}
+                </div>
             </div>
+
+            {(() => {
+                const defaultRuneKey = selectedRuneKey && runeDetailsByKey[selectedRuneKey]
+                    ? selectedRuneKey
+                    : fallbackSelectedRuneKey
+                const selectedRuneDetail = defaultRuneKey ? runeDetailsByKey[defaultRuneKey] : undefined
+                if (!selectedRuneDetail) return <aside className="rune-detail-panel">No rune description</aside>
+                return (
+                    <aside className="rune-detail-panel">
+                        <div className="rune-detail-header">
+                            {selectedRuneDetail.iconUrl ? (
+                                <img className="rune-detail-icon" src={selectedRuneDetail.iconUrl} alt={selectedRuneDetail.name} />
+                            ) : (
+                                <div className={`rune-shard-badge rune-detail-shard ${selectedRuneDetail.tone ? `rune-shard-${selectedRuneDetail.tone}` : ``}`}>
+                                    <span className="rune-shard-glyph">{selectedRuneDetail.glyph ?? `S`}</span>
+                                </div>
+                            )}
+                            <div className="rune-detail-title">{selectedRuneDetail.name}</div>
+                        </div>
+                        {selectedRuneDetail.descriptionHtml ? (
+                            <div className="rune-detail-body rune-detail-rich-text" dangerouslySetInnerHTML={{ __html: selectedRuneDetail.descriptionHtml }} />
+                        ) : (
+                            <div className="rune-detail-body">{selectedRuneDetail.descriptionText ?? ``}</div>
+                        )}
+                    </aside>
+                )
+            })()}
         </div>
     )
 }
@@ -1031,13 +1150,15 @@ const STAT_SHARD_FALLBACK_BY_PERK_ID: {
     5011: { name: `Stat Shard`, description: `Tenacity +10% / Slow Resist +15%` },
 }
 
-const STAT_SHARD_SHORT_LABEL_BY_PERK_ID: { [perkId: number]: string } = {
-    5001: `AS`,
-    5005: `AD/AP`,
-    5007: `AH`,
-    5008: `MS`,
-    5010: `HP`,
-    5011: `TEN`,
+const STAT_SHARD_PRESENTATION_BY_PERK_ID: {
+    [perkId: number]: { glyph: string, tone: `offense` | `utility` | `defense` }
+} = {
+    5001: { glyph: `AS`, tone: `offense` },
+    5005: { glyph: `AF`, tone: `offense` },
+    5007: { glyph: `AH`, tone: `utility` },
+    5008: { glyph: `MS`, tone: `utility` },
+    5010: { glyph: `HP`, tone: `defense` },
+    5011: { glyph: `TEN`, tone: `defense` },
 }
 const SUMMONERS_RIFT_BASE_RESPAWN_SECONDS_BY_LEVEL = [
     0,

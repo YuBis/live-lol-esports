@@ -1031,14 +1031,22 @@ svg.player-champion {
 }
 
 .rune-style-layout {
-    display: inline-flex;
-    flex-wrap: wrap;
+    display: inline-grid;
+    grid-template-columns: minmax(300px, max-content) minmax(220px, 1fr);
+    align-items: stretch;
     gap: 12px;
     padding: 10px 12px;
     border-radius: 10px;
     background: rgba(16, 27, 52, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-sizing: border-box;
+}
+
+.rune-style-board {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 12px;
 }
 
 .rune-style-column {
@@ -1063,7 +1071,20 @@ svg.player-champion {
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: 24px;
+    min-height: 28px;
+}
+
+.rune-style-item-button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 50%;
+    line-height: 0;
+}
+
+.rune-style-item-button.active {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45), 0 0 0 3px rgba(0, 0, 0, 0.35);
 }
 
 .rune-style-icon {
@@ -1088,6 +1109,11 @@ svg.player-champion {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 
+.rune-style-icon.keystone {
+    width: 32px;
+    height: 32px;
+}
+
 .rune-style-empty {
     font-size: 11px;
     color: rgba(255, 255, 255, 0.75);
@@ -1099,19 +1125,99 @@ svg.player-champion {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 2px;
+    margin-top: 4px;
 }
 
-.rune-shard-chip {
-    min-width: 40px;
-    height: 22px;
-    padding: 0 8px;
-    border-radius: 999px;
-    border: 1px solid #f4d36a;
-    color: #f4d36a;
-    font-size: 11px;
+.rune-shard-button {
+    border-radius: 50%;
+}
+
+.rune-shard-badge {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(8, 14, 30, 0.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.rune-shard-glyph {
+    font-size: 12px;
+    line-height: 1;
     font-weight: 700;
-    line-height: 20px;
-    text-align: center;
-    background: rgba(6, 12, 26, 0.75);
+}
+
+.rune-shard-offense {
+    border-color: #f4d36a;
+    color: #f4d36a;
+}
+
+.rune-shard-utility {
+    border-color: #8b7cff;
+    color: #8b7cff;
+}
+
+.rune-shard-defense {
+    border-color: #57d38c;
+    color: #57d38c;
+}
+
+.rune-detail-panel {
+    min-width: 220px;
+    max-width: 420px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(6, 12, 26, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.rune-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.rune-detail-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    object-fit: contain;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.rune-detail-shard {
+    width: 34px;
+    height: 34px;
+}
+
+.rune-detail-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.rune-detail-body {
+    font-size: 12px;
+    line-height: 1.42;
+}
+
+.rune-detail-rich-text * {
+    max-width: 100%;
+}
+
+@media (max-width: 920px) {
+    .rune-style-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .rune-detail-panel {
+        max-width: 100%;
+    }
 }
