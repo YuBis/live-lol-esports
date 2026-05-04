@@ -68,9 +68,7 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
             <div className='game-selector'>
                 {eventDetails.match.games.map((game) => {
                     const winnerLabel = winnerLabelByGameId[game.id]
-                    const displayLabel = game.state.toLowerCase() === `completed` && winnerLabel
-                        ? winnerLabel
-                        : formatGameStateLabel(game.state)
+                    const displayLabel = formatGameStateLabel(game.state, winnerLabel)
 
                     return <Link className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
                         <span className={`#/live/${game.state}`}>Game {game.number} - {displayLabel}</span>
@@ -81,9 +79,9 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
     )
 }
 
-function formatGameStateLabel(state: string): string {
+function formatGameStateLabel(state: string, winnerLabel?: string): string {
     const normalizedState = state.toLowerCase()
-    if (normalizedState === `completed`) return `\uC885\uB8CC`
+    if (normalizedState === `completed`) return winnerLabel || `\uC885\uB8CC`
     if (normalizedState === `inprogress`) return `\uC9C4\uD589 \uC911`
     if (normalizedState === `unstarted`) return `\uC608\uC815`
     if (normalizedState === `unneeded`) return `\uBBF8\uC9C4\uD589`

@@ -393,9 +393,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
-                            <tr key={blueTeam.name.toUpperCase()}>
+                            <tr key={blueTeam.code.toUpperCase()}>
                                 <th className="table-top-row-champion" title="champion/team">
-                                    <span>{blueTeam.name.toUpperCase()}</span>
+                                    <span>{blueTeam.code.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
                                     <span>체력</span>
@@ -483,9 +483,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
 
                     <table className="status-live-game-card-table">
                         <thead>
-                            <tr key={redTeam.name.toUpperCase()}>
+                            <tr key={redTeam.code.toUpperCase()}>
                                 <th className="table-top-row-champion" title="champion/team">
-                                    <span>{redTeam.name.toUpperCase()}</span>
+                                    <span>{redTeam.code.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
                                     <span>체력</span>

@@ -595,7 +595,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     })
 
     return (
-        <div className="status-live-game-card">
+        <div className={`status-live-game-card ${scoreboardLayoutMode === `mirror` ? `status-live-game-card-mirror-mode` : ``}`}>
             <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} />
             <div className="status-live-game-card-content">
                 {/* {eventDetails ? (<h3>{eventDetails?.league.name}</h3>) : null} */}
@@ -684,9 +684,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
-                            <tr key={blueTeam.name.toUpperCase()}>
+                            <tr key={blueTeam.code.toUpperCase()}>
                                 <th className="table-top-row-champion" title="champion/team">
-                                    <span>{blueTeam.name.toUpperCase()}</span>
+                                    <span>{blueTeam.code.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
                                     <span>체력</span>
@@ -795,9 +795,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
                     <table className="status-live-game-card-table">
                         <thead>
-                            <tr key={redTeam.name.toUpperCase()}>
+                            <tr key={redTeam.code.toUpperCase()}>
                                 <th className="table-top-row-champion" title="champion/team">
-                                    <span>{redTeam.name.toUpperCase()}</span>
+                                    <span>{redTeam.code.toUpperCase()}</span>
                                 </th>
                                 <th className="table-top-row-vida" title="life">
                                     <span>체력</span>
@@ -909,21 +909,21 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <table className="status-live-game-card-table status-live-game-card-table-mirror">
                         <thead>
                             <tr>
-                                <th className="mirror-col-team mirror-col-team-left">{blueTeam.name.toUpperCase()}</th>
+                                <th className="mirror-col-team mirror-col-team-left">{blueTeam.code.toUpperCase()}</th>
                                 <th className="mirror-col-items">아이템</th>
                                 <th className="mirror-col-health">체력</th>
                                 <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-kda">K</th>
                                 <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">A</th>
-                                <th className="mirror-col-gold">골드</th>
+                                <th className="mirror-col-gold">골드차</th>
                                 <th className="mirror-col-kda">A</th>
                                 <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">K</th>
                                 <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-health">체력</th>
                                 <th className="mirror-col-items">아이템</th>
-                                <th className="mirror-col-team mirror-col-team-right">{redTeam.name.toUpperCase()}</th>
+                                <th className="mirror-col-team mirror-col-team-right">{redTeam.code.toUpperCase()}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -934,6 +934,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const isBlueExpanded = isMirrorParticipantStatsExpanded(blueRow.player.participantId)
                                 const isRedExpanded = isMirrorParticipantStatsExpanded(redRow.player.participantId)
                                 const shouldRenderExpandedRow = isBlueExpanded || isRedExpanded
+                                const rowGoldLead = blueRow.player.totalGold - redRow.player.totalGold
+                                const rowGoldLeadColorClass = rowGoldLead > 0 ? `gold-advantage-blue` : rowGoldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
+                                const rowGoldLeadMarker = rowGoldLead > 0 ? `◀` : rowGoldLead < 0 ? `▶` : `•`
+                                const rowGoldLeadValue = Number(Math.abs(rowGoldLead)).toLocaleString(`en-us`)
 
                                 return [
                                     (
@@ -972,13 +976,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <td><div className={` player-stats player-stats-kda ${blueRow.killFlashClassName}`}>{blueRow.player.kills}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${blueRow.deathFlashClassName}`}>{blueRow.player.deaths}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${blueRow.assistFlashClassName}`}>{blueRow.player.assists}</div></td>
-                                            {rowIndex === 0 ? (
-                                                <td className="mirror-center-gold-cell" rowSpan={blueRows.length}>
-                                                    <div className={`mirror-center-gold-indicator ${goldLeadColorClass}`}>
-                                                        {goldLead > 0 ? `◀` : goldLead < 0 ? `▶` : `•`} {formattedGoldLead}
-                                                    </div>
-                                                </td>
-                                            ) : null}
+                                            <td className="mirror-row-gold-cell">
+                                                <div className={`mirror-row-gold-diff ${rowGoldLeadColorClass}`}>
+                                                    {rowGoldLeadMarker} {rowGoldLeadValue}
+                                                </div>
+                                            </td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.deathFlashClassName}`}>{redRow.player.deaths}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.killFlashClassName}`}>{redRow.player.kills}</div></td>
