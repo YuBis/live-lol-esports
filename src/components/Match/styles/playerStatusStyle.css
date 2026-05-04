@@ -156,17 +156,28 @@ span.mini-current-health {
     flex: 1;
     display: flex;
     justify-content: space-between;
-    margin-right: 15rem;
+}
+
+.status-live-game-card:not(.status-live-game-card-mirror-mode) .live-game-stats-header-status>.blue-team {
+    margin-right: 10rem;
+}
+
+.status-live-game-card.status-live-game-card-mirror-mode .live-game-stats-header-status>.blue-team {
+    margin-right: 20rem;
 }
 
 @media(max-width: 1080px) {
-    .live-game-stats-header-status>.blue-team {
+    .status-live-game-card:not(.status-live-game-card-mirror-mode) .live-game-stats-header-status>.blue-team {
         margin-right: 10rem;
+    }
+
+    .status-live-game-card.status-live-game-card-mirror-mode .live-game-stats-header-status>.blue-team {
+        margin-right: 20rem;
     }
 }
 
 @media(max-width: 720px) {
-    .live-game-stats-header-status>.blue-team {
+    .status-live-game-card .live-game-stats-header-status>.blue-team {
         margin-right: 1rem;
     }
 }
@@ -505,28 +516,38 @@ Status dragons
     max-width: 100%;
     margin-left: 0;
     margin-right: 0;
+    overflow-x: hidden;
 }
 
 .status-live-game-card-mirror-mode .status-live-game-card-content {
     width: 100%;
     min-width: 0;
+    margin: 0;
+    padding: 0 20px 20px;
+}
+
+.status-live-game-card-mirror-mode .game-selector {
+    margin-top: 0;
 }
 
 .status-live-game-card-table-wrapper-mirror {
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: hidden;
     padding-top: 0;
     padding-left: 0;
     padding-right: 0;
     margin-top: 0;
     scrollbar-gutter: auto;
+    display: flex;
+    justify-content: center;
 }
 
 .status-live-game-card-table {
+    --stat-col-gap: 4px;
     --champion-col-width: 16rem;
     --items-col-width: 13.5rem;
-    --cs-col-width: 4ch;
-    --kda-col-width: 3ch;
+    --cs-col-width: 2.5rem;
+    --kda-col-width: 2.2rem;
     --gold-col-width: 12ch;
     --health-col-min-width: 9.2rem;
     --table-min-width: calc(
@@ -545,20 +566,31 @@ Status dragons
 
 .status-live-game-card-table th,
 .status-live-game-card-table td {
-    padding: 0 2px;
+    padding: 0 calc(var(--stat-col-gap) / 2);
     box-sizing: border-box;
 }
 
 .status-live-game-card-table-mirror {
-    --items-col-width: 100%;
-    --mirror-team-col-width: 11.5%;
-    --mirror-items-col-width: 13%;
-    --mirror-health-col-width: 9.5%;
-    --mirror-cs-col-width: 3%;
-    --mirror-kda-col-width: 2.6%;
-    --mirror-gold-col-width: 5.4%;
-    width: 100%;
-    min-width: 0;
+    --items-col-width: 13.5rem;
+    --mirror-team-col-width: 15rem;
+    --mirror-items-col-width: var(--items-col-width);
+    --mirror-health-col-width: var(--health-col-min-width);
+    --mirror-cs-col-width: var(--cs-col-width);
+    --mirror-kda-col-width: var(--kda-col-width);
+    --mirror-gold-col-width: 4.8rem;
+    --mirror-table-fixed-width: calc(
+        (var(--mirror-team-col-width) * 2)
+        + (var(--mirror-items-col-width) * 2)
+        + (var(--mirror-health-col-width) * 2)
+        + (var(--mirror-cs-col-width) * 2)
+        + (var(--mirror-kda-col-width) * 6)
+        + var(--mirror-gold-col-width)
+        + 40px
+    );
+    width: var(--mirror-table-fixed-width);
+    min-width: var(--mirror-table-fixed-width);
+    max-width: var(--mirror-table-fixed-width);
+    table-layout: fixed;
 }
 
 .status-live-game-card-table-mirror thead th {
@@ -601,6 +633,66 @@ Status dragons
     max-width: var(--mirror-gold-col-width);
 }
 
+.status-live-game-card-table-mirror thead tr > :nth-child(1),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(1),
+.status-live-game-card-table-mirror thead tr > :nth-child(15),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(15) {
+    width: var(--mirror-team-col-width);
+    min-width: var(--mirror-team-col-width);
+    max-width: var(--mirror-team-col-width);
+}
+
+.status-live-game-card-table-mirror thead tr > :nth-child(2),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(2),
+.status-live-game-card-table-mirror thead tr > :nth-child(14),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(14) {
+    width: var(--mirror-items-col-width);
+    min-width: var(--mirror-items-col-width);
+    max-width: var(--mirror-items-col-width);
+}
+
+.status-live-game-card-table-mirror thead tr > :nth-child(3),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(3),
+.status-live-game-card-table-mirror thead tr > :nth-child(13),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(13) {
+    width: var(--mirror-health-col-width);
+    min-width: var(--mirror-health-col-width);
+    max-width: var(--mirror-health-col-width);
+}
+
+.status-live-game-card-table-mirror thead tr > :nth-child(4),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(4),
+.status-live-game-card-table-mirror thead tr > :nth-child(12),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(12) {
+    width: var(--mirror-cs-col-width);
+    min-width: var(--mirror-cs-col-width);
+    max-width: var(--mirror-cs-col-width);
+}
+
+.status-live-game-card-table-mirror thead tr > :nth-child(5),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(5),
+.status-live-game-card-table-mirror thead tr > :nth-child(6),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(6),
+.status-live-game-card-table-mirror thead tr > :nth-child(7),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(7),
+.status-live-game-card-table-mirror thead tr > :nth-child(9),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(9),
+.status-live-game-card-table-mirror thead tr > :nth-child(10),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(10),
+.status-live-game-card-table-mirror thead tr > :nth-child(11),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(11) {
+    width: var(--mirror-kda-col-width);
+    min-width: var(--mirror-kda-col-width);
+    max-width: var(--mirror-kda-col-width);
+}
+
+.status-live-game-card-table-mirror thead tr > :nth-child(8),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(8) {
+    width: var(--mirror-gold-col-width);
+    min-width: var(--mirror-gold-col-width);
+    max-width: var(--mirror-gold-col-width);
+}
+
 .status-live-game-card-table-mirror .mirror-player-cell {
     background: transparent;
     padding: 0;
@@ -636,6 +728,10 @@ Status dragons
     vertical-align: middle;
     text-align: center;
     padding: 0 6px;
+}
+
+.chevron-down {
+    flex-shrink: 0;
 }
 
 .mirror-center-gold-indicator {
@@ -704,9 +800,23 @@ Status dragons
 }
 
 .status-live-game-card-table-mirror .player-stats-items {
-    width: 100%;
-    min-width: 0;
+    width: fit-content;
+    min-width: 208px;
     max-width: 100%;
+    margin: 0 auto;
+}
+
+.status-live-game-card-table-mirror .player-champion-info-name {
+    min-width: 6rem;
+}
+
+.status-live-game-card-mirror-mode .live-game-stats-header-status,
+.status-live-game-card-mirror-mode .live-game-stats-header-team-images,
+.status-live-game-card-mirror-mode .live-game-stats-header-gold,
+.status-live-game-card-mirror-mode .live-game-stats-header-dragons {
+    max-width: 1540px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .mirror-champion-stats-row > td {
@@ -925,8 +1035,7 @@ svg.player-champion {
     width: var(--items-col-width);
     min-width: var(--items-col-width);
     max-width: var(--items-col-width);
-    padding-left: 4px;
-    padding-right: 4px;
+    padding-right: calc(var(--stat-col-gap) / 2);
 }
 
 .status-live-game-card-table th[title="life"],
@@ -934,7 +1043,6 @@ svg.player-champion {
     width: var(--health-col-min-width);
     min-width: var(--health-col-min-width);
     max-width: var(--health-col-min-width);
-    padding-right: 4px;
 }
 
 .status-live-game-card-table th[title="gold"],
@@ -947,6 +1055,10 @@ svg.player-champion {
 .status-live-game-card-table .player-stats-row th:first-child {
     width: var(--champion-col-width);
     min-width: var(--champion-col-width);
+}
+
+.status-live-game-card-table:not(.status-live-game-card-table-mirror) .player-stats-row td:nth-child(4) .player-stats {
+    width: 100%;
 }
 
 .player-stats,
@@ -1040,7 +1152,8 @@ svg.player-champion {
 }
 
 .player-stats-kda {
-    width: 28px;
+    width: 100%;
+    min-width: 0;
 }
 
 .player-stats-kda-flash-kill {
@@ -1094,9 +1207,10 @@ svg.player-champion {
 
 .player-stats-items {
     height: 28px;
-    width: var(--items-col-width);
-    min-width: var(--items-col-width);
-    max-width: var(--items-col-width);
+    width: fit-content;
+    min-width: 208px;
+    max-width: 100%;
+    margin: 0 auto;
 
     display: flex;
     justify-content: center;

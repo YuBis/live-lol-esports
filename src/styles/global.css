@@ -79,9 +79,10 @@ a {
 }
 
 body.mirror-scoreboard-mode .container {
-    max-width: calc(100vw - 0.75rem);
-    padding-left: 0.375rem;
-    padding-right: 0.375rem;
+    max-width: 1680px;
+    min-height: auto;
+    padding: 0 0.375rem 0;
+    padding-bottom: 4rem;
 }
 
 #video-player[added] {

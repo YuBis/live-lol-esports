@@ -337,12 +337,17 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         return championNameMap[championId] || championId
     }
 
-    function toggleMirrorParticipantStats(participantId: number) {
-        setMirrorExpandedParticipantIds((previousState) =>
-            previousState.includes(participantId)
-                ? previousState.filter((id) => id !== participantId)
-                : [...previousState, participantId]
-        )
+    function toggleMirrorParticipantStats(leftParticipantId: number, rightParticipantId: number) {
+        setMirrorExpandedParticipantIds((previousState) => {
+            const isRowExpanded = previousState.includes(leftParticipantId) || previousState.includes(rightParticipantId)
+            if (isRowExpanded) {
+                return previousState.filter((id) => id !== leftParticipantId && id !== rightParticipantId)
+            }
+
+            const nextState = previousState.filter((id) => id !== leftParticipantId && id !== rightParticipantId)
+            nextState.push(leftParticipantId, rightParticipantId)
+            return nextState
+        })
     }
 
     function isMirrorParticipantStatsExpanded(participantId: number) {
@@ -683,15 +688,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </div>
                     </div>
                 </div>
-                <div className="scoreboard-layout-toggle-row">
-                    <button
-                        type="button"
-                        className="footer-notes scoreboard-layout-toggle"
-                        onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
-                    >
-                        {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
-                    </button>
-                </div>
                 {scoreboardLayoutMode === `classic` ? (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
@@ -956,7 +952,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                     (
                                         <tr className="mirror-player-row" key={`mirror_${gameIndex}_${blueRow.player.participantId}_${redRow.player.participantId}`}>
                                             <th className="mirror-player-cell mirror-player-cell-left">
-                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId)}>
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
                                                     <div className="player-champion-info">
                                                         <svg className={`chevron-down ${isBlueExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                         {getParticipantRuneTypes(blueRow.championDetails, runes)}
@@ -1012,19 +1008,19 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                 />
                                             </td>
                                             <th className="mirror-player-cell mirror-player-cell-right">
-                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(redRow.player.participantId)}>
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
                                                     <div className="player-champion-info mirror-player-champion-info-right">
                                                         <div className=" player-champion-info-name mirror-player-name-right">
                                                             <span>{redRow.metadata.summonerName}</span>
                                                             <span className=" player-card-player-name">{getChampionDisplayName(redRow.metadata.championId)}</span>
                                                         </div>
-                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
                                                         <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
                                                             {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
                                                             <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                             <TeamTBDSVG className='player-champion' />
                                                             <span className=" player-champion-info-level">{redRow.player.level}</span>
                                                         </div>
+                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
                                                         <svg className={`chevron-down ${isRedExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                     </div>
                                                 </button>
@@ -1079,6 +1075,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
                     Revision: {BUILD_LABEL}
                 </span>
+                <button
+                    type="button"
+                    className="footer-notes scoreboard-layout-toggle"
+                    onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
+                >
+                    {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
+                </button>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>
