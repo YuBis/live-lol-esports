@@ -917,9 +917,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">A</th>
                                 <th className="mirror-col-gold">골드차</th>
-                                <th className="mirror-col-kda">A</th>
-                                <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">K</th>
+                                <th className="mirror-col-kda">D</th>
+                                <th className="mirror-col-kda">A</th>
                                 <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-health">체력</th>
                                 <th className="mirror-col-items">아이템</th>
@@ -936,7 +936,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const shouldRenderExpandedRow = isBlueExpanded || isRedExpanded
                                 const rowGoldLead = blueRow.player.totalGold - redRow.player.totalGold
                                 const rowGoldLeadColorClass = rowGoldLead > 0 ? `gold-advantage-blue` : rowGoldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
-                                const rowGoldLeadMarker = rowGoldLead > 0 ? `◀` : rowGoldLead < 0 ? `▶` : `•`
+                                const rowGoldLeadMarker = getGoldLeadSymbol(rowGoldLead)
+                                const rowGoldLeadSymbolAlignmentClass = rowGoldLead > 0 ? `mirror-row-gold-symbol-left` : rowGoldLead < 0 ? `mirror-row-gold-symbol-right` : ``
                                 const rowGoldLeadValue = Number(Math.abs(rowGoldLead)).toLocaleString(`en-us`)
 
                                 return [
@@ -978,12 +979,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <td><div className={` player-stats player-stats-kda ${blueRow.assistFlashClassName}`}>{blueRow.player.assists}</div></td>
                                             <td className="mirror-row-gold-cell">
                                                 <div className={`mirror-row-gold-diff ${rowGoldLeadColorClass}`}>
-                                                    {rowGoldLeadMarker} {rowGoldLeadValue}
+                                                    {rowGoldLeadMarker ? <span className={`mirror-row-gold-symbol ${rowGoldLeadSymbolAlignmentClass}`}>{rowGoldLeadMarker}</span> : null}
+                                                    <span className="mirror-row-gold-value">{rowGoldLeadValue}</span>
                                                 </div>
                                             </td>
-                                            <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
-                                            <td><div className={` player-stats player-stats-kda ${redRow.deathFlashClassName}`}>{redRow.player.deaths}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.killFlashClassName}`}>{redRow.player.kills}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${redRow.deathFlashClassName}`}>{redRow.player.deaths}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
                                             <td><div className=" player-stats">{redRow.player.creepScore}</div></td>
                                             <td>
                                                 <MiniHealthBar currentHealth={redRow.player.currentHealth} maxHealth={redRow.player.maxHealth} />
@@ -1004,13 +1006,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                             <span>{redRow.metadata.summonerName}</span>
                                                             <span className=" player-card-player-name">{getChampionDisplayName(redRow.metadata.championId)}</span>
                                                         </div>
+                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
                                                         <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
                                                             {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
                                                             <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                             <TeamTBDSVG className='player-champion' />
                                                             <span className=" player-champion-info-level">{redRow.player.level}</span>
                                                         </div>
-                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
                                                         <svg className={`chevron-down ${isRedExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                     </div>
                                                 </button>
