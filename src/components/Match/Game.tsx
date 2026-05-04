@@ -76,6 +76,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     useEffect(() => {
+        const mirrorModeClassName = `mirror-scoreboard-mode`
+        if (scoreboardLayoutMode === `mirror`) {
+            document.body.classList.add(mirrorModeClassName)
+        } else {
+            document.body.classList.remove(mirrorModeClassName)
+        }
+        return () => {
+            document.body.classList.remove(mirrorModeClassName)
+        }
+    }, [scoreboardLayoutMode])
+
+    useEffect(() => {
         const flashClearTimers = flashClearTimersRef.current
         return () => {
             flashClearTimers.forEach((timerId) => clearTimeout(timerId))

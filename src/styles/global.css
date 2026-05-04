@@ -78,6 +78,12 @@ a {
     overflow: auto;
 }
 
+body.mirror-scoreboard-mode .container {
+    max-width: calc(100vw - 0.75rem);
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+}
+
 #video-player[added] {
     margin-top: 10px;
     width: 100%;
