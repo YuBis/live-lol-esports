@@ -938,17 +938,17 @@ function getRuneHTMLElement(slottedRune: SlottedRune) {
 
 function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
     const slottedRunes = getSlottedRunes(runes)
-    const mappedRunes = championDetails.perkMetadata.perks.map(perk => {
-        return slottedRunes.find(slottedRune => slottedRune.id === perk)
-    })
-    if (!mappedRunes) return (<div className="StatsMatchupRunes"></div>)
+    const mappedRunes = championDetails.perkMetadata.perks.map((perkId) => ({
+        perkId,
+        mappedRune: slottedRunes.find((slottedRune) => slottedRune.id === perkId),
+    }))
 
     return (
         <div className="rune-list">
-            {mappedRunes.map(mappedRune => {
-                return mappedRune ?
-                    (
-                        <div className="rune">
+            {mappedRunes.map(({ perkId, mappedRune }) => {
+                if (mappedRune) {
+                    return (
+                        <div className="rune" key={`rune_${perkId}`}>
                             <div>
                                 <img className="image" src={getRuneUrlFromIcon(runes, mappedRune.icon)} alt="" />
                                 <div className="name">{mappedRune.name}</div>
@@ -956,10 +956,48 @@ function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
                             <div className="text">
                                 <div className="description">{getRuneHTMLElement(mappedRune)}</div>
                             </div>
-                        </div>) : null
+                        </div>
+                    )
+                }
+
+                const statShardFallback = STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]
+                if (!statShardFallback) {
+                    return (
+                        <div className="rune" key={`rune_unknown_${perkId}`}>
+                            <div>
+                                <div className="name">Rune {perkId}</div>
+                            </div>
+                            <div className="text">
+                                <div className="description">룬 데이터 매칭 실패</div>
+                            </div>
+                        </div>
+                    )
+                }
+
+                return (
+                    <div className="rune" key={`stat_shard_${perkId}`}>
+                        <div>
+                            <div className="name">{statShardFallback.name}</div>
+                        </div>
+                        <div className="text">
+                            <div className="description">{statShardFallback.description}</div>
+                        </div>
+                    </div>
+                )
             })}
         </div>
     )
+}
+
+const STAT_SHARD_FALLBACK_BY_PERK_ID: {
+    [perkId: number]: { name: string, description: string }
+} = {
+    5001: { name: `능력치 파편`, description: `공격 속도 +10%` },
+    5005: { name: `능력치 파편`, description: `적응형 능력치 +9` },
+    5007: { name: `능력치 파편`, description: `스킬 가속 +8` },
+    5008: { name: `능력치 파편`, description: `이동 속도 +2%` },
+    5010: { name: `능력치 파편`, description: `체력 +10~180 (레벨 비례)` },
+    5011: { name: `능력치 파편`, description: `강인함 +10% / 둔화 저항 +15%` },
 }
 
 const SUMMONERS_RIFT_BASE_RESPAWN_SECONDS_BY_LEVEL = [
