@@ -55,13 +55,17 @@ enum GameState {
     finished = "game ended"
 }
 
+type ScoreboardLayoutMode = `classic` | `mirror`
+
 export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
+    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(`classic`)
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
     const [deathTimerSecondsByParticipantId, setDeathTimerSecondsByParticipantId] = useState<{ [participantId: number]: number }>({})
     const [selectedRuneKeyByParticipantId, setSelectedRuneKeyByParticipantId] = useState<{ [participantId: number]: string }>({})
+    const [mirrorExpandedParticipantIds, setMirrorExpandedParticipantIds] = useState<number[]>([])
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
     const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
@@ -111,6 +115,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         setKdaFlashByCell({})
         setDeathTimerSecondsByParticipantId({})
         setSelectedRuneKeyByParticipantId({})
+        setMirrorExpandedParticipantIds([])
     }, [gameIndex, firstWindowFrame.rfc460Timestamp])
 
     useEffect(() => {
@@ -318,6 +323,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     function getChampionDisplayName(championId: string) {
         return championNameMap[championId] || championId
+    }
+
+    function toggleMirrorParticipantStats(participantId: number) {
+        setMirrorExpandedParticipantIds((previousState) =>
+            previousState.includes(participantId)
+                ? previousState.filter((id) => id !== participantId)
+                : [...previousState, participantId]
+        )
+    }
+
+    function isMirrorParticipantStatsExpanded(participantId: number) {
+        return mirrorExpandedParticipantIds.includes(participantId)
     }
 
     function handleStreamChange(e: ChangeEvent<HTMLSelectElement>) {
@@ -541,6 +558,42 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         }
     }
 
+    const blueRows = lastWindowFrame.blueTeam.participants.map((player: WindowParticipant, index) => {
+        const championDetails = lastDetailsFrame.participants[index]
+        const metadata = gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1]
+        const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
+        const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+        return {
+            side: `blue` as const,
+            player,
+            championDetails,
+            metadata,
+            hasDeathTimer,
+            deathTimerSeconds,
+            killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
+            deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
+            assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
+        }
+    })
+
+    const redRows = lastWindowFrame.redTeam.participants.map((player: WindowParticipant, index) => {
+        const championDetails = lastDetailsFrame.participants[index + 5]
+        const metadata = gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6]
+        const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
+        const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+        return {
+            side: `red` as const,
+            player,
+            championDetails,
+            metadata,
+            hasDeathTimer,
+            deathTimerSeconds,
+            killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
+            deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
+            assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
+        }
+    })
+
     return (
         <div className="status-live-game-card">
             <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} />
@@ -618,6 +671,16 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </div>
                     </div>
                 </div>
+                <div className="scoreboard-layout-toggle-row">
+                    <button
+                        type="button"
+                        className="footer-notes scoreboard-layout-toggle"
+                        onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
+                    >
+                        {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
+                    </button>
+                </div>
+                {scoreboardLayoutMode === `classic` ? (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
@@ -841,6 +904,153 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </tbody>
                     </table>
                 </div>
+                ) : (
+                <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-mirror">
+                    <table className="status-live-game-card-table status-live-game-card-table-mirror">
+                        <thead>
+                            <tr>
+                                <th className="mirror-col-team mirror-col-team-left">{blueTeam.name.toUpperCase()}</th>
+                                <th className="mirror-col-items">아이템</th>
+                                <th className="mirror-col-health">체력</th>
+                                <th className="mirror-col-cs">CS</th>
+                                <th className="mirror-col-kda">K</th>
+                                <th className="mirror-col-kda">D</th>
+                                <th className="mirror-col-kda">A</th>
+                                <th className="mirror-col-gold">골드</th>
+                                <th className="mirror-col-kda">A</th>
+                                <th className="mirror-col-kda">D</th>
+                                <th className="mirror-col-kda">K</th>
+                                <th className="mirror-col-cs">CS</th>
+                                <th className="mirror-col-health">체력</th>
+                                <th className="mirror-col-items">아이템</th>
+                                <th className="mirror-col-team mirror-col-team-right">{redTeam.name.toUpperCase()}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {blueRows.map((blueRow, rowIndex) => {
+                                const redRow = redRows[rowIndex]
+                                if (!redRow) return null
+
+                                const isBlueExpanded = isMirrorParticipantStatsExpanded(blueRow.player.participantId)
+                                const isRedExpanded = isMirrorParticipantStatsExpanded(redRow.player.participantId)
+                                const shouldRenderExpandedRow = isBlueExpanded || isRedExpanded
+
+                                return [
+                                    (
+                                        <tr className="mirror-player-row" key={`mirror_${gameIndex}_${blueRow.player.participantId}_${redRow.player.participantId}`}>
+                                            <th className="mirror-player-cell mirror-player-cell-left">
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId)}>
+                                                    <div className="player-champion-info">
+                                                        <svg className={`chevron-down ${isBlueExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                                        {getParticipantRuneTypes(blueRow.championDetails, runes)}
+                                                        <div className={`player-champion-wrapper ${blueRow.hasDeathTimer ? `dead` : ``}`}>
+                                                            {blueRow.hasDeathTimer ? <span className="player-death-timer">{blueRow.deathTimerSeconds}</span> : null}
+                                                            <img src={`${championsUrlWithPatchVersion}${blueRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                            <TeamTBDSVG className='player-champion' />
+                                                            <span className=" player-champion-info-level">{blueRow.player.level}</span>
+                                                        </div>
+                                                        <div className=" player-champion-info-name">
+                                                            <span>{blueRow.metadata.summonerName}</span>
+                                                            <span className=" player-card-player-name">{getChampionDisplayName(blueRow.metadata.championId)}</span>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            </th>
+                                            <td>
+                                                <ItemsDisplay
+                                                    participantId={blueRow.player.participantId - 1}
+                                                    lastFrame={lastDetailsFrame}
+                                                    items={items}
+                                                    patchVersion={formattedPatchVersion}
+                                                    role={blueRow.metadata.role}
+                                                />
+                                            </td>
+                                            <td>
+                                                <MiniHealthBar currentHealth={blueRow.player.currentHealth} maxHealth={blueRow.player.maxHealth} />
+                                            </td>
+                                            <td><div className=" player-stats">{blueRow.player.creepScore}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${blueRow.killFlashClassName}`}>{blueRow.player.kills}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${blueRow.deathFlashClassName}`}>{blueRow.player.deaths}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${blueRow.assistFlashClassName}`}>{blueRow.player.assists}</div></td>
+                                            {rowIndex === 0 ? (
+                                                <td className="mirror-center-gold-cell" rowSpan={blueRows.length}>
+                                                    <div className={`mirror-center-gold-indicator ${goldLeadColorClass}`}>
+                                                        {goldLead > 0 ? `◀` : goldLead < 0 ? `▶` : `•`} {formattedGoldLead}
+                                                    </div>
+                                                </td>
+                                            ) : null}
+                                            <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${redRow.deathFlashClassName}`}>{redRow.player.deaths}</div></td>
+                                            <td><div className={` player-stats player-stats-kda ${redRow.killFlashClassName}`}>{redRow.player.kills}</div></td>
+                                            <td><div className=" player-stats">{redRow.player.creepScore}</div></td>
+                                            <td>
+                                                <MiniHealthBar currentHealth={redRow.player.currentHealth} maxHealth={redRow.player.maxHealth} />
+                                            </td>
+                                            <td>
+                                                <ItemsDisplay
+                                                    participantId={redRow.player.participantId - 1}
+                                                    lastFrame={lastDetailsFrame}
+                                                    items={items}
+                                                    patchVersion={formattedPatchVersion}
+                                                    role={redRow.metadata.role}
+                                                />
+                                            </td>
+                                            <th className="mirror-player-cell mirror-player-cell-right">
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(redRow.player.participantId)}>
+                                                    <div className="player-champion-info mirror-player-champion-info-right">
+                                                        <div className=" player-champion-info-name mirror-player-name-right">
+                                                            <span>{redRow.metadata.summonerName}</span>
+                                                            <span className=" player-card-player-name">{getChampionDisplayName(redRow.metadata.championId)}</span>
+                                                        </div>
+                                                        <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
+                                                            {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
+                                                            <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                            <TeamTBDSVG className='player-champion' />
+                                                            <span className=" player-champion-info-level">{redRow.player.level}</span>
+                                                        </div>
+                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
+                                                        <svg className={`chevron-down ${isRedExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                                    </div>
+                                                </button>
+                                            </th>
+                                        </tr>
+                                    ),
+                                    shouldRenderExpandedRow ? (
+                                        <tr className="mirror-champion-stats-row" key={`mirror_stats_${gameIndex}_${blueRow.player.participantId}_${redRow.player.participantId}`}>
+                                            <td colSpan={15}>
+                                                <div className="mirror-stats-panels">
+                                                    <div className="mirror-stats-panel">
+                                                        {isBlueExpanded ? getFormattedChampionStats(
+                                                            blueRow.championDetails,
+                                                            runes,
+                                                            selectedRuneKeyByParticipantId[blueRow.championDetails.participantId],
+                                                            (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                                ...previousState,
+                                                                [blueRow.championDetails.participantId]: runeKey,
+                                                            })),
+                                                        ) : null}
+                                                    </div>
+                                                    <div className="mirror-stats-panel">
+                                                        {isRedExpanded ? getFormattedChampionStats(
+                                                            redRow.championDetails,
+                                                            runes,
+                                                            selectedRuneKeyByParticipantId[redRow.championDetails.participantId],
+                                                            (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                                ...previousState,
+                                                                [redRow.championDetails.participantId]: runeKey,
+                                                            })),
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : null
+                                ]
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                )}
                 <span className="footer-notes">
                     <a target="_blank" rel="noreferrer" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-26-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
                 </span>

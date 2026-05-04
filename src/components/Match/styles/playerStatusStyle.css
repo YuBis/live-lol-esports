@@ -478,6 +478,20 @@ Status dragons
     text-align: center;
 }
 
+.scoreboard-layout-toggle-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+}
+
+.scoreboard-layout-toggle {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(12, 20, 35, 0.7);
+    color: var(--text);
+    cursor: pointer;
+    padding: 0 10px;
+}
+
 .status-live-game-card-table-wrapper {
     overflow-x: auto;
     overflow-y: clip;
@@ -511,6 +525,100 @@ Status dragons
 .status-live-game-card-table td {
     padding: 0 2px;
     box-sizing: border-box;
+}
+
+.status-live-game-card-table-mirror {
+    --mirror-team-col-width: 16rem;
+    --mirror-items-col-width: 9.6rem;
+    --mirror-health-col-width: 8.2rem;
+    --mirror-cs-col-width: 4ch;
+    --mirror-kda-col-width: 3ch;
+    --mirror-gold-col-width: 8.5rem;
+    min-width: max-content;
+}
+
+.status-live-game-card-table-mirror .mirror-col-team {
+    width: var(--mirror-team-col-width);
+    min-width: var(--mirror-team-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-col-items {
+    width: var(--mirror-items-col-width);
+    min-width: var(--mirror-items-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-col-health {
+    width: var(--mirror-health-col-width);
+    min-width: var(--mirror-health-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-col-cs {
+    width: var(--mirror-cs-col-width);
+    min-width: var(--mirror-cs-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-col-kda {
+    width: var(--mirror-kda-col-width);
+    min-width: var(--mirror-kda-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-col-gold {
+    width: var(--mirror-gold-col-width);
+    min-width: var(--mirror-gold-col-width);
+}
+
+.status-live-game-card-table-mirror .mirror-player-cell {
+    background: transparent;
+    padding: 0;
+}
+
+.mirror-player-toggle {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.mirror-player-champion-info-right {
+    flex-direction: row-reverse;
+    text-align: right;
+}
+
+.mirror-player-name-right {
+    margin-left: 0;
+    margin-right: 0.5rem;
+    align-items: flex-end;
+}
+
+.mirror-center-gold-cell {
+    vertical-align: middle;
+    text-align: center;
+    padding: 0 6px;
+}
+
+.mirror-center-gold-indicator {
+    height: 28px;
+    line-height: 28px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 12px;
+    background: var(--gray-line);
+}
+
+.mirror-champion-stats-row > td {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.mirror-stats-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.mirror-stats-panel {
+    min-width: 0;
 }
 
 .player-champion-info {
