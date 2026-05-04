@@ -29,7 +29,8 @@ export function MatchDetails({ gameMetadata, eventDetails, matchState, records, 
         redTeam = auxBlueTeam;
     }
 
-    let matchResults = results || eventDetails.match.teams.map(team => team.result)
+    const scheduleResults = scheduleEvent?.match?.teams?.map((team) => team.result)
+    let matchResults = scheduleResults || results || eventDetails.match.teams.map(team => team.result)
 
     return (
         <div className="">

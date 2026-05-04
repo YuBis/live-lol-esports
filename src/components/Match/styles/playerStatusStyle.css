@@ -492,7 +492,7 @@ Status dragons
     --cs-col-width: 4ch;
     --kda-col-width: 3ch;
     --gold-col-width: 12ch;
-    --health-col-min-width: 10rem;
+    --health-col-min-width: 9.2rem;
     --table-min-width: calc(
         var(--champion-col-width)
         + var(--items-col-width)
@@ -714,6 +714,16 @@ svg.player-champion {
     width: var(--items-col-width);
     min-width: var(--items-col-width);
     max-width: var(--items-col-width);
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.status-live-game-card-table th[title="life"],
+.status-live-game-card-table .player-stats-row td:nth-child(2) {
+    width: var(--health-col-min-width);
+    min-width: var(--health-col-min-width);
+    max-width: var(--health-col-min-width);
+    padding-right: 4px;
 }
 
 .status-live-game-card-table th[title="gold"],
@@ -1026,7 +1036,7 @@ svg.player-champion {
 }
 
 .champion-stats-content .rune-list {
-    width: fit-content;
+    width: 100%;
     max-width: 100%;
 }
 
@@ -1040,6 +1050,8 @@ svg.player-champion {
     background: rgba(16, 27, 52, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
 }
 
 .rune-style-board {
@@ -1169,6 +1181,7 @@ svg.player-champion {
 .rune-detail-panel {
     min-width: 220px;
     max-width: 420px;
+    width: 100%;
     padding: 10px 12px;
     border-radius: 8px;
     background: rgba(6, 12, 26, 0.72);

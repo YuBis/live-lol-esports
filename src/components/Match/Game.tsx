@@ -993,7 +993,7 @@ function getFormattedRunes(
         <div className="rune-list rune-style-layout">
             <div className="rune-style-board">
                 <section className="rune-style-column">
-                    <div className="rune-style-title">Primary Rune</div>
+                    <div className="rune-style-title">메인 룬</div>
                     <div className="rune-style-grid">
                         {primaryStyle ? (
                             primaryStyle.slots.map((slot, slotIndex) => (
@@ -1031,13 +1031,13 @@ function getFormattedRunes(
                                 </div>
                             ))
                         ) : (
-                            <div className="rune-style-empty">No primary rune data</div>
+                            <div className="rune-style-empty">메인 룬 정보가 없습니다.</div>
                         )}
                     </div>
                 </section>
 
                 <section className="rune-style-column">
-                    <div className="rune-style-title">Secondary Rune</div>
+                    <div className="rune-style-title">보조 룬</div>
                     <div className="rune-style-grid">
                         {subStyle ? (
                             subStyle.slots
@@ -1073,7 +1073,7 @@ function getFormattedRunes(
                                     </div>
                                 ))
                         ) : (
-                            <div className="rune-style-empty">No secondary rune data</div>
+                            <div className="rune-style-empty">보조 룬 정보가 없습니다.</div>
                         )}
                     </div>
                 </section>
@@ -1142,12 +1142,12 @@ function getFormattedRunes(
 const STAT_SHARD_FALLBACK_BY_PERK_ID: {
     [perkId: number]: { name: string, description: string }
 } = {
-    5001: { name: `Stat Shard`, description: `Attack Speed +10%` },
-    5005: { name: `Stat Shard`, description: `Adaptive Force +9` },
-    5007: { name: `Stat Shard`, description: `Ability Haste +8` },
-    5008: { name: `Stat Shard`, description: `Move Speed +2%` },
-    5010: { name: `Stat Shard`, description: `Health +10~180 (scales by level)` },
-    5011: { name: `Stat Shard`, description: `Tenacity +10% / Slow Resist +15%` },
+    5001: { name: `능력치 파편`, description: `공격 속도 +10%` },
+    5005: { name: `능력치 파편`, description: `적응형 힘 +9` },
+    5007: { name: `능력치 파편`, description: `스킬 가속 +8` },
+    5008: { name: `능력치 파편`, description: `이동 속도 +2%` },
+    5010: { name: `능력치 파편`, description: `체력 +10~180 (레벨에 따라 증가)` },
+    5011: { name: `능력치 파편`, description: `강인함 +10% / 둔화 저항 +15%` },
 }
 
 const STAT_SHARD_PRESENTATION_BY_PERK_ID: {

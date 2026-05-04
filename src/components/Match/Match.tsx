@@ -854,6 +854,10 @@ export function Match({ match }: MatchRouteProps) {
         }
     }
 
+    const scheduleMatchResults = scheduleEvent?.match?.teams?.map((team) => team.result)
+    const blueTeamOutcomeLabel = scheduleMatchResults?.[0]?.outcome ?? currentGameOutcome?.[0]?.outcome
+    const redTeamOutcomeLabel = scheduleMatchResults?.[1]?.outcome ?? currentGameOutcome?.[1]?.outcome
+
     if (firstWindowFrame !== undefined && lastWindowFrame !== undefined && lastDetailsFrame !== undefined && metadata !== undefined && eventDetails !== undefined && currentGameOutcome !== undefined && scheduleEvent !== undefined && gameIndex !== undefined && items !== undefined && runes !== undefined) {
         return (
             <div className='match-container'>
@@ -884,10 +888,10 @@ export function Match({ match }: MatchRouteProps) {
                                             {eventDetails?.match.teams[0].name}
                                         </h4>
                                     </span>
-                                    {currentGameOutcome ?
+                                    {blueTeamOutcomeLabel ?
                                         (<span className="outcome">
-                                            <p className={currentGameOutcome[0].outcome}>
-                                                {currentGameOutcome[0].outcome}
+                                            <p className={blueTeamOutcomeLabel}>
+                                                {blueTeamOutcomeLabel}
                                             </p>
                                         </span>)
                                         : null}
@@ -919,10 +923,10 @@ export function Match({ match }: MatchRouteProps) {
                                             {eventDetails?.match.teams[1].name}
                                         </h4>
                                     </span>
-                                    {currentGameOutcome ?
+                                    {redTeamOutcomeLabel ?
                                         (<span className="outcome">
-                                            <p className={currentGameOutcome[1].outcome}>
-                                                {currentGameOutcome[1].outcome}
+                                            <p className={redTeamOutcomeLabel}>
+                                                {redTeamOutcomeLabel}
                                             </p>
                                         </span>)
                                         : null}
