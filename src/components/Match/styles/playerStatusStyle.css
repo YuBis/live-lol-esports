@@ -620,18 +620,34 @@ svg.player-champion {
     color: var(--text)
 }
 
-.champion-stats-row span {
+.champion-stats-row > td > span {
     display: none;
+    width: 100%;
 }
 
 .player-stats-row th {
     cursor: pointer;
 }
 
-.champion-stats-row div {
-    display: inline-block;
-    padding: 0px 5px;
-    margin: 5px;
+.champion-stats-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 6px 0;
+    box-sizing: border-box;
+}
+
+.champion-stats-content > .footer-notes {
+    margin: 0;
+}
+
+.champion-stats-content .rune-list {
+    width: 100%;
+    min-width: 0;
 }
 
 .chevron-down {
@@ -1016,4 +1032,10 @@ svg.player-champion {
 
 .rune-list .text {
     display: block;
+}
+
+.champion-stats-content .rune-list .description {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }

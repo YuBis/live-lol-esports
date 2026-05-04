@@ -285,14 +285,20 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
 
-    let playerStatsRows = Array.from($('.player-stats-row th'))
-    let championStatsRows = Array.from($('.champion-stats-row span'))
-    let chevrons = Array.from($('.player-stats-row .chevron-down'))
-    playerStatsRows.forEach((playerStatsRow, index) => {
-        $(playerStatsRow).prop("onclick", null).off("click");
-        $(playerStatsRow).on('click', () => {
-            $(championStatsRows[index]).slideToggle()
-            $(chevrons[index]).toggleClass('rotated')
+    const playerStatsRowHeaders = Array.from($(`.player-stats-row th`))
+    playerStatsRowHeaders.forEach((playerStatsRowHeader) => {
+        const $playerStatsRowHeader = $(playerStatsRowHeader)
+        $playerStatsRowHeader.prop(`onclick`, null).off(`click`)
+        $playerStatsRowHeader.on(`click`, () => {
+            const $playerStatsRow = $playerStatsRowHeader.closest(`tr.player-stats-row`)
+            const $championStatsRowContainer = $playerStatsRow
+                .next(`tr.champion-stats-row`)
+                .find(`> td > span`)
+                .first()
+            const $chevron = $playerStatsRowHeader.find(`.chevron-down`)
+
+            $championStatsRowContainer.stop(true, true).slideToggle()
+            $chevron.toggleClass(`rotated`)
         })
     })
 
@@ -874,7 +880,7 @@ function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKill
 
 function getFormattedChampionStats(championDetails: Participant, runes: Rune[]) {
     return (
-        <div>
+        <div className="champion-stats-content">
             <div className='footer-notes'>Attack Damage: {championDetails.attackDamage}</div>
             <div className='footer-notes'>Ability Power: {championDetails.abilityPower}</div>
             <div className='footer-notes'>Attack Speed: {championDetails.attackSpeed}</div>
