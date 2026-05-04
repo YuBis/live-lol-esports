@@ -904,17 +904,17 @@ function getFormattedChampionStats(
 ) {
     return (
         <div className="champion-stats-content">
-            <div className='footer-notes'>Attack Damage: {championDetails.attackDamage}</div>
-            <div className='footer-notes'>Ability Power: {championDetails.abilityPower}</div>
-            <div className='footer-notes'>Attack Speed: {championDetails.attackSpeed}</div>
-            <div className='footer-notes'>Life Steal: {championDetails.lifeSteal}%</div>
-            <div className='footer-notes'>Armor: {championDetails.armor}</div>
-            <div className='footer-notes'>Magic Resistance: {championDetails.magicResistance}</div>
-            <div className='footer-notes'>Wards Destroyed: {championDetails.wardsDestroyed}</div>
-            <div className='footer-notes'>Wards Placed: {championDetails.wardsPlaced}</div>
-            <div className='footer-notes'>Damage Share: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
-            <div className='footer-notes'>Kill Participation: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
-            <div className='footer-notes'>Skill Order: {championDetails.abilities.join('->')}</div>
+            <div className='footer-notes'>공격력: {championDetails.attackDamage}</div>
+            <div className='footer-notes'>주문력: {championDetails.abilityPower}</div>
+            <div className='footer-notes'>공격 속도: {championDetails.attackSpeed}</div>
+            <div className='footer-notes'>생명력 흡수: {championDetails.lifeSteal}%</div>
+            <div className='footer-notes'>방어력: {championDetails.armor}</div>
+            <div className='footer-notes'>마법 저항력: {championDetails.magicResistance}</div>
+            <div className='footer-notes'>와드 파괴: {championDetails.wardsDestroyed}</div>
+            <div className='footer-notes'>와드 설치: {championDetails.wardsPlaced}</div>
+            <div className='footer-notes'>대미지 기여도: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
+            <div className='footer-notes'>킬 관여율: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
+            <div className='footer-notes'>스킬 순서: {championDetails.abilities.join('->')}</div>
             {getFormattedRunes(championDetails, runes, selectedRuneKey, onSelectRuneKey)}
         </div>
     )
