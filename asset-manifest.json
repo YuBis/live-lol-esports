@@ -1,0 +1,43 @@
+{
+  "files": {
+    "main.css": "/live-lol-esports/static/css/main.6a272f07.chunk.css",
+    "main.js": "/live-lol-esports/static/js/main.76b1640e.chunk.js",
+    "runtime-main.js": "/live-lol-esports/static/js/runtime-main.7747648f.js",
+    "static/css/2.2a53c7b1.chunk.css": "/live-lol-esports/static/css/2.2a53c7b1.chunk.css",
+    "static/js/2.1b58da68.chunk.js": "/live-lol-esports/static/js/2.1b58da68.chunk.js",
+    "index.html": "/live-lol-esports/index.html",
+    "static/js/2.1b58da68.chunk.js.LICENSE.txt": "/live-lol-esports/static/js/2.1b58da68.chunk.js.LICENSE.txt",
+    "static/media/baron.99733951.svg": "/live-lol-esports/static/media/baron.99733951.svg",
+    "static/media/blue_baron_slain.ogg": "/live-lol-esports/static/media/blue_baron_slain.37a49b32.ogg",
+    "static/media/blue_dragon_slain.ogg": "/live-lol-esports/static/media/blue_dragon_slain.fb069b47.ogg",
+    "static/media/blue_inhibitor_destroyed.ogg": "/live-lol-esports/static/media/blue_inhibitor_destroyed.1dca9d1a.ogg",
+    "static/media/blue_turret_destroyed.ogg": "/live-lol-esports/static/media/blue_turret_destroyed.7f7dd295.ogg",
+    "static/media/champion_slain.ogg": "/live-lol-esports/static/media/champion_slain.9c4732db.ogg",
+    "static/media/dragon-chemtech.515ce319.svg": "/live-lol-esports/static/media/dragon-chemtech.515ce319.svg",
+    "static/media/dragon-cloud.1a55fc30.svg": "/live-lol-esports/static/media/dragon-cloud.1a55fc30.svg",
+    "static/media/dragon-elder.2dd99da4.svg": "/live-lol-esports/static/media/dragon-elder.2dd99da4.svg",
+    "static/media/dragon-hextech.50140336.svg": "/live-lol-esports/static/media/dragon-hextech.50140336.svg",
+    "static/media/dragon-infernal.43bfa7f3.svg": "/live-lol-esports/static/media/dragon-infernal.43bfa7f3.svg",
+    "static/media/dragon-mountain.69282d8c.svg": "/live-lol-esports/static/media/dragon-mountain.69282d8c.svg",
+    "static/media/dragon-ocean.ad7cfa52.svg": "/live-lol-esports/static/media/dragon-ocean.ad7cfa52.svg",
+    "static/media/gold.ec65d79c.svg": "/live-lol-esports/static/media/gold.ec65d79c.svg",
+    "static/media/herald-icon.e5e74f23.svg": "/live-lol-esports/static/media/herald-icon.e5e74f23.svg",
+    "static/media/inhibitor.5e389683.svg": "/live-lol-esports/static/media/inhibitor.5e389683.svg",
+    "static/media/kill.b4d6f4d2.svg": "/live-lol-esports/static/media/kill.b4d6f4d2.svg",
+    "static/media/league-of-legends.3f6f7c30.svg": "/live-lol-esports/static/media/league-of-legends.3f6f7c30.svg",
+    "static/media/loading.84c98962.svg": "/live-lol-esports/static/media/loading.84c98962.svg",
+    "static/media/red_baron_slain.ogg": "/live-lol-esports/static/media/red_baron_slain.20bd3a75.ogg",
+    "static/media/red_dragon_slain.ogg": "/live-lol-esports/static/media/red_dragon_slain.0476846a.ogg",
+    "static/media/red_inhibitor_destroyed.ogg": "/live-lol-esports/static/media/red_inhibitor_destroyed.7e539066.ogg",
+    "static/media/red_turret_destroyed.ogg": "/live-lol-esports/static/media/red_turret_destroyed.65f33714.ogg",
+    "static/media/team-tbd.b0f70c24.svg": "/live-lol-esports/static/media/team-tbd.b0f70c24.svg",
+    "static/media/tower.3a7fbe61.svg": "/live-lol-esports/static/media/tower.3a7fbe61.svg"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.7747648f.js",
+    "static/css/2.2a53c7b1.chunk.css",
+    "static/js/2.1b58da68.chunk.js",
+    "static/css/main.6a272f07.chunk.css",
+    "static/js/main.76b1640e.chunk.js"
+  ]
+}
