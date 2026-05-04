@@ -205,7 +205,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     useEffect(() => {
         const currentGameState: GameState = GameState[lastWindowFrame.gameState as keyof typeof GameState]
-        let icon = currentGameState === GameState.finished ? "🔴" : currentGameState === GameState.paused ? "🟠" : "🟢"
+        let icon = currentGameState === GameState.finished ? "\uD83D\uDD34" : currentGameState === GameState.paused ? "\uD83D\uDFE0" : "\uD83D\uDFE2"
         document.title = `${icon} ${eventDetails.league.name} - ${blueTeam.name} vs. ${redTeam.name}`;
 
         if (currentGameState !== gameState) {
@@ -257,12 +257,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const auxBlueTeam = blueTeam
 
     /*
-        As vezes os times continuam errados mesmo apos verificar o ultimo frame,
-        em ligas como TCL, por isso fazemos essa verificação pelo nome
+        Some leagues occasionally report swapped team sides in recent frames,
+        We also verify by summoner tag as a fallback.
     */
     const summonerName = gameMetadata.blueTeamMetadata.participantMetadata[0].summonerName.split(" ");
 
-    if ((summonerName[0] && summonerName[0].startsWith(redTeam.code)) || gameMetadata.blueTeamMetadata.esportsTeamId !== blueTeam.id) { // Temos que verificar apenas os primeiros caracteres pois os times academy usam o A, a mais na tag mas não nos nomes
+    if ((summonerName[0] && summonerName[0].startsWith(redTeam.code)) || gameMetadata.blueTeamMetadata.esportsTeamId !== blueTeam.id) { // Only compare prefix because academy tags may differ from summoner naming.
         blueTeam = redTeam;
         redTeam = auxBlueTeam;
     }
@@ -938,59 +938,84 @@ function getSlottedRunes(runes: Rune[]): Array<SlottedRune> {
     return slottedRunes
 }
 
-function getRuneHTMLElement(slottedRune: SlottedRune) {
-    return <div dangerouslySetInnerHTML={{ __html: slottedRune.longDesc }}></div>
-}
-
 function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
-    const slottedRunes = getSlottedRunes(runes)
-    const mappedRunes = championDetails.perkMetadata.perks.map((perkId) => ({
-        perkId,
-        mappedRune: slottedRunes.find((slottedRune) => slottedRune.id === perkId),
-    }))
+    const selectedPerkIds = new Set<number>(championDetails.perkMetadata.perks)
+    const primaryStyle = runes.find((rune) => rune.id === championDetails.perkMetadata.styleId)
+    const subStyle = runes.find((rune) => rune.id === championDetails.perkMetadata.subStyleId)
+    const statShardPerkIds = championDetails.perkMetadata.perks.filter((perkId) => STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]).slice(0, 3)
 
     return (
-        <div className="rune-list">
-            {mappedRunes.map(({ perkId, mappedRune }) => {
-                if (mappedRune) {
+        <div className="rune-list rune-style-layout">
+            <section className="rune-style-column">
+                <div className="rune-style-title">Primary Rune</div>
+                <div className="rune-style-grid">
+                    {primaryStyle ? (
+                        primaryStyle.slots.map((slot, slotIndex) => (
+                            <div className="rune-style-row" key={`primary_slot_${slotIndex}`}>
+                                {slot.runes.map((slottedRune) => {
+                                    const isSelected = selectedPerkIds.has(slottedRune.id)
+                                    return (
+                                        <img
+                                            key={`primary_rune_${slottedRune.id}`}
+                                            className={`rune-style-icon ${isSelected ? `selected` : `muted`}`}
+                                            src={getRuneUrlFromIcon(runes, slottedRune.icon)}
+                                            alt={slottedRune.name}
+                                            title={slottedRune.name}
+                                        />
+                                    )
+                                })}
+                            </div>
+                        ))
+                    ) : (
+                        <div className="rune-style-empty">No primary rune data</div>
+                    )}
+                </div>
+            </section>
+
+            <section className="rune-style-column">
+                <div className="rune-style-title">Secondary Rune</div>
+                <div className="rune-style-grid">
+                    {subStyle ? (
+                        subStyle.slots
+                            .filter((_, slotIndex) => slotIndex > 0)
+                            .map((slot, slotIndex) => (
+                                <div className="rune-style-row" key={`sub_slot_${slotIndex}`}>
+                                    {slot.runes.map((slottedRune) => {
+                                        const isSelected = selectedPerkIds.has(slottedRune.id)
+                                        return (
+                                            <img
+                                                key={`sub_rune_${slottedRune.id}`}
+                                                className={`rune-style-icon ${isSelected ? `selected` : `muted`}`}
+                                                src={getRuneUrlFromIcon(runes, slottedRune.icon)}
+                                                alt={slottedRune.name}
+                                                title={slottedRune.name}
+                                            />
+                                        )
+                                    })}
+                                </div>
+                            ))
+                    ) : (
+                        <div className="rune-style-empty">No secondary rune data</div>
+                    )}
+                </div>
+            </section>
+
+            <div className="rune-shard-row">
+                {statShardPerkIds.map((perkId) => {
+                    const shard = STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]
+                    if (!shard) return null
+                    const shortLabel = STAT_SHARD_SHORT_LABEL_BY_PERK_ID[perkId] ?? `S`
                     return (
-                        <div className="rune" key={`rune_${perkId}`}>
-                            <div>
-                                <img className="image" src={getRuneUrlFromIcon(runes, mappedRune.icon)} alt="" />
-                                <div className="name">{mappedRune.name}</div>
-                            </div>
-                            <div className="text">
-                                <div className="description">{getRuneHTMLElement(mappedRune)}</div>
-                            </div>
+                        <div
+                            className="rune-shard-chip"
+                            key={`stat_shard_${perkId}`}
+                            title={`${shard.name}: ${shard.description}`}
+                        >
+                            {shortLabel}
                         </div>
                     )
-                }
-
-                const statShardFallback = STAT_SHARD_FALLBACK_BY_PERK_ID[perkId]
-                if (!statShardFallback) {
-                    return (
-                        <div className="rune" key={`rune_unknown_${perkId}`}>
-                            <div>
-                                <div className="name">Rune {perkId}</div>
-                            </div>
-                            <div className="text">
-                                <div className="description">룬 데이터 매칭 실패</div>
-                            </div>
-                        </div>
-                    )
-                }
-
-                return (
-                    <div className="rune" key={`stat_shard_${perkId}`}>
-                        <div>
-                            <div className="name">{statShardFallback.name}</div>
-                        </div>
-                        <div className="text">
-                            <div className="description">{statShardFallback.description}</div>
-                        </div>
-                    </div>
-                )
-            })}
+                })}
+            </div>
         </div>
     )
 }
@@ -998,14 +1023,22 @@ function getFormattedRunes(championDetails: Participant, runes: Rune[]) {
 const STAT_SHARD_FALLBACK_BY_PERK_ID: {
     [perkId: number]: { name: string, description: string }
 } = {
-    5001: { name: `능력치 파편`, description: `공격 속도 +10%` },
-    5005: { name: `능력치 파편`, description: `적응형 능력치 +9` },
-    5007: { name: `능력치 파편`, description: `스킬 가속 +8` },
-    5008: { name: `능력치 파편`, description: `이동 속도 +2%` },
-    5010: { name: `능력치 파편`, description: `체력 +10~180 (레벨 비례)` },
-    5011: { name: `능력치 파편`, description: `강인함 +10% / 둔화 저항 +15%` },
+    5001: { name: `Stat Shard`, description: `Attack Speed +10%` },
+    5005: { name: `Stat Shard`, description: `Adaptive Force +9` },
+    5007: { name: `Stat Shard`, description: `Ability Haste +8` },
+    5008: { name: `Stat Shard`, description: `Move Speed +2%` },
+    5010: { name: `Stat Shard`, description: `Health +10~180 (scales by level)` },
+    5011: { name: `Stat Shard`, description: `Tenacity +10% / Slow Resist +15%` },
 }
 
+const STAT_SHARD_SHORT_LABEL_BY_PERK_ID: { [perkId: number]: string } = {
+    5001: `AS`,
+    5005: `AD/AP`,
+    5007: `AH`,
+    5008: `MS`,
+    5010: `HP`,
+    5011: `TEN`,
+}
 const SUMMONERS_RIFT_BASE_RESPAWN_SECONDS_BY_LEVEL = [
     0,
     10,

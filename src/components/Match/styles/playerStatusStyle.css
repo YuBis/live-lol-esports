@@ -492,8 +492,18 @@ Status dragons
     --cs-col-width: 4ch;
     --kda-col-width: 3ch;
     --gold-col-width: 12ch;
-    width: max-content;
-    min-width: 100%;
+    --health-col-min-width: 10rem;
+    --table-min-width: calc(
+        var(--champion-col-width)
+        + var(--items-col-width)
+        + var(--cs-col-width)
+        + (var(--kda-col-width) * 3)
+        + var(--gold-col-width)
+        + var(--health-col-min-width)
+        + 20px
+    );
+    width: max(100%, var(--table-min-width));
+    min-width: var(--table-min-width);
     table-layout: fixed;
 }
 
@@ -623,6 +633,8 @@ svg.player-champion {
 .champion-stats-row > td > span {
     display: none;
     width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .player-stats-row th {
@@ -643,6 +655,9 @@ svg.player-champion {
 
 .champion-stats-content > .footer-notes {
     margin: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .champion-stats-content .rune-list {
@@ -1010,32 +1025,93 @@ svg.player-champion {
     border-color: var(--background) transparent transparent transparent;
 }
 
-.rune img {
-    max-width: 48px;
-    max-height: 48px;
+.champion-stats-content .rune-list {
+    width: fit-content;
+    max-width: 100%;
 }
 
-.rune-list div {
-    padding: 0px;
-    margin: 2px 0px;
+.rune-style-layout {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(16, 27, 52, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-sizing: border-box;
 }
 
-.rune-list .name {
-    vertical-align: top;
-    margin-top: 16px;
-    margin-left: 8px;
+.rune-style-column {
+    min-width: 140px;
+    max-width: 190px;
 }
 
-.rune-list div.rune {
-    margin-bottom: 18px;
+.rune-style-title {
+    color: #f4d36a;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
 }
 
-.rune-list .text {
-    display: block;
+.rune-style-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
-.champion-stats-content .rune-list .description {
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+.rune-style-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+}
+
+.rune-style-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: contain;
+    box-sizing: border-box;
+    transition: filter 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.rune-style-icon.muted {
+    filter: grayscale(1) brightness(0.55);
+    opacity: 0.7;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.rune-style-icon.selected {
+    filter: none;
+    opacity: 1;
+    border: 1px solid #f4d36a;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.rune-style-empty {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+    padding: 4px 0;
+}
+
+.rune-shard-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.rune-shard-chip {
+    min-width: 40px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid #f4d36a;
+    color: #f4d36a;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    background: rgba(6, 12, 26, 0.75);
 }
