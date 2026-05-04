@@ -501,17 +501,19 @@ Status dragons
 }
 
 .status-live-game-card-mirror-mode {
-    width: max-content;
+    width: auto;
     max-width: none;
+    margin-left: calc(50% - 47vw);
+    margin-right: calc(50% - 47vw);
 }
 
 .status-live-game-card-mirror-mode .status-live-game-card-content {
-    width: max-content;
-    min-width: calc(100vw - 3rem);
+    width: 100%;
+    min-width: min(112rem, calc(100vw - 2rem));
 }
 
 .status-live-game-card-table-wrapper-mirror {
-    overflow-x: visible;
+    overflow-x: auto;
     overflow-y: visible;
     padding-top: 0;
     margin-top: 0;
@@ -551,7 +553,8 @@ Status dragons
     --mirror-cs-col-width: 4ch;
     --mirror-kda-col-width: 3ch;
     --mirror-gold-col-width: 4.4rem;
-    min-width: max-content;
+    width: 100%;
+    min-width: min(112rem, calc(100vw - 2rem));
 }
 
 .status-live-game-card-table-mirror thead th {

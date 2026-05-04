@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { getWindowResponse } from '../../utils/LoLEsportsAPI'
-import { CustomTeam, EventDetails, Team, WindowFrame } from '../types/baseTypes'
+import { CustomTeam, EventDetails, ExtendedGame, Team, WindowFrame } from '../types/baseTypes'
 
 type Props = {
     eventDetails: EventDetails,
@@ -68,6 +68,7 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
             <div className='game-selector'>
                 {eventDetails.match.games.map((game) => {
                     const winnerLabel = winnerLabelByGameId[game.id]
+                        || getFallbackWinnerLabelForCompletedGame(game, eventDetails, teamsById)
                     const displayLabel = formatGameStateLabel(game.state, winnerLabel)
 
                     return <Link className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
@@ -105,6 +106,75 @@ async function getWinnerTeamIdForGame(gameId: string, gameTeams: CustomTeam[]): 
         console.error(error)
         return undefined
     }
+}
+
+function getFallbackWinnerLabelForCompletedGame(
+    game: ExtendedGame,
+    eventDetails: EventDetails,
+    teamsById: Map<string, Team>,
+) {
+    if (game.state.toLowerCase() !== `completed`) return undefined
+
+    const outcomeWinnerTeamId = getWinnerTeamIdFromGameOutcome(game.teams)
+    if (outcomeWinnerTeamId) {
+        return getTeamLabelById(teamsById, outcomeWinnerTeamId)
+    }
+
+    const seriesWinnerTeamId = getSeriesWinnerTeamId(eventDetails.match.teams)
+    if (!seriesWinnerTeamId) return undefined
+
+    const completedGames = eventDetails.match.games.filter((seriesGame) => seriesGame.state.toLowerCase() === `completed`)
+    const completedGameCount = completedGames.length
+    if (completedGameCount === 0) return undefined
+
+    const leadingTeamWins = Math.max(
+        Number(eventDetails.match.teams[0]?.result?.gameWins || 0),
+        Number(eventDetails.match.teams[1]?.result?.gameWins || 0),
+    )
+    const trailingTeamWins = Math.min(
+        Number(eventDetails.match.teams[0]?.result?.gameWins || 0),
+        Number(eventDetails.match.teams[1]?.result?.gameWins || 0),
+    )
+
+    if (trailingTeamWins === 0 && completedGameCount === leadingTeamWins) {
+        return getTeamLabelById(teamsById, seriesWinnerTeamId)
+    }
+
+    const seriesIsFinished = eventDetails.match.games.every((seriesGame) => {
+        const normalizedState = seriesGame.state.toLowerCase()
+        return normalizedState === `completed` || normalizedState === `unneeded`
+    })
+
+    if (!seriesIsFinished) return undefined
+
+    const lastCompletedGameNumber = completedGames.reduce((maxNumber, seriesGame) => Math.max(maxNumber, seriesGame.number), 0)
+    if (game.number !== lastCompletedGameNumber) return undefined
+
+    return getTeamLabelById(teamsById, seriesWinnerTeamId)
+}
+
+function getWinnerTeamIdFromGameOutcome(gameTeams: CustomTeam[]): string | undefined {
+    const winnerTeam = (gameTeams as Array<CustomTeam & { outcome?: string, result?: { outcome?: string } }>).find((team) => {
+        const normalizedTeamOutcome = team.outcome?.toLowerCase()
+        const normalizedResultOutcome = team.result?.outcome?.toLowerCase()
+        return normalizedTeamOutcome === `win` || normalizedResultOutcome === `win`
+    })
+    return winnerTeam?.id
+}
+
+function getSeriesWinnerTeamId(matchTeams: Team[]): string | undefined {
+    if (matchTeams.length < 2) return undefined
+
+    const firstTeamWins = Number(matchTeams[0]?.result?.gameWins || 0)
+    const secondTeamWins = Number(matchTeams[1]?.result?.gameWins || 0)
+
+    if (firstTeamWins === secondTeamWins) return undefined
+    return firstTeamWins > secondTeamWins ? matchTeams[0].id : matchTeams[1].id
+}
+
+function getTeamLabelById(teamsById: Map<string, Team>, teamId: string) {
+    const team = teamsById.get(teamId)
+    return team?.code || team?.name || undefined
 }
 
 function inferWinnerSide(lastWindowFrame: WindowFrame): WinnerSide | undefined {
