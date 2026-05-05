@@ -625,7 +625,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     return nextState
                 })
                 flashClearTimersRef.current.delete(cellKey)
-            }, 2000)
+            }, 3000)
             flashClearTimersRef.current.set(cellKey, timerId)
         })
     }, [
