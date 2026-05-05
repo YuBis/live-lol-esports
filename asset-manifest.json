@@ -1,7 +1,7 @@
 {
   "files": {
-    "main.css": "/live-lol-esports/static/css/main.65262b9c.chunk.css",
-    "main.js": "/live-lol-esports/static/js/main.df2d0df8.chunk.js",
+    "main.css": "/live-lol-esports/static/css/main.7af1552b.chunk.css",
+    "main.js": "/live-lol-esports/static/js/main.ced1f9b3.chunk.js",
     "runtime-main.js": "/live-lol-esports/static/js/runtime-main.7747648f.js",
     "static/css/2.2a53c7b1.chunk.css": "/live-lol-esports/static/css/2.2a53c7b1.chunk.css",
     "static/js/2.1b58da68.chunk.js": "/live-lol-esports/static/js/2.1b58da68.chunk.js",
@@ -20,8 +20,8 @@
     "static/media/dragon-infernal.43bfa7f3.svg": "/live-lol-esports/static/media/dragon-infernal.43bfa7f3.svg",
     "static/media/dragon-mountain.69282d8c.svg": "/live-lol-esports/static/media/dragon-mountain.69282d8c.svg",
     "static/media/dragon-ocean.ad7cfa52.svg": "/live-lol-esports/static/media/dragon-ocean.ad7cfa52.svg",
-    "static/media/gold.ec65d79c.svg": "/live-lol-esports/static/media/gold.ec65d79c.svg",
-    "static/media/herald-icon.e5e74f23.svg": "/live-lol-esports/static/media/herald-icon.e5e74f23.svg",
+    "static/media/dragon.6857c9ca.svg": "/live-lol-esports/static/media/dragon.6857c9ca.svg",
+    "static/media/playerStatusStyle.css": "/live-lol-esports/static/media/herald-icon.e5e74f23.svg",
     "static/media/inhibitor.5e389683.svg": "/live-lol-esports/static/media/inhibitor.5e389683.svg",
     "static/media/kill.b4d6f4d2.svg": "/live-lol-esports/static/media/kill.b4d6f4d2.svg",
     "static/media/league-of-legends.3f6f7c30.svg": "/live-lol-esports/static/media/league-of-legends.3f6f7c30.svg",
@@ -37,7 +37,7 @@
     "static/js/runtime-main.7747648f.js",
     "static/css/2.2a53c7b1.chunk.css",
     "static/js/2.1b58da68.chunk.js",
-    "static/css/main.65262b9c.chunk.css",
-    "static/js/main.df2d0df8.chunk.js"
+    "static/css/main.7af1552b.chunk.css",
+    "static/js/main.ced1f9b3.chunk.js"
   ]
 }
