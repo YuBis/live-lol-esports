@@ -21,7 +21,7 @@ import Loading from '../../assets/images/loading.svg'
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
 import { MatchDetails } from "./MatchDetails"
 import { Game } from "./Game";
-import { EventDetails, DetailsFrame, GameMetadata, Item, Outcome, Record, Result, ScheduleEvent, Standing, WindowFrame, Rune, ExtendedVod } from "../types/baseTypes"
+import { EventDetails, DetailsFrame, GameMetadata, Item, ObjectiveTimerBackfillSeed, Outcome, Record, Result, ScheduleEvent, Standing, WindowFrame, Rune, ExtendedVod } from "../types/baseTypes"
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { GameDetails } from './GameDetails';
@@ -74,6 +74,9 @@ const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_AVERAGE_LEVEL = 6
 const LIVE_DETAILS_BACKFILL_FALLBACK_MIN_TOTAL_GOLD = 20000
 const LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS = 10 * 1000
 const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
+const OBJECTIVE_TIMER_BACKFILL_LOOKBACK_MS = 12 * 60 * 1000
+const BARON_POWER_PLAY_DURATION_MS = 180 * 1000
+const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
 const MAGICAL_FOOTWEAR_RUNE_ID = 8304
 const SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID = 2422
@@ -100,6 +103,7 @@ export function Match({ match }: MatchRouteProps) {
     const [videoParameter, setVideoParameter] = useState<string>();
     const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>(`idle`);
     const [inferredHeraldKillCounts, setInferredHeraldKillCounts] = useState<{ blue: number, red: number }>({ blue: 0, red: 0 });
+    const [objectiveTimerBackfillSeed, setObjectiveTimerBackfillSeed] = useState<ObjectiveTimerBackfillSeed>();
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -149,6 +153,7 @@ export function Match({ match }: MatchRouteProps) {
         firstWindowReceivedRef.current = false
         setBackfillStatus(`idle`)
         setInferredHeraldKillCounts({ blue: 0, red: 0 })
+        setObjectiveTimerBackfillSeed(undefined)
         setLastDetailsFrame(undefined)
 
         const initialGameIndex = getInitialGameIndex();
@@ -182,6 +187,7 @@ export function Match({ match }: MatchRouteProps) {
                     setInferredHeraldKillCounts({ blue: 0, red: 0 })
                     backfillStatusByGameIdRef.current = new Map()
                     setBackfillStatus(`idle`)
+                    setObjectiveTimerBackfillSeed(undefined)
                     firstWindowTimestampRef.current = ``
                     setLastDetailsFrame(undefined)
                 }
@@ -438,6 +444,12 @@ export function Match({ match }: MatchRouteProps) {
             const pendingRawTrinketDropCountByParticipantId = new Map<number, number>()
             let aborted = false
             try {
+                await backfillObjectiveTimersFromWindowHistory(gameId, alignedStart, alignedEnd)
+                if (activeGameIdRef.current !== gameId) {
+                    aborted = true
+                }
+                if (aborted) return
+
                 for (let cursor = alignedStart; cursor <= alignedEnd; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
                     if (activeGameIdRef.current !== gameId) {
                         aborted = true
@@ -524,6 +536,43 @@ export function Match({ match }: MatchRouteProps) {
                     updateBackfillStatus(gameId, `completed`)
                 }
             }
+        }
+
+        async function backfillObjectiveTimersFromWindowHistory(gameId: string, alignedStartTimestampValue: number, alignedEndTimestampValue: number) {
+            if (activeGameIdRef.current !== gameId) return
+
+            const effectiveHistoryStartTimestampValue = Math.max(
+                alignedStartTimestampValue,
+                alignedEndTimestampValue - OBJECTIVE_TIMER_BACKFILL_LOOKBACK_MS,
+            )
+            const framesByTimestamp = new Map<string, WindowFrame>()
+
+            for (let cursor = effectiveHistoryStartTimestampValue; cursor <= alignedEndTimestampValue; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
+                if (activeGameIdRef.current !== gameId) return
+
+                const queryTimestamp = new Date(cursor).toISOString()
+                const response = await getWindowResponse(gameId, queryTimestamp)
+                if (!response) continue
+                if (activeGameIdRef.current !== gameId) return
+
+                const incomingFrames: WindowFrame[] = response.data?.frames
+                if (!incomingFrames || incomingFrames.length === 0) continue
+
+                incomingFrames.forEach((frame) => {
+                    const normalizedTimestamp = normalizeTimestamp(frame.rfc460Timestamp)
+                    if (!normalizedTimestamp) return
+                    framesByTimestamp.set(normalizedTimestamp, frame)
+                })
+            }
+
+            const frames = Array.from(framesByTimestamp.values())
+            if (frames.length === 0) return
+
+            const seed = buildObjectiveTimerBackfillSeedFromWindowFrames(frames, alignedEndTimestampValue)
+            if (!seed) return
+            if (activeGameIdRef.current !== gameId) return
+
+            setObjectiveTimerBackfillSeed(seed)
         }
 
         function updateBackfillStatus(gameId: string, status: `running` | `completed`) {
@@ -862,7 +911,7 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
@@ -2411,6 +2460,151 @@ function isSubsetWithCounts(candidate: number[], reference: number[]) {
     }
 
     return true
+}
+
+function buildObjectiveTimerBackfillSeedFromWindowFrames(
+    frames: WindowFrame[],
+    fallbackCurrentTimestampValue: number,
+): ObjectiveTimerBackfillSeed | undefined {
+    const normalizedFrames = frames
+        .map((frame) => ({
+            frame,
+            timestampValue: getTimestampValue(frame.rfc460Timestamp),
+        }))
+        .filter(({ timestampValue }) => timestampValue > 0)
+        .sort((a, b) => a.timestampValue - b.timestampValue)
+
+    if (normalizedFrames.length === 0) return undefined
+
+    const firstFrame = normalizedFrames[0].frame
+    let previousBaronCounts = {
+        blue: Number(firstFrame.blueTeam.barons || 0),
+        red: Number(firstFrame.redTeam.barons || 0),
+    }
+    let previousDragonKillCount = getFrameDragonKillCount(firstFrame)
+    let previousDragonTypesByTeam = {
+        blue: getNormalizedFrameDragonTypes(firstFrame.blueTeam.dragons),
+        red: getNormalizedFrameDragonTypes(firstFrame.redTeam.dragons),
+    }
+
+    let lastBaronKillTimestampMs: number | null = null
+    let lastDragonKillTimestampMs: number | null = null
+    const baronPowerPlaySnapshotByTeam: ObjectiveTimerBackfillSeed[`baronPowerPlaySnapshotByTeam`] = {
+        blue: null,
+        red: null,
+    }
+    const elderBuffEndAtMsByTeam: ObjectiveTimerBackfillSeed[`elderBuffEndAtMsByTeam`] = {
+        blue: null,
+        red: null,
+    }
+
+    normalizedFrames.forEach(({ frame, timestampValue }) => {
+        const currentBaronCounts = {
+            blue: Number(frame.blueTeam.barons || 0),
+            red: Number(frame.redTeam.barons || 0),
+        }
+        const blueTeamLead = Number(frame.blueTeam.totalGold || 0) - Number(frame.redTeam.totalGold || 0)
+        const redTeamLead = -blueTeamLead
+
+        if (currentBaronCounts.blue > previousBaronCounts.blue) {
+            lastBaronKillTimestampMs = timestampValue
+            baronPowerPlaySnapshotByTeam.blue = {
+                baseLead: blueTeamLead,
+                startedAtMs: timestampValue,
+            }
+        }
+        if (currentBaronCounts.red > previousBaronCounts.red) {
+            lastBaronKillTimestampMs = timestampValue
+            baronPowerPlaySnapshotByTeam.red = {
+                baseLead: redTeamLead,
+                startedAtMs: timestampValue,
+            }
+        }
+
+        const currentDragonKillCount = getFrameDragonKillCount(frame)
+        if (currentDragonKillCount > previousDragonKillCount) {
+            lastDragonKillTimestampMs = timestampValue
+        }
+
+        const currentDragonTypesByTeam = {
+            blue: getNormalizedFrameDragonTypes(frame.blueTeam.dragons),
+            red: getNormalizedFrameDragonTypes(frame.redTeam.dragons),
+        }
+        const blueAddedDragonTypes = getAddedDragonTypesWithCounts(previousDragonTypesByTeam.blue, currentDragonTypesByTeam.blue)
+        const redAddedDragonTypes = getAddedDragonTypesWithCounts(previousDragonTypesByTeam.red, currentDragonTypesByTeam.red)
+
+        if (blueAddedDragonTypes.some(isElderDragonTypeFromFrame)) {
+            elderBuffEndAtMsByTeam.blue = timestampValue + ELDER_DRAGON_BUFF_DURATION_MS
+        }
+        if (redAddedDragonTypes.some(isElderDragonTypeFromFrame)) {
+            elderBuffEndAtMsByTeam.red = timestampValue + ELDER_DRAGON_BUFF_DURATION_MS
+        }
+
+        previousBaronCounts = currentBaronCounts
+        previousDragonKillCount = currentDragonKillCount
+        previousDragonTypesByTeam = currentDragonTypesByTeam
+    })
+
+    const latestObservedTimestampValue = normalizedFrames[normalizedFrames.length - 1].timestampValue
+    const currentTimestampValue = Math.max(latestObservedTimestampValue, fallbackCurrentTimestampValue)
+
+    ;([`blue`, `red`] as const).forEach((teamKey) => {
+        const baronSnapshot = baronPowerPlaySnapshotByTeam[teamKey]
+        if (baronSnapshot) {
+            const elapsedMs = Math.max(0, currentTimestampValue - baronSnapshot.startedAtMs)
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+                baronPowerPlaySnapshotByTeam[teamKey] = null
+            }
+        }
+
+        const elderBuffEndAtMs = elderBuffEndAtMsByTeam[teamKey]
+        if (elderBuffEndAtMs !== null && elderBuffEndAtMs <= currentTimestampValue) {
+            elderBuffEndAtMsByTeam[teamKey] = null
+        }
+    })
+
+    return {
+        lastBaronKillTimestampMs,
+        lastDragonKillTimestampMs,
+        baronPowerPlaySnapshotByTeam,
+        elderBuffEndAtMsByTeam,
+    }
+}
+
+function getFrameDragonKillCount(frame: WindowFrame) {
+    const blueTeamDragonKillCount = Array.isArray(frame.blueTeam.dragons) ? frame.blueTeam.dragons.length : 0
+    const redTeamDragonKillCount = Array.isArray(frame.redTeam.dragons) ? frame.redTeam.dragons.length : 0
+    return blueTeamDragonKillCount + redTeamDragonKillCount
+}
+
+function getNormalizedFrameDragonTypes(dragonTypes: string[] | undefined) {
+    if (!Array.isArray(dragonTypes)) return []
+    return dragonTypes.map((dragonType) => String(dragonType || ``).trim().toLowerCase()).filter(Boolean)
+}
+
+function getAddedDragonTypesWithCounts(previousDragonTypes: string[], currentDragonTypes: string[]) {
+    const previousDragonTypeCounts = new Map<string, number>()
+    previousDragonTypes.forEach((dragonType) => {
+        previousDragonTypeCounts.set(dragonType, (previousDragonTypeCounts.get(dragonType) || 0) + 1)
+    })
+
+    const addedDragonTypes: string[] = []
+    currentDragonTypes.forEach((dragonType) => {
+        const previousCount = previousDragonTypeCounts.get(dragonType) || 0
+        if (previousCount > 0) {
+            previousDragonTypeCounts.set(dragonType, previousCount - 1)
+            return
+        }
+
+        addedDragonTypes.push(dragonType)
+    })
+
+    return addedDragonTypes
+}
+
+function isElderDragonTypeFromFrame(dragonType: string) {
+    const normalizedDragonType = String(dragonType || ``).trim().toLowerCase()
+    return normalizedDragonType === `elder` || normalizedDragonType.includes(`elder`)
 }
 
 function getLiveDetailsBackfillStartTimestampValue(

@@ -3,7 +3,7 @@ import '../Schedule/styles/scheduleStyle.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { getWindowResponse } from '../../utils/LoLEsportsAPI'
+import { getISODateMultiplyOf10, getWindowResponse } from '../../utils/LoLEsportsAPI'
 import { CustomTeam, EventDetails, ExtendedGame, Team, WindowFrame } from '../types/baseTypes'
 
 type Props = {
@@ -13,6 +13,9 @@ type Props = {
 
 type WinnerLabelByGameId = Record<string, string>
 type WinnerSide = CustomTeam['side']
+const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
+const COMPLETED_GAME_TAIL_LOOKAHEAD_MS = 4 * 60 * 60 * 1000
+const COMPLETED_GAME_TAIL_SAFE_NOW_OFFSET_MS = 60 * 1000
 
 export function GameDetails({ eventDetails, gameIndex }: Props) {
     const [winnerLabelByGameId, setWinnerLabelByGameId] = useState<WinnerLabelByGameId>({})
@@ -91,17 +94,28 @@ function formatGameStateLabel(state: string, winnerLabel?: string): string {
 
 async function getWinnerTeamIdForGame(gameId: string, gameTeams: CustomTeam[]): Promise<string | undefined> {
     try {
-        const response = await getWindowResponse(gameId)
-        if (!response || !response.data) return undefined
+        const initialWindowResponse = await getWindowResponse(gameId)
+        if (!initialWindowResponse || !initialWindowResponse.data) return undefined
 
-        const frames = response.data.frames as WindowFrame[] | undefined
-        if (!frames || frames.length === 0) return undefined
+        const initialFrames = initialWindowResponse.data.frames as WindowFrame[] | undefined
+        if (!initialFrames || initialFrames.length === 0) return undefined
 
-        const lastWindowFrame = frames[frames.length - 1]
-        const winnerSide = inferWinnerSide(lastWindowFrame)
-        if (!winnerSide) return undefined
+        const initialLastFrame = initialFrames[initialFrames.length - 1]
+        const winnerFromInitialFrame = inferWinnerSide(initialLastFrame)
+        if (winnerFromInitialFrame) {
+            return gameTeams.find((team) => team.side === winnerFromInitialFrame)?.id
+        }
 
-        return gameTeams.find((team) => team.side === winnerSide)?.id
+        const completedGameTailStartingTime = getCompletedGameTailStartingTime(initialFrames[0].rfc460Timestamp)
+        const tailWindowResponse = await getWindowResponse(gameId, completedGameTailStartingTime)
+        const tailFrames = tailWindowResponse?.data?.frames as WindowFrame[] | undefined
+        if (!tailFrames || tailFrames.length === 0) return undefined
+
+        const tailLastFrame = tailFrames[tailFrames.length - 1]
+        const winnerFromTailFrame = inferWinnerSide(tailLastFrame)
+        if (!winnerFromTailFrame) return undefined
+
+        return gameTeams.find((team) => team.side === winnerFromTailFrame)?.id
     } catch (error) {
         console.error(error)
         return undefined
@@ -195,4 +209,29 @@ function inferWinnerSide(lastWindowFrame: WindowFrame): WinnerSide | undefined {
     if (blueKills !== redKills) return blueKills > redKills ? `blue` : `red`
 
     return undefined
+}
+
+function getCompletedGameTailStartingTime(firstWindowTimestamp: string | Date | undefined) {
+    const firstWindowTimestampValue = getTimestampValue(firstWindowTimestamp)
+    if (firstWindowTimestampValue === 0) return getISODateMultiplyOf10()
+
+    const fourHoursAfterStartTimestampValue = firstWindowTimestampValue + COMPLETED_GAME_TAIL_LOOKAHEAD_MS
+    const safeNowTimestampValue = Date.now() - COMPLETED_GAME_TAIL_SAFE_NOW_OFFSET_MS
+    const completedGameTailTimestampValue = alignTimestampToLiveStatsStep(
+        Math.min(fourHoursAfterStartTimestampValue, safeNowTimestampValue)
+    )
+    if (completedGameTailTimestampValue === 0) return getISODateMultiplyOf10()
+
+    return new Date(completedGameTailTimestampValue).toISOString()
+}
+
+function getTimestampValue(timestamp: string | Date | undefined) {
+    if (!timestamp) return 0
+    const value = new Date(timestamp).getTime()
+    return Number.isFinite(value) ? value : 0
+}
+
+function alignTimestampToLiveStatsStep(timestampValue: number) {
+    if (!Number.isFinite(timestampValue) || timestampValue <= 0) return 0
+    return timestampValue - (timestampValue % LIVE_STATS_STARTING_TIME_STEP_MS)
 }

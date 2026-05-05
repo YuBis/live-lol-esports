@@ -53,9 +53,10 @@ span.mini-current-health {
 .live-game-stats-header-team-images>h1 {
     flex: 1;
     text-align: center;
+    position: relative;
 }
 
-.live-game-stats-header-team-images>h1>div:not(.live-game-kill-score) {
+.live-game-stats-header-team-images>h1>div:not(.live-game-kill-score):not(.live-game-baron-status) {
     font-weight: 500;
     font-size: 1rem;
 }
@@ -90,6 +91,59 @@ span.mini-current-health {
 .live-game-kill-score .red-team-kills {
     color: var(--red);
     text-align: left;
+}
+
+.live-game-objective-statuses {
+    position: absolute;
+    top: calc(100% + 1.35rem);
+    left: 50%;
+    transform: translate(-50%, 0);
+    margin-top: 0;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.22rem;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.live-game-objective-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+}
+
+.live-game-objective-status-icon {
+    width: 17px;
+    height: 17px;
+    color: #fff;
+}
+
+.live-game-objective-status-icon-image {
+    width: 17px;
+    height: 17px;
+    display: inline-block;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+}
+
+.live-game-objective-status-icon path,
+.live-game-objective-status-icon g {
+    fill: currentColor;
+}
+
+.live-game-objective-status-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+.live-game-objective-status-label.live {
+    color: var(--green-positive);
 }
 
 .live-game-stats-header-team-images>div {
@@ -239,6 +293,39 @@ span.mini-current-health {
     height: 24px;
 }
 
+.team-stats-herald-icon-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    filter: grayscale(1) brightness(1.08) contrast(1.1);
+}
+
+.team-stats-herald-icon-composite {
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    position: relative;
+}
+
+.team-stats-herald-icon-tint {
+    position: absolute;
+    inset: 0;
+    opacity: 0.72;
+    background: var(--text);
+    -webkit-mask: url('../../../assets/images/herald-icon.svg') center / contain no-repeat;
+    mask: url('../../../assets/images/herald-icon.svg') center / contain no-repeat;
+    pointer-events: none;
+}
+
+.team-stats-herald-icon-composite-blue .team-stats-herald-icon-tint {
+    background: var(--blue-twitter);
+}
+
+.team-stats-herald-icon-composite-red .team-stats-herald-icon-tint {
+    background: var(--red);
+}
+
 .gamestate-bg-in-game {
     background-color: var(--green);
     animation: pulse 2s infinite;
@@ -323,6 +410,22 @@ Gold bar
     gap: 0.5rem;
     font-variant-numeric: tabular-nums;
     text-align: center;
+    position: relative;
+}
+
+.team-gold-side-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.team-gold-side-group-blue {
+    justify-content: flex-end;
+}
+
+.team-gold-side-group-red {
+    justify-content: flex-start;
 }
 
 .team-gold-value {
@@ -330,19 +433,148 @@ Gold bar
     font-weight: 700;
     line-height: 1.1;
     color: var(--text);
-}
-
-.team-gold-value-blue,
-.team-gold-value-red {
-    text-align: center;
+    align-self: center;
 }
 
 .team-gold-value-blue {
     color: var(--blue-twitter);
+    text-align: center;
 }
 
 .team-gold-value-red {
     color: var(--red);
+    text-align: center;
+}
+
+.team-gold-power-play-block {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    line-height: 1;
+}
+
+.team-gold-power-play-block-near-blue {
+    margin-right: 0.15rem;
+}
+
+.team-gold-power-play-block-near-red {
+    margin-left: 0.15rem;
+}
+
+.team-gold-power-play-remaining {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: inherit;
+    opacity: 0.9;
+    font-variant-numeric: tabular-nums;
+}
+
+.team-gold-power-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: rgba(20, 28, 42, 0.92);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.team-gold-power-play-icon {
+    width: 1.5em;
+    height: 1.5em;
+    flex: 0 0 auto;
+}
+
+.team-gold-power-play-icon path,
+.team-gold-power-play-icon g {
+    fill: currentColor;
+}
+
+.team-gold-power-play-value {
+    color: inherit;
+    font-variant-numeric: tabular-nums;
+    font-size: 1em;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.team-gold-power-play-left {
+    left: 0;
+}
+
+.team-gold-power-play-right {
+    right: 0;
+}
+
+.team-gold-power-play-block.team-red,
+.team-gold-power-play.team-red {
+    color: var(--red);
+    border-color: rgba(255, 82, 82, 0.35);
+}
+.team-gold-power-play.team-red .team-gold-power-play-value,
+.team-gold-power-play.team-red .team-gold-power-play-icon {
+    color: var(--red);
+}
+
+.team-gold-power-play-block.team-blue,
+.team-gold-power-play.team-blue {
+    color: var(--blue-twitter);
+    border-color: rgba(42, 169, 224, 0.35);
+}
+.team-gold-power-play.team-blue .team-gold-power-play-value,
+.team-gold-power-play.team-blue .team-gold-power-play-icon {
+    color: var(--blue-twitter);
+}
+
+.team-gold-elder-buff {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: rgba(20, 28, 42, 0.92);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.team-gold-elder-buff-icon {
+    width: 1.2em;
+    height: 1.2em;
+    flex: 0 0 auto;
+}
+
+.team-gold-elder-buff-icon path,
+.team-gold-elder-buff-icon g {
+    fill: currentColor;
+}
+
+.team-gold-elder-buff-remaining {
+    color: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.team-gold-elder-buff-blue {
+    color: var(--blue-twitter);
+    border-color: rgba(42, 169, 224, 0.35);
+}
+
+.team-gold-elder-buff-red {
+    color: var(--red);
+    border-color: rgba(255, 82, 82, 0.35);
 }
 
 .gold-advantage-blue {
@@ -503,11 +735,17 @@ Status dragons
     padding: 0 10px;
 }
 
+.scoreboard-layout-toggle.active {
+    border-color: rgba(61, 174, 255, 0.6);
+    color: var(--blue-twitter);
+    box-shadow: 0 0 0 1px rgba(61, 174, 255, 0.22) inset;
+}
+
 .status-live-game-card-table-wrapper {
     overflow-x: auto;
     overflow-y: clip;
-    padding-top: 300px;
-    margin-top: -300px;
+    padding-top: 440px;
+    margin-top: -440px;
     scrollbar-gutter: stable both-edges;
 }
 
@@ -516,7 +754,8 @@ Status dragons
     max-width: 100%;
     margin-left: 0;
     margin-right: 0;
-    overflow-x: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
 }
 
 .status-live-game-card-mirror-mode .status-live-game-card-content {
@@ -531,8 +770,8 @@ Status dragons
 }
 
 .status-live-game-card-table-wrapper-mirror {
-    overflow-x: hidden;
-    overflow-y: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
     padding-top: 0;
     padding-left: 0;
     padding-right: 0;
@@ -637,50 +876,50 @@ Status dragons
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(1),
 .status-live-game-card-table-mirror thead tr > :nth-child(15),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(15) {
-    width: var(--mirror-team-col-width);
-    min-width: var(--mirror-team-col-width);
-    max-width: var(--mirror-team-col-width);
+    width: var(--mirror-items-col-width);
+    min-width: var(--mirror-items-col-width);
+    max-width: var(--mirror-items-col-width);
 }
 
 .status-live-game-card-table-mirror thead tr > :nth-child(2),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(2),
 .status-live-game-card-table-mirror thead tr > :nth-child(14),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(14) {
-    width: var(--mirror-items-col-width);
-    min-width: var(--mirror-items-col-width);
-    max-width: var(--mirror-items-col-width);
+    width: var(--mirror-health-col-width);
+    min-width: var(--mirror-health-col-width);
+    max-width: var(--mirror-health-col-width);
 }
 
 .status-live-game-card-table-mirror thead tr > :nth-child(3),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(3),
 .status-live-game-card-table-mirror thead tr > :nth-child(13),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(13) {
-    width: var(--mirror-health-col-width);
-    min-width: var(--mirror-health-col-width);
-    max-width: var(--mirror-health-col-width);
+    width: var(--mirror-team-col-width);
+    min-width: var(--mirror-team-col-width);
+    max-width: var(--mirror-team-col-width);
 }
 
-.status-live-game-card-table-mirror thead tr > :nth-child(4),
-.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(4),
-.status-live-game-card-table-mirror thead tr > :nth-child(12),
-.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(12) {
+.status-live-game-card-table-mirror thead tr > :nth-child(7),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(7),
+.status-live-game-card-table-mirror thead tr > :nth-child(9),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(9) {
     width: var(--mirror-cs-col-width);
     min-width: var(--mirror-cs-col-width);
     max-width: var(--mirror-cs-col-width);
 }
 
+.status-live-game-card-table-mirror thead tr > :nth-child(4),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(4),
 .status-live-game-card-table-mirror thead tr > :nth-child(5),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(5),
 .status-live-game-card-table-mirror thead tr > :nth-child(6),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(6),
-.status-live-game-card-table-mirror thead tr > :nth-child(7),
-.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(7),
-.status-live-game-card-table-mirror thead tr > :nth-child(9),
-.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(9),
 .status-live-game-card-table-mirror thead tr > :nth-child(10),
 .status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(10),
 .status-live-game-card-table-mirror thead tr > :nth-child(11),
-.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(11) {
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(11),
+.status-live-game-card-table-mirror thead tr > :nth-child(12),
+.status-live-game-card-table-mirror tbody .mirror-player-row > :nth-child(12) {
     width: var(--mirror-kda-col-width);
     min-width: var(--mirror-kda-col-width);
     max-width: var(--mirror-kda-col-width);
@@ -706,22 +945,44 @@ Status dragons
     padding: 0;
 }
 
-.mirror-player-champion-info-right {
-    flex-direction: row;
-    justify-content: flex-end;
+.mirror-player-champion-info-left {
+    justify-content: flex-start;
     text-align: right;
 }
 
-.mirror-player-name-right {
+.status-live-game-card-table-mirror .mirror-player-champion-info-left .player-champion-info-level {
+    right: auto;
+    left: -5px;
+}
+
+.mirror-player-champion-info-left .player-rune-types {
+    margin-right: 0;
+    margin-left: 0;
+}
+
+.mirror-player-name-left {
     margin-left: 0;
     margin-right: 0.5rem;
     align-items: flex-end;
     text-align: right;
 }
 
+.mirror-player-champion-info-right {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.mirror-player-name-right {
+    margin-left: 0.5rem;
+    margin-right: 0;
+    align-items: flex-start;
+    text-align: left;
+}
+
 .mirror-player-champion-info-right .player-rune-types {
     margin-right: 0;
-    margin-left: 6px;
+    margin-left: 0;
 }
 
 .mirror-center-gold-cell {
@@ -814,7 +1075,7 @@ Status dragons
 .status-live-game-card-mirror-mode .live-game-stats-header-team-images,
 .status-live-game-card-mirror-mode .live-game-stats-header-gold,
 .status-live-game-card-mirror-mode .live-game-stats-header-dragons {
-    max-width: 1540px;
+    max-width: 1600px;
     margin-left: auto;
     margin-right: auto;
 }
@@ -839,6 +1100,7 @@ Status dragons
     display: flex;
     align-items: center;
     min-width: 0;
+    border-radius: 6px;
 }
 
 .player-champion-info-level {
@@ -864,6 +1126,33 @@ Status dragons
     flex: 1;
     min-width: 0;
     overflow: hidden;
+}
+
+.player-champion-info.player-champion-info-dead {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 59, 59, 0.24) 0%,
+        rgba(255, 59, 59, 0.14) 52%,
+        rgba(255, 59, 59, 0.04) 100%
+    );
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-left.player-champion-info-dead {
+    background: linear-gradient(
+        270deg,
+        rgba(255, 59, 59, 0.24) 0%,
+        rgba(255, 59, 59, 0.14) 52%,
+        rgba(255, 59, 59, 0.04) 100%
+    );
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-right.player-champion-info-dead {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 59, 59, 0.24) 0%,
+        rgba(255, 59, 59, 0.14) 52%,
+        rgba(255, 59, 59, 0.04) 100%
+    );
 }
 
 .player-champion-info-name > span:first-child {
@@ -1334,15 +1623,20 @@ svg.player-champion {
 .itemDescription {
     display: none;
     position: absolute;
+    --tooltip-arrow-left: 50%;
     padding: 10px;
     text-align: center;
     z-index: 9;
     bottom: 150%;
+    left: 0;
+    transform: none;
     border-radius: 6px;
     width: 240px;
+    max-width: min(240px, calc(100vw - 24px));
     box-shadow: 0px 0px 9px 8px rgba(0, 0, 0, 0.5);
     background: var(--background);
     color: var(--text);
+    transition: none !important;
 }
 
 .itemDescription>div {
@@ -1353,11 +1647,31 @@ svg.player-champion {
     content: "";
     position: absolute;
     top: 100%;
-    left: 50%;
-    margin-left: -12px;
+    left: var(--tooltip-arrow-left);
+    transform: translateX(-50%);
     border-width: 12px;
     border-style: solid;
     border-color: var(--background) transparent transparent transparent;
+    transition: none !important;
+}
+
+.itemDescription.itemDescription-corner-left::after,
+.itemDescription.itemDescription-corner-right::after {
+    top: calc(100% - 6px);
+    width: 12px;
+    height: 12px;
+    border: 0;
+    background: var(--background);
+    transform: rotate(45deg);
+}
+
+.itemDescription.itemDescription-corner-left::after {
+    left: 12px;
+}
+
+.itemDescription.itemDescription-corner-right::after {
+    left: auto;
+    right: 12px;
 }
 
 .champion-stats-content .rune-list {

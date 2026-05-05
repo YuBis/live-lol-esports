@@ -8,11 +8,10 @@ import { EventDetails, GameMetadata, Record, TeamStats, WindowFrame, WindowParti
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
-import { ReactComponent as HeraldSVG } from '../../assets/images/herald-icon.svg';
 import { ReactComponent as KillSVG } from '../../assets/images/kill.svg';
-import { ReactComponent as GoldSVG } from '../../assets/images/gold.svg';
 import { ReactComponent as InhibitorSVG } from '../../assets/images/inhibitor.svg';
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
+import HeraldIcon from '../../assets/images/herald-icon.svg';
 
 import { ReactComponent as OceanDragonSVG } from '../../assets/images/dragon-ocean.svg';
 import { ReactComponent as ChemtechDragonSVG } from '../../assets/images/dragon-chemtech.svg';
@@ -41,16 +40,46 @@ type Props = {
     inferredHeraldKillCounts?: { blue: number, red: number },
 }
 
+type ScoreboardLayoutMode = `classic` | `mirror`
+const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
+
 export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
+    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => {
+        try {
+            return localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY) === `mirror` ? `mirror` : `classic`
+        } catch {
+            return `classic`
+        }
+    })
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     useEffect(() => {
-        let icon = "?윢"
+        try {
+            localStorage.setItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY, scoreboardLayoutMode)
+        } catch {
+            // Ignore storage errors and keep runtime mode only.
+        }
+    }, [scoreboardLayoutMode])
+
+    useEffect(() => {
+        const mirrorModeClassName = `mirror-scoreboard-mode`
+        if (scoreboardLayoutMode === `mirror`) {
+            document.body.classList.add(mirrorModeClassName)
+        } else {
+            document.body.classList.remove(mirrorModeClassName)
+        }
+        return () => {
+            document.body.classList.remove(mirrorModeClassName)
+        }
+    }, [scoreboardLayoutMode])
+
+    useEffect(() => {
+        let icon = "🟡"
         document.title = `${icon} ${eventDetails.league.name} - ${blueTeam.name} vs. ${redTeam.name}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [eventDetails.league.name, eventDetails.match.teams]);
@@ -326,7 +355,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     }
 
     return (
-        <div className="status-live-game-card">
+        <div className={`status-live-game-card ${scoreboardLayoutMode === `mirror` ? `status-live-game-card-mirror-mode` : ``}`}>
             <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} />
             <div className="status-live-game-card-content">
                 {/* {eventDetails ? (<h3>{eventDetails?.league.name}</h3>) : null} */}
@@ -390,6 +419,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </div>
                     </div>
                 </div>
+                {scoreboardLayoutMode === `classic` ? (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
@@ -428,7 +458,6 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
                                             <div className="player-champion-info">
-                                                <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
@@ -519,7 +548,6 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
                                         <th>
                                             <div className="player-champion-info">
-                                                <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
                                                 <div className='player-champion-wrapper'>
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
@@ -571,6 +599,102 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </tbody>
                     </table>
                 </div>
+                ) : (
+                <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-mirror">
+                    <table className="status-live-game-card-table status-live-game-card-table-mirror">
+                        <thead>
+                            <tr>
+                                <th className="mirror-col-items">아이템</th>
+                                <th className="mirror-col-health">체력</th>
+                                <th className="mirror-col-team mirror-col-team-left">{blueTeam.code.toUpperCase()}</th>
+                                <th className="mirror-col-kda">K</th>
+                                <th className="mirror-col-kda">D</th>
+                                <th className="mirror-col-kda">A</th>
+                                <th className="mirror-col-cs">CS</th>
+                                <th className="mirror-col-gold">골드차</th>
+                                <th className="mirror-col-cs">CS</th>
+                                <th className="mirror-col-kda">K</th>
+                                <th className="mirror-col-kda">D</th>
+                                <th className="mirror-col-kda">A</th>
+                                <th className="mirror-col-team mirror-col-team-right">{redTeam.code.toUpperCase()}</th>
+                                <th className="mirror-col-health">체력</th>
+                                <th className="mirror-col-items">아이템</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {firstWindowFrame.blueTeam.participants.map((bluePlayer: WindowParticipant, index) => {
+                                const redPlayer = firstWindowFrame.redTeam.participants[index]
+                                const blueMetadata = gameMetadata.blueTeamMetadata.participantMetadata[index]
+                                const redMetadata = gameMetadata.redTeamMetadata.participantMetadata[index]
+                                if (!bluePlayer || !redPlayer || !blueMetadata || !redMetadata) return null
+
+                                const rowGoldLead = bluePlayer.totalGold - redPlayer.totalGold
+                                const rowGoldLeadColorClass = rowGoldLead > 0 ? `gold-advantage-blue` : rowGoldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
+                                const rowGoldLeadMarker = getGoldLeadSymbol(rowGoldLead)
+                                const rowGoldLeadSymbolAlignmentClass = rowGoldLead > 0 ? `mirror-row-gold-symbol-left` : rowGoldLead < 0 ? `mirror-row-gold-symbol-right` : ``
+                                const rowGoldLeadValue = Number(Math.abs(rowGoldLead)).toLocaleString(`en-us`)
+
+                                return (
+                                    <tr className="mirror-player-row" key={`mirror_disabled_${gameIndex}_${bluePlayer.participantId}_${redPlayer.participantId}`}>
+                                        <td>
+                                            <div className="player-stats-items" />
+                                        </td>
+                                        <td>
+                                            <MiniHealthBar currentHealth={bluePlayer.currentHealth} maxHealth={bluePlayer.maxHealth} />
+                                        </td>
+                                        <th className="mirror-player-cell mirror-player-cell-left">
+                                            <div className="player-champion-info mirror-player-champion-info-left">
+                                                <div className=" player-champion-info-name mirror-player-name-left">
+                                                    <span>{blueMetadata.summonerName}</span>
+                                                    <span className=" player-card-player-name">{getChampionDisplayName(blueMetadata.championId)}</span>
+                                                </div>
+                                                <div className='player-champion-wrapper'>
+                                                    <img src={`${championsUrlWithPatchVersion}${blueMetadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                    <TeamTBDSVG className='player-champion' />
+                                                    <span className=" player-champion-info-level">{bluePlayer.level}</span>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td><div className=" player-stats player-stats-kda">{bluePlayer.kills}</div></td>
+                                        <td><div className=" player-stats player-stats-kda">{bluePlayer.deaths}</div></td>
+                                        <td><div className=" player-stats player-stats-kda">{bluePlayer.assists}</div></td>
+                                        <td><div className=" player-stats">{bluePlayer.creepScore}</div></td>
+                                        <td className="mirror-row-gold-cell">
+                                            <div className={`mirror-row-gold-diff ${rowGoldLeadColorClass}`}>
+                                                {rowGoldLeadMarker ? <span className={`mirror-row-gold-symbol ${rowGoldLeadSymbolAlignmentClass}`}>{rowGoldLeadMarker}</span> : null}
+                                                <span className="mirror-row-gold-value">{rowGoldLeadValue}</span>
+                                            </div>
+                                        </td>
+                                        <td><div className=" player-stats">{redPlayer.creepScore}</div></td>
+                                        <td><div className=" player-stats player-stats-kda">{redPlayer.kills}</div></td>
+                                        <td><div className=" player-stats player-stats-kda">{redPlayer.deaths}</div></td>
+                                        <td><div className=" player-stats player-stats-kda">{redPlayer.assists}</div></td>
+                                        <th className="mirror-player-cell mirror-player-cell-right">
+                                            <div className="player-champion-info mirror-player-champion-info-right">
+                                                <div className='player-champion-wrapper'>
+                                                    <img src={`${championsUrlWithPatchVersion}${redMetadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                    <TeamTBDSVG className='player-champion' />
+                                                    <span className=" player-champion-info-level">{redPlayer.level}</span>
+                                                </div>
+                                                <div className=" player-champion-info-name mirror-player-name-right">
+                                                    <span>{redMetadata.summonerName}</span>
+                                                    <span className=" player-card-player-name">{getChampionDisplayName(redMetadata.championId)}</span>
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td>
+                                            <MiniHealthBar currentHealth={redPlayer.currentHealth} maxHealth={redPlayer.maxHealth} />
+                                        </td>
+                                        <td>
+                                            <div className="player-stats-items" />
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                )}
                 <span className="footer-notes">
                     <a target="_blank" rel="noreferrer" href={`https://www.leagueoflegends.com/en-us/news/game-updates/patch-25-${gameMetadata.patchVersion.split(`.`)[1].length > 1 ? gameMetadata.patchVersion.split(`.`)[1] : "" + gameMetadata.patchVersion.split(`.`)[1]}-notes/`}>Patch Version: {gameMetadata.patchVersion}</a>
                 </span>
@@ -582,6 +706,13 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                 <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
                     Revision: {BUILD_LABEL}
                 </span>
+                <button
+                    type="button"
+                    className={`footer-notes scoreboard-layout-toggle ${scoreboardLayoutMode === `mirror` ? `active` : ``}`}
+                    onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
+                >
+                    {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
+                </button>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>
@@ -614,18 +745,19 @@ function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKill
                 {teamStats.barons}
             </div>
             <div className="team-stats heralds">
-                <HeraldSVG />
+                <span className={`team-stats-herald-icon-composite ${teamColor === `blue-team` ? `team-stats-herald-icon-composite-blue` : `team-stats-herald-icon-composite-red`}`}>
+                    <img
+                        src={HeraldIcon}
+                        alt=""
+                        className="team-stats-herald-icon-image"
+                    />
+                    <span className="team-stats-herald-icon-tint" aria-hidden="true" />
+                </span>
                 {inferredHeraldKills}
             </div>
             <div className="team-stats towers">
                 <TowerSVG />
                 {teamStats.towers}
-            </div>
-            <div className="team-stats gold">
-                <GoldSVG />
-                <span>
-                    {Number(teamStats.totalGold).toLocaleString('en-us')}
-                </span>
             </div>
         </div>
     )
@@ -670,6 +802,12 @@ function getDragonSVG(dragonName: string, teamColor: string, index: number) {
         case "mountain": return <MountainDragonSVG className="dragon" key={key} />
         case "elder": return <ElderDragonSVG className="dragon" key={key} />
     }
+}
+
+function getGoldLeadSymbol(goldLead: number) {
+    if (goldLead > 0) return `\u25C0`
+    if (goldLead < 0) return `\u25B6`
+    return ``
 }
 
 function getGoldPercentage(goldBlue: number, goldRed: number) {

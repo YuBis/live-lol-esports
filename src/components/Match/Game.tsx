@@ -5,14 +5,14 @@ import { GameDetails } from "./GameDetails"
 import { MiniHealthBar } from "./MiniHealthBar";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from 'react-toastify';
-import { DetailsFrame, EventDetails, GameMetadata, Item, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, SlottedRune } from "../types/baseTypes";
+import { DetailsFrame, EventDetails, GameMetadata, Item, ObjectiveTimerBackfillSeed, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, SlottedRune } from "../types/baseTypes";
 
 import { ReactComponent as TowerSVG } from '../../assets/images/tower.svg';
 import { ReactComponent as BaronSVG } from '../../assets/images/baron.svg';
-import { ReactComponent as HeraldSVG } from '../../assets/images/herald-icon.svg';
 import { ReactComponent as KillSVG } from '../../assets/images/kill.svg';
 import { ReactComponent as InhibitorSVG } from '../../assets/images/inhibitor.svg';
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
+import HeraldIcon from '../../assets/images/herald-icon.svg';
 
 import { ReactComponent as OceanDragonSVG } from '../../assets/images/dragon-ocean.svg';
 import { ReactComponent as ChemtechDragonSVG } from '../../assets/images/dragon-chemtech.svg';
@@ -21,6 +21,7 @@ import { ReactComponent as InfernalDragonSVG } from '../../assets/images/dragon-
 import { ReactComponent as CloudDragonSVG } from '../../assets/images/dragon-cloud.svg';
 import { ReactComponent as MountainDragonSVG } from '../../assets/images/dragon-mountain.svg';
 import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-elder.svg';
+import { ReactComponent as DragonObjectiveSVG } from '../../assets/images/dragon.svg';
 import { ItemsDisplay } from "./ItemsDisplay";
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
@@ -47,6 +48,15 @@ type Props = {
     },
     backfillStatus?: `idle` | `running` | `completed`,
     inferredHeraldKillCounts?: { blue: number, red: number },
+    objectiveTimerBackfillSeed?: ObjectiveTimerBackfillSeed,
+}
+
+type TeamKey = `blue` | `red`
+type BaronPowerPlaySnapshot = {
+    baseLead: number,
+    startedAtMs: number,
+    lastValue: number,
+    active: boolean,
 }
 
 enum GameState {
@@ -56,20 +66,67 @@ enum GameState {
 }
 
 type ScoreboardLayoutMode = `classic` | `mirror`
+const BARON_POWER_PLAY_DURATION_MS = 180 * 1000
+const BARON_POWER_PLAY_BASELINE_GOLD = 1500
+const BARON_FIRST_SPAWN_SECONDS = 20 * 60
+const BARON_RESPAWN_SECONDS = 6 * 60
+const HERALD_FIRST_SPAWN_SECONDS = 14 * 60
+const DRAGON_FIRST_SPAWN_SECONDS = 5 * 60
+const DRAGON_RESPAWN_SECONDS = 5 * 60
+const ELDER_DRAGON_RESPAWN_SECONDS = 6 * 60
+const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
+const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
+const FORCE_BARON_UI_PREVIEW = false
 
-export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
+function getInitialScoreboardLayoutMode(): ScoreboardLayoutMode {
+    try {
+        return localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY) === `mirror` ? `mirror` : `classic`
+    } catch {
+        return `classic`
+    }
+}
+
+export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, objectiveTimerBackfillSeed }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
-    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(`classic`)
+    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => getInitialScoreboardLayoutMode())
     const [kdaFlashByCell, setKdaFlashByCell] = useState<{ [cellKey: string]: boolean }>({})
     const [deathTimerSecondsByParticipantId, setDeathTimerSecondsByParticipantId] = useState<{ [participantId: number]: number }>({})
     const [selectedRuneKeyByParticipantId, setSelectedRuneKeyByParticipantId] = useState<{ [participantId: number]: string }>({})
     const [mirrorExpandedParticipantIds, setMirrorExpandedParticipantIds] = useState<number[]>([])
+    const [objectiveTimerTickMs, setObjectiveTimerTickMs] = useState<number>(Date.now())
+    const [baronPowerPlayByTeam, setBaronPowerPlayByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
+    const [baronPowerPlayRemainingSecondsByTeam, setBaronPowerPlayRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
+    const [elderBuffRemainingSecondsByTeam, setElderBuffRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
     const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
     const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+    const previousBaronKillCountsRef = useRef<{ blue: number, red: number }>({
+        blue: Number(lastWindowFrame.blueTeam.barons || 0),
+        red: Number(lastWindowFrame.redTeam.barons || 0),
+    })
+    const hasInitializedBaronKillCountsRef = useRef<boolean>(false)
+    const hasInitializedDragonKillCountRef = useRef<boolean>(false)
+    const baronPowerPlaySnapshotByTeamRef = useRef<{ blue: BaronPowerPlaySnapshot | null, red: BaronPowerPlaySnapshot | null }>({
+        blue: null,
+        red: null,
+    })
+    const previousDragonKillCountRef = useRef<number>(getDragonKillCount(lastWindowFrame))
+    const previousDragonTypesByTeamRef = useRef<{ blue: string[], red: string[] }>({
+        blue: getNormalizedDragonTypes(lastWindowFrame.blueTeam.dragons),
+        red: getNormalizedDragonTypes(lastWindowFrame.redTeam.dragons),
+    })
+    const lastWindowFrameSyncedAtMsRef = useRef<number>(Date.now())
+    const elderBuffEndAtMsByTeamRef = useRef<{ blue: number | null, red: number | null }>({
+        blue: null,
+        red: null,
+    })
+    const hasAppliedObjectiveTimerBackfillRef = useRef<boolean>(false)
+    const lastBaronKillTimestampMsRef = useRef<number | null>(null)
+    const lastDragonKillTimestampMsRef = useRef<number | null>(null)
+    const lastProcessedObjectiveFrameTimestampMsRef = useRef<number | null>(null)
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -88,6 +145,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [scoreboardLayoutMode])
 
     useEffect(() => {
+        try {
+            localStorage.setItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY, scoreboardLayoutMode)
+        } catch {
+            // Ignore storage errors and keep runtime mode only.
+        }
+    }, [scoreboardLayoutMode])
+
+    useEffect(() => {
         const flashClearTimers = flashClearTimersRef.current
         return () => {
             flashClearTimers.forEach((timerId) => clearTimeout(timerId))
@@ -96,29 +161,60 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [])
 
     useEffect(() => {
-        const updateDeathTimerCountdown = () => {
-            const nowMs = Date.now()
-            const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
-            deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
-                const remainingMs = deathTimerEndAtMs - nowMs
-                if (remainingMs <= 0) {
-                    deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        if (!Number.isFinite(frameTimestampMs)) return
+        const participantsById = new Map<number, WindowParticipant>(
+            [...lastWindowFrame.blueTeam.participants, ...lastWindowFrame.redTeam.participants]
+                .map((participant) => [participant.participantId, participant]),
+        )
+
+        const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
+            ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
+            : 0
+        const effectiveFrameTimestampMs = frameTimestampMs + localElapsedSinceLastWindowMs
+        const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
+
+        deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
+            const remainingMs = deathTimerEndAtMs - effectiveFrameTimestampMs
+            if (remainingMs <= 0) {
+                const participant = participantsById.get(participantId)
+                // Keep showing at least 1s while the latest frame still reports dead.
+                // This prevents the timer from disappearing during frame-sync gaps.
+                if (participant && Number(participant.currentHealth) <= 0) {
+                    nextDeathTimerSecondsByParticipantId[participantId] = 1
                     return
                 }
-                nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
-            })
+                deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+                return
+            }
+            nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
+        })
 
-            setDeathTimerSecondsByParticipantId((previousState) =>
-                areNumericRecordValuesEqual(previousState, nextDeathTimerSecondsByParticipantId)
-                    ? previousState
-                    : nextDeathTimerSecondsByParticipantId
-            )
-        }
+        setDeathTimerSecondsByParticipantId((previousState) =>
+            areNumericRecordValuesEqual(previousState, nextDeathTimerSecondsByParticipantId)
+                ? previousState
+                : nextDeathTimerSecondsByParticipantId
+        )
+    }, [
+        objectiveTimerTickMs,
+        lastWindowFrame.rfc460Timestamp,
+        lastWindowFrame.gameState,
+        lastWindowFrame.blueTeam.participants,
+        lastWindowFrame.redTeam.participants,
+    ])
 
-        updateDeathTimerCountdown()
-        const tickerIntervalId = setInterval(updateDeathTimerCountdown, 1000)
-        return () => clearInterval(tickerIntervalId)
+    useEffect(() => {
+        const objectiveTickerIntervalId = setInterval(() => {
+            setObjectiveTimerTickMs(Date.now())
+        }, 1000)
+
+        return () => clearInterval(objectiveTickerIntervalId)
     }, [])
+
+    useEffect(() => {
+        lastWindowFrameSyncedAtMsRef.current = Date.now()
+        setObjectiveTimerTickMs(Date.now())
+    }, [lastWindowFrame.rfc460Timestamp])
 
     useEffect(() => {
         previousKdaByParticipantIdRef.current.clear()
@@ -128,7 +224,311 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         setDeathTimerSecondsByParticipantId({})
         setSelectedRuneKeyByParticipantId({})
         setMirrorExpandedParticipantIds([])
+        setBaronPowerPlayByTeam({ blue: null, red: null })
+        setBaronPowerPlayRemainingSecondsByTeam({ blue: null, red: null })
+        setElderBuffRemainingSecondsByTeam({ blue: null, red: null })
+        previousBaronKillCountsRef.current = {
+            blue: 0,
+            red: 0,
+        }
+        hasInitializedBaronKillCountsRef.current = false
+        previousDragonKillCountRef.current = 0
+        previousDragonTypesByTeamRef.current = { blue: [], red: [] }
+        hasInitializedDragonKillCountRef.current = false
+        baronPowerPlaySnapshotByTeamRef.current = { blue: null, red: null }
+        elderBuffEndAtMsByTeamRef.current = { blue: null, red: null }
+        hasAppliedObjectiveTimerBackfillRef.current = false
+        lastBaronKillTimestampMsRef.current = null
+        lastDragonKillTimestampMsRef.current = null
+        lastProcessedObjectiveFrameTimestampMsRef.current = null
     }, [gameIndex, firstWindowFrame.rfc460Timestamp])
+
+    useEffect(() => {
+        if (!objectiveTimerBackfillSeed || hasAppliedObjectiveTimerBackfillRef.current) return
+
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        if (!Number.isFinite(frameTimestampMs)) return
+
+        lastBaronKillTimestampMsRef.current = objectiveTimerBackfillSeed.lastBaronKillTimestampMs
+        lastDragonKillTimestampMsRef.current = objectiveTimerBackfillSeed.lastDragonKillTimestampMs
+
+        const blueTeamLead = Number(lastWindowFrame.blueTeam.totalGold || 0) - Number(lastWindowFrame.redTeam.totalGold || 0)
+        const redTeamLead = -blueTeamLead
+        const nextPowerPlayByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        const nextPowerPlayRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const seedSnapshot = objectiveTimerBackfillSeed.baronPowerPlaySnapshotByTeam[teamKey]
+            if (!seedSnapshot) {
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                return
+            }
+
+            const elapsedMs = Math.max(0, frameTimestampMs - seedSnapshot.startedAtMs)
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                return
+            }
+
+            const currentLead = teamKey === `blue` ? blueTeamLead : redTeamLead
+            const powerPlayValue = Math.round((currentLead - seedSnapshot.baseLead) + BARON_POWER_PLAY_BASELINE_GOLD)
+            nextPowerPlayByTeam[teamKey] = powerPlayValue
+            nextPowerPlayRemainingSecondsByTeam[teamKey] = Math.max(0, Math.ceil((BARON_POWER_PLAY_DURATION_MS - elapsedMs) / 1000))
+
+            baronPowerPlaySnapshotByTeamRef.current[teamKey] = {
+                baseLead: seedSnapshot.baseLead,
+                startedAtMs: seedSnapshot.startedAtMs,
+                lastValue: powerPlayValue,
+                active: true,
+            }
+        })
+
+        setBaronPowerPlayByTeam(nextPowerPlayByTeam)
+        setBaronPowerPlayRemainingSecondsByTeam(nextPowerPlayRemainingSecondsByTeam)
+
+        elderBuffEndAtMsByTeamRef.current = {
+            blue: objectiveTimerBackfillSeed.elderBuffEndAtMsByTeam.blue,
+            red: objectiveTimerBackfillSeed.elderBuffEndAtMsByTeam.red,
+        }
+        const nextElderBuffRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const elderBuffEndAtMs = elderBuffEndAtMsByTeamRef.current[teamKey]
+            if (!elderBuffEndAtMs) return
+            const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
+            if (remainingSeconds <= 0) {
+                elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                return
+            }
+            nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
+        })
+        setElderBuffRemainingSecondsByTeam(nextElderBuffRemainingSecondsByTeam)
+
+        previousBaronKillCountsRef.current = {
+            blue: Number(lastWindowFrame.blueTeam.barons || 0),
+            red: Number(lastWindowFrame.redTeam.barons || 0),
+        }
+        previousDragonKillCountRef.current = getDragonKillCount(lastWindowFrame)
+        previousDragonTypesByTeamRef.current = {
+            blue: getNormalizedDragonTypes(lastWindowFrame.blueTeam.dragons),
+            red: getNormalizedDragonTypes(lastWindowFrame.redTeam.dragons),
+        }
+        hasInitializedBaronKillCountsRef.current = true
+        hasInitializedDragonKillCountRef.current = true
+        hasAppliedObjectiveTimerBackfillRef.current = true
+    }, [
+        objectiveTimerBackfillSeed,
+        lastWindowFrame,
+        lastWindowFrame.rfc460Timestamp,
+        lastWindowFrame.blueTeam.totalGold,
+        lastWindowFrame.redTeam.totalGold,
+        lastWindowFrame.blueTeam.barons,
+        lastWindowFrame.redTeam.barons,
+        lastWindowFrame.blueTeam.dragons,
+        lastWindowFrame.redTeam.dragons,
+    ])
+
+    useEffect(() => {
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        if (!Number.isFinite(frameTimestampMs)) return
+        if (lastProcessedObjectiveFrameTimestampMsRef.current === frameTimestampMs) return
+        lastProcessedObjectiveFrameTimestampMsRef.current = frameTimestampMs
+
+        const blueTeamGold = Number(lastWindowFrame.blueTeam.totalGold || 0)
+        const redTeamGold = Number(lastWindowFrame.redTeam.totalGold || 0)
+        const blueTeamLead = blueTeamGold - redTeamGold
+        const redTeamLead = redTeamGold - blueTeamGold
+
+        const currentBaronCounts = {
+            blue: Number(lastWindowFrame.blueTeam.barons || 0),
+            red: Number(lastWindowFrame.redTeam.barons || 0),
+        }
+        const currentDragonKillCount = (
+            (Array.isArray(lastWindowFrame.blueTeam.dragons) ? lastWindowFrame.blueTeam.dragons.length : 0)
+            + (Array.isArray(lastWindowFrame.redTeam.dragons) ? lastWindowFrame.redTeam.dragons.length : 0)
+        )
+        const currentDragonTypesByTeam = {
+            blue: getNormalizedDragonTypes(lastWindowFrame.blueTeam.dragons),
+            red: getNormalizedDragonTypes(lastWindowFrame.redTeam.dragons),
+        }
+
+        if (!hasInitializedBaronKillCountsRef.current || !hasInitializedDragonKillCountRef.current) {
+            previousBaronKillCountsRef.current = currentBaronCounts
+            previousDragonKillCountRef.current = currentDragonKillCount
+            previousDragonTypesByTeamRef.current = {
+                blue: [...currentDragonTypesByTeam.blue],
+                red: [...currentDragonTypesByTeam.red],
+            }
+            hasInitializedBaronKillCountsRef.current = true
+            hasInitializedDragonKillCountRef.current = true
+            return
+        }
+
+        const previousBaronCounts = previousBaronKillCountsRef.current
+        const previousDragonKillCount = previousDragonKillCountRef.current
+        const previousDragonTypesByTeam = previousDragonTypesByTeamRef.current
+
+        const blueBaronKillDetected = currentBaronCounts.blue > previousBaronCounts.blue
+        const redBaronKillDetected = currentBaronCounts.red > previousBaronCounts.red
+        const dragonKillDetected = currentDragonKillCount > previousDragonKillCount
+        const blueAddedDragonTypes = getAddedDragonTypes(previousDragonTypesByTeam.blue, currentDragonTypesByTeam.blue)
+        const redAddedDragonTypes = getAddedDragonTypes(previousDragonTypesByTeam.red, currentDragonTypesByTeam.red)
+        const blueElderKillDetected = blueAddedDragonTypes.some(isElderDragonType)
+        const redElderKillDetected = redAddedDragonTypes.some(isElderDragonType)
+        if (blueBaronKillDetected || redBaronKillDetected) {
+            lastBaronKillTimestampMsRef.current = frameTimestampMs
+        }
+        if (dragonKillDetected) {
+            lastDragonKillTimestampMsRef.current = frameTimestampMs
+        }
+        if (blueElderKillDetected) {
+            elderBuffEndAtMsByTeamRef.current.blue = frameTimestampMs + ELDER_DRAGON_BUFF_DURATION_MS
+        }
+        if (redElderKillDetected) {
+            elderBuffEndAtMsByTeamRef.current.red = frameTimestampMs + ELDER_DRAGON_BUFF_DURATION_MS
+        }
+
+        if (blueBaronKillDetected) {
+            baronPowerPlaySnapshotByTeamRef.current.blue = {
+                baseLead: blueTeamLead,
+                startedAtMs: frameTimestampMs,
+                lastValue: 0,
+                active: true,
+            }
+        }
+
+        if (redBaronKillDetected) {
+            baronPowerPlaySnapshotByTeamRef.current.red = {
+                baseLead: redTeamLead,
+                startedAtMs: frameTimestampMs,
+                lastValue: 0,
+                active: true,
+            }
+        }
+
+        const nextPowerPlayByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        const nextRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const snapshot = baronPowerPlaySnapshotByTeamRef.current[teamKey]
+            if (!snapshot) return
+
+            const elapsedMs = Math.max(0, frameTimestampMs - snapshot.startedAtMs)
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+                snapshot.active = false
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                return
+            }
+
+            const currentLead = teamKey === `blue` ? blueTeamLead : redTeamLead
+            snapshot.lastValue = Math.round((currentLead - snapshot.baseLead) + BARON_POWER_PLAY_BASELINE_GOLD)
+            nextPowerPlayByTeam[teamKey] = snapshot.lastValue
+            nextRemainingSecondsByTeam[teamKey] = Math.max(0, Math.ceil((BARON_POWER_PLAY_DURATION_MS - elapsedMs) / 1000))
+        })
+
+        setBaronPowerPlayByTeam((previousState) => (
+            previousState.blue === nextPowerPlayByTeam.blue
+            && previousState.red === nextPowerPlayByTeam.red
+        ) ? previousState : nextPowerPlayByTeam)
+        setBaronPowerPlayRemainingSecondsByTeam((previousState) => (
+            previousState.blue === nextRemainingSecondsByTeam.blue
+            && previousState.red === nextRemainingSecondsByTeam.red
+        ) ? previousState : nextRemainingSecondsByTeam)
+        const nextElderBuffRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const elderBuffEndAtMs = elderBuffEndAtMsByTeamRef.current[teamKey]
+            if (!elderBuffEndAtMs) return
+            const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
+            if (remainingSeconds <= 0) {
+                elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                return
+            }
+            nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
+        })
+        setElderBuffRemainingSecondsByTeam((previousState) => (
+            previousState.blue === nextElderBuffRemainingSecondsByTeam.blue
+            && previousState.red === nextElderBuffRemainingSecondsByTeam.red
+        ) ? previousState : nextElderBuffRemainingSecondsByTeam)
+
+        previousBaronKillCountsRef.current = currentBaronCounts
+        previousDragonKillCountRef.current = currentDragonKillCount
+        previousDragonTypesByTeamRef.current = {
+            blue: [...currentDragonTypesByTeam.blue],
+            red: [...currentDragonTypesByTeam.red],
+        }
+    }, [
+        lastWindowFrame.rfc460Timestamp,
+        lastWindowFrame.blueTeam.totalGold,
+        lastWindowFrame.redTeam.totalGold,
+        lastWindowFrame.blueTeam.barons,
+        lastWindowFrame.redTeam.barons,
+        lastWindowFrame.blueTeam.dragons,
+        lastWindowFrame.redTeam.dragons,
+        lastWindowFrame.blueTeam.dragons.length,
+        lastWindowFrame.redTeam.dragons.length,
+    ])
+
+    useEffect(() => {
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        if (!Number.isFinite(frameTimestampMs)) return
+
+        const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
+            ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
+            : 0
+        const effectiveFrameTimestampMs = frameTimestampMs + localElapsedSinceLastWindowMs
+        const blueTeamLead = Number(lastWindowFrame.blueTeam.totalGold || 0) - Number(lastWindowFrame.redTeam.totalGold || 0)
+        const redTeamLead = -blueTeamLead
+
+        const nextPowerPlayByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        const nextRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const snapshot = baronPowerPlaySnapshotByTeamRef.current[teamKey]
+            if (!snapshot) return
+
+            const elapsedMs = Math.max(0, effectiveFrameTimestampMs - snapshot.startedAtMs)
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                return
+            }
+
+            const currentLead = teamKey === `blue` ? blueTeamLead : redTeamLead
+            const powerPlayValue = Math.round((currentLead - snapshot.baseLead) + BARON_POWER_PLAY_BASELINE_GOLD)
+            snapshot.lastValue = powerPlayValue
+            nextPowerPlayByTeam[teamKey] = powerPlayValue
+            nextRemainingSecondsByTeam[teamKey] = Math.max(0, Math.ceil((BARON_POWER_PLAY_DURATION_MS - elapsedMs) / 1000))
+        })
+
+        setBaronPowerPlayByTeam((previousState) => (
+            previousState.blue === nextPowerPlayByTeam.blue
+            && previousState.red === nextPowerPlayByTeam.red
+        ) ? previousState : nextPowerPlayByTeam)
+        setBaronPowerPlayRemainingSecondsByTeam((previousState) => (
+            previousState.blue === nextRemainingSecondsByTeam.blue
+            && previousState.red === nextRemainingSecondsByTeam.red
+        ) ? previousState : nextRemainingSecondsByTeam)
+
+        const nextElderBuffRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const elderBuffEndAtMs = elderBuffEndAtMsByTeamRef.current[teamKey]
+            if (!elderBuffEndAtMs) return
+
+            const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - effectiveFrameTimestampMs) / 1000))
+            if (remainingSeconds <= 0) {
+                elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                return
+            }
+            nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
+        })
+
+        setElderBuffRemainingSecondsByTeam((previousState) => (
+            previousState.blue === nextElderBuffRemainingSecondsByTeam.blue
+            && previousState.red === nextElderBuffRemainingSecondsByTeam.red
+        ) ? previousState : nextElderBuffRemainingSecondsByTeam)
+    }, [
+        objectiveTimerTickMs,
+        lastWindowFrame.rfc460Timestamp,
+        lastWindowFrame.gameState,
+        lastWindowFrame.blueTeam.totalGold,
+        lastWindowFrame.redTeam.totalGold,
+    ])
 
     useEffect(() => {
         const flashCellKeys: string[] = []
@@ -136,10 +536,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             ...lastWindowFrame.blueTeam.participants,
             ...lastWindowFrame.redTeam.participants,
         ]
-        const nowMs = Date.now()
+        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const normalizedFrameTimestampMs = Number.isFinite(frameTimestampMs) ? frameTimestampMs : Date.now()
         const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
 
         participants.forEach((participant) => {
+            let hasActiveDeathTimer = deathTimerEndAtMsByParticipantIdRef.current.has(participant.participantId)
             const previousVitals = previousVitalsByParticipantIdRef.current.get(participant.participantId)
             if (
                 previousVitals
@@ -148,7 +550,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
                 deathTimerEndAtMsByParticipantIdRef.current.set(
                     participant.participantId,
-                    nowMs + estimatedRespawnSeconds * 1000,
+                    normalizedFrameTimestampMs + estimatedRespawnSeconds * 1000,
+                )
+                hasActiveDeathTimer = true
+            }
+
+            if (participant.currentHealth <= 0 && !hasActiveDeathTimer) {
+                // Refresh/reconnect can land mid-death without a detected death transition.
+                // Seed an estimated timer so dead players do not appear without countdown.
+                const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
+                deathTimerEndAtMsByParticipantIdRef.current.set(
+                    participant.participantId,
+                    normalizedFrameTimestampMs + estimatedRespawnSeconds * 1000,
                 )
             }
 
@@ -289,9 +702,23 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const goldPercentage = getGoldPercentage(lastWindowFrame.blueTeam.totalGold, lastWindowFrame.redTeam.totalGold);
     const goldLead = lastWindowFrame.blueTeam.totalGold - lastWindowFrame.redTeam.totalGold
     const goldLeadSymbol = getGoldLeadSymbol(goldLead)
-    const formattedBlueTeamGold = formatGoldInK(lastWindowFrame.blueTeam.totalGold)
-    const formattedRedTeamGold = formatGoldInK(lastWindowFrame.redTeam.totalGold)
+    const formattedBlueTeamGold = formatTeamGoldInK(lastWindowFrame.blueTeam.totalGold)
+    const formattedRedTeamGold = formatTeamGoldInK(lastWindowFrame.redTeam.totalGold)
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
+    const blueBaronPowerPlayClassName = getBaronPowerPlayClassName(`blue`)
+    const redBaronPowerPlayClassName = getBaronPowerPlayClassName(`red`)
+    const displayBlueBaronPowerPlay = FORCE_BARON_UI_PREVIEW ? 1500 : baronPowerPlayByTeam.blue
+    const displayRedBaronPowerPlay = FORCE_BARON_UI_PREVIEW ? 900 : baronPowerPlayByTeam.red
+    const displayBlueBaronPowerPlayRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 128 : baronPowerPlayRemainingSecondsByTeam.blue
+    const displayRedBaronPowerPlayRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 79 : baronPowerPlayRemainingSecondsByTeam.red
+    const displayBlueElderBuffRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 95 : elderBuffRemainingSecondsByTeam.blue
+    const displayRedElderBuffRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 47 : elderBuffRemainingSecondsByTeam.red
+    const formattedBlueBaronPowerPlay = formatBaronPowerPlayValue(displayBlueBaronPowerPlay)
+    const formattedRedBaronPowerPlay = formatBaronPowerPlayValue(displayRedBaronPowerPlay)
+    const formattedBlueBaronPowerPlayRemaining = formatBaronPowerPlayRemainingTime(displayBlueBaronPowerPlayRemainingSeconds)
+    const formattedRedBaronPowerPlayRemaining = formatBaronPowerPlayRemainingTime(displayRedBaronPowerPlayRemainingSeconds)
+    const formattedBlueElderBuffRemaining = formatBaronPowerPlayRemainingTime(displayBlueElderBuffRemainingSeconds)
+    const formattedRedElderBuffRemaining = formatBaronPowerPlayRemainingTime(displayRedElderBuffRemainingSeconds)
     const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
     const goldLeadColorClass = goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
     const backfillStatusClassName = backfillStatus === `running` ? `running` : backfillStatus === `completed` ? `completed` : `idle`
@@ -300,7 +727,46 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         : backfillStatus === `completed`
             ? `Backfill completed: historical items synced.`
             : `Backfill pending: waiting for timeline sync trigger.`
-    let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
+    const parsedCurrentFrameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+    const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
+        ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
+        : 0
+    const currentFrameTimestampMs = Number.isFinite(parsedCurrentFrameTimestampMs)
+        ? parsedCurrentFrameTimestampMs + localElapsedSinceLastWindowMs
+        : parsedCurrentFrameTimestampMs
+    const currentFrameTimestamp = Number.isFinite(currentFrameTimestampMs)
+        ? new Date(currentFrameTimestampMs).toISOString()
+        : lastWindowFrame.rfc460Timestamp
+    const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, currentFrameTimestamp)
+    const baronObjectiveStatusLabel = getBaronObjectiveStatusLabel(
+        elapsedGameTimeSeconds,
+        currentFrameTimestampMs,
+        lastBaronKillTimestampMsRef.current,
+    )
+    const heraldKillCount = Number(inferredHeraldKillCounts.blue || 0) + Number(inferredHeraldKillCounts.red || 0)
+    const hasHeraldBeenKilled = heraldKillCount > 0
+    const shouldShowHeraldInBaronSlot = elapsedGameTimeSeconds < BARON_FIRST_SPAWN_SECONDS && !hasHeraldBeenKilled
+    const heraldObjectiveStatusLabel = getHeraldObjectiveStatusLabel(elapsedGameTimeSeconds, hasHeraldBeenKilled)
+    const baronPreSpawnStatusLabel = getBaronPreSpawnStatusLabel(elapsedGameTimeSeconds)
+    const blueElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.blueTeam.dragons)
+    const redElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.redTeam.dragons)
+    const shouldUseElderDragonObjectiveIcon = FORCE_BARON_UI_PREVIEW || blueElementalDragonKillCount >= 4 || redElementalDragonKillCount >= 4
+    const DragonObjectiveStatusIcon = shouldUseElderDragonObjectiveIcon ? ElderDragonSVG : DragonObjectiveSVG
+    const BaronOrHeraldObjectiveIcon = shouldShowHeraldInBaronSlot ? `herald` : `baron`
+    const dragonObjectiveStatusLabel = getDragonObjectiveStatusLabel(
+        elapsedGameTimeSeconds,
+        currentFrameTimestampMs,
+        lastDragonKillTimestampMsRef.current,
+        shouldUseElderDragonObjectiveIcon,
+    )
+    const computedBaronOrHeraldStatusLabel = shouldShowHeraldInBaronSlot
+        ? heraldObjectiveStatusLabel
+        : elapsedGameTimeSeconds < BARON_FIRST_SPAWN_SECONDS
+            ? baronPreSpawnStatusLabel
+            : baronObjectiveStatusLabel
+    const displayBaronObjectiveStatusLabel = FORCE_BARON_UI_PREVIEW ? `-1:45` : computedBaronOrHeraldStatusLabel
+    const displayDragonObjectiveStatusLabel = FORCE_BARON_UI_PREVIEW ? `-4:12` : dragonObjectiveStatusLabel
+    let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, currentFrameTimestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
 
@@ -639,6 +1105,30 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 <KillSVG className="live-game-kill-score-icon" />
                                 <span className="red-team-kills">{lastWindowFrame.redTeam.totalKills}</span>
                             </div>
+                            {displayBaronObjectiveStatusLabel || displayDragonObjectiveStatusLabel ? (
+                                <div className="live-game-objective-statuses">
+                                    {displayDragonObjectiveStatusLabel ? (
+                                        <div className="live-game-objective-status">
+                                            <DragonObjectiveStatusIcon className="live-game-objective-status-icon" />
+                                            <span className={`live-game-objective-status-label ${displayDragonObjectiveStatusLabel === `LIVE` ? `live` : ``}`}>
+                                                {displayDragonObjectiveStatusLabel}
+                                            </span>
+                                        </div>
+                                    ) : null}
+                                    {displayBaronObjectiveStatusLabel ? (
+                                        <div className="live-game-objective-status">
+                                            {BaronOrHeraldObjectiveIcon === `herald` ? (
+                                                <img src={HeraldIcon} className="live-game-objective-status-icon-image" alt="" />
+                                            ) : (
+                                                <BaronSVG className="live-game-objective-status-icon" />
+                                            )}
+                                            <span className={`live-game-objective-status-label ${displayBaronObjectiveStatusLabel === `LIVE` ? `live` : ``}`}>
+                                                {displayBaronObjectiveStatusLabel}
+                                            </span>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : null}
                         </h1>
                         <div className="live-game-card-team">
                             {redTeam.code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image" />) : (<img className="live-game-card-team-image" src={redTeam.image} alt={redTeam.name} />)}
@@ -660,14 +1150,48 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </div>
                     <div className="live-game-stats-header-gold">
                         <div className="live-game-stats-header-gold-values">
-                            <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
+                            <span className="team-gold-side-group team-gold-side-group-blue">
+                                {displayBlueElderBuffRemainingSeconds !== null ? (
+                                    <span className="team-gold-elder-buff team-gold-elder-buff-blue">
+                                        <ElderDragonSVG className="team-gold-elder-buff-icon" />
+                                        <span className="team-gold-elder-buff-remaining">{formattedBlueElderBuffRemaining}</span>
+                                    </span>
+                                ) : null}
+                                {displayBlueBaronPowerPlay !== null ? (
+                                    <span className={`team-gold-power-play-block team-gold-power-play-block-near-blue ${blueBaronPowerPlayClassName}`}>
+                                        <span className="team-gold-power-play-remaining">{formattedBlueBaronPowerPlayRemaining}</span>
+                                        <span className={`team-gold-power-play ${blueBaronPowerPlayClassName}`}>
+                                            <BaronSVG className="team-gold-power-play-icon" />
+                                            <span className="team-gold-power-play-value">{formattedBlueBaronPowerPlay}</span>
+                                        </span>
+                                    </span>
+                                ) : null}
+                                <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
+                            </span>
                             <span className={`gold-lead-indicator ${goldLeadColorClass}`}>
                                 {goldLeadSymbol ? (
                                     <span className={`gold-lead-symbol ${goldLeadSymbolAlignmentClass} ${goldLeadColorClass}`}>{goldLeadSymbol}</span>
                                 ) : null}
                                 <span className={`gold-lead-value ${goldLeadColorClass}`}>{formattedGoldLead}</span>
                             </span>
-                            <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
+                            <span className="team-gold-side-group team-gold-side-group-red">
+                                <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
+                                {displayRedBaronPowerPlay !== null ? (
+                                    <span className={`team-gold-power-play-block team-gold-power-play-block-near-red ${redBaronPowerPlayClassName}`}>
+                                        <span className="team-gold-power-play-remaining">{formattedRedBaronPowerPlayRemaining}</span>
+                                        <span className={`team-gold-power-play ${redBaronPowerPlayClassName}`}>
+                                            <BaronSVG className="team-gold-power-play-icon" />
+                                            <span className="team-gold-power-play-value">{formattedRedBaronPowerPlay}</span>
+                                        </span>
+                                    </span>
+                                ) : null}
+                                {displayRedElderBuffRemainingSeconds !== null ? (
+                                    <span className="team-gold-elder-buff team-gold-elder-buff-red">
+                                        <ElderDragonSVG className="team-gold-elder-buff-icon" />
+                                        <span className="team-gold-elder-buff-remaining">{formattedRedElderBuffRemaining}</span>
+                                    </span>
+                                ) : null}
+                            </span>
                         </div>
                         <div className="live-game-stats-header-gold-bar">
                             <div className="blue-team" style={{ flex: goldPercentage.goldBluePercentage }} />
@@ -731,8 +1255,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
-                                            <div className="player-champion-info">
-                                                <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``}`}>
                                                 {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
                                                     {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
@@ -843,8 +1366,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
                                         <th>
-                                            <div className="player-champion-info">
-                                                <svg className="chevron-down" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
+                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``}`}>
                                                 {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
                                                     {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
@@ -917,21 +1439,21 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <table className="status-live-game-card-table status-live-game-card-table-mirror">
                         <thead>
                             <tr>
+                                <th className="mirror-col-items">아이템</th>
+                                <th className="mirror-col-health">체력</th>
                                 <th className="mirror-col-team mirror-col-team-left">{blueTeam.code.toUpperCase()}</th>
-                                <th className="mirror-col-items">아이템</th>
-                                <th className="mirror-col-health">체력</th>
-                                <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-kda">K</th>
                                 <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">A</th>
+                                <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-gold">골드차</th>
+                                <th className="mirror-col-cs">CS</th>
                                 <th className="mirror-col-kda">K</th>
                                 <th className="mirror-col-kda">D</th>
                                 <th className="mirror-col-kda">A</th>
-                                <th className="mirror-col-cs">CS</th>
+                                <th className="mirror-col-team mirror-col-team-right">{redTeam.code.toUpperCase()}</th>
                                 <th className="mirror-col-health">체력</th>
                                 <th className="mirror-col-items">아이템</th>
-                                <th className="mirror-col-team mirror-col-team-right">{redTeam.code.toUpperCase()}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -951,24 +1473,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 return [
                                     (
                                         <tr className="mirror-player-row" key={`mirror_${gameIndex}_${blueRow.player.participantId}_${redRow.player.participantId}`}>
-                                            <th className="mirror-player-cell mirror-player-cell-left">
-                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
-                                                    <div className="player-champion-info">
-                                                        <svg className={`chevron-down ${isBlueExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
-                                                        {getParticipantRuneTypes(blueRow.championDetails, runes)}
-                                                        <div className={`player-champion-wrapper ${blueRow.hasDeathTimer ? `dead` : ``}`}>
-                                                            {blueRow.hasDeathTimer ? <span className="player-death-timer">{blueRow.deathTimerSeconds}</span> : null}
-                                                            <img src={`${championsUrlWithPatchVersion}${blueRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
-                                                            <TeamTBDSVG className='player-champion' />
-                                                            <span className=" player-champion-info-level">{blueRow.player.level}</span>
-                                                        </div>
-                                                        <div className=" player-champion-info-name">
-                                                            <span>{blueRow.metadata.summonerName}</span>
-                                                            <span className=" player-card-player-name">{getChampionDisplayName(blueRow.metadata.championId)}</span>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            </th>
                                             <td>
                                                 <ItemsDisplay
                                                     participantId={blueRow.player.participantId - 1}
@@ -976,25 +1480,60 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                     items={items}
                                                     patchVersion={formattedPatchVersion}
                                                     role={blueRow.metadata.role}
+                                                    reverseWithTrinketFirst={true}
                                                 />
                                             </td>
                                             <td>
                                                 <MiniHealthBar currentHealth={blueRow.player.currentHealth} maxHealth={blueRow.player.maxHealth} />
                                             </td>
-                                            <td><div className=" player-stats">{blueRow.player.creepScore}</div></td>
+                                            <th className="mirror-player-cell mirror-player-cell-left">
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
+                                                    <div className={`player-champion-info mirror-player-champion-info-left ${blueRow.hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                                        <div className=" player-champion-info-name mirror-player-name-left">
+                                                            <span>{blueRow.metadata.summonerName}</span>
+                                                            <span className=" player-card-player-name">{getChampionDisplayName(blueRow.metadata.championId)}</span>
+                                                        </div>
+                                                        <div className={`player-champion-wrapper ${blueRow.hasDeathTimer ? `dead` : ``}`}>
+                                                            {blueRow.hasDeathTimer ? <span className="player-death-timer">{blueRow.deathTimerSeconds}</span> : null}
+                                                            <img src={`${championsUrlWithPatchVersion}${blueRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                            <TeamTBDSVG className='player-champion' />
+                                                            <span className=" player-champion-info-level">{blueRow.player.level}</span>
+                                                        </div>
+                                                        {getParticipantRuneTypes(blueRow.championDetails, runes)}
+                                                    </div>
+                                                </button>
+                                            </th>
                                             <td><div className={` player-stats player-stats-kda ${blueRow.killFlashClassName}`}>{blueRow.player.kills}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${blueRow.deathFlashClassName}`}>{blueRow.player.deaths}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${blueRow.assistFlashClassName}`}>{blueRow.player.assists}</div></td>
+                                            <td><div className=" player-stats">{blueRow.player.creepScore}</div></td>
                                             <td className="mirror-row-gold-cell">
                                                 <div className={`mirror-row-gold-diff ${rowGoldLeadColorClass}`}>
                                                     {rowGoldLeadMarker ? <span className={`mirror-row-gold-symbol ${rowGoldLeadSymbolAlignmentClass}`}>{rowGoldLeadMarker}</span> : null}
                                                     <span className="mirror-row-gold-value">{rowGoldLeadValue}</span>
                                                 </div>
                                             </td>
+                                            <td><div className=" player-stats">{redRow.player.creepScore}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.killFlashClassName}`}>{redRow.player.kills}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.deathFlashClassName}`}>{redRow.player.deaths}</div></td>
                                             <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
-                                            <td><div className=" player-stats">{redRow.player.creepScore}</div></td>
+                                            <th className="mirror-player-cell mirror-player-cell-right">
+                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
+                                                    <div className={`player-champion-info mirror-player-champion-info-right ${redRow.hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
+                                                        <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
+                                                            {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
+                                                            <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                            <TeamTBDSVG className='player-champion' />
+                                                            <span className=" player-champion-info-level">{redRow.player.level}</span>
+                                                        </div>
+                                                        <div className=" player-champion-info-name mirror-player-name-right">
+                                                            <span>{redRow.metadata.summonerName}</span>
+                                                            <span className=" player-card-player-name">{getChampionDisplayName(redRow.metadata.championId)}</span>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            </th>
                                             <td>
                                                 <MiniHealthBar currentHealth={redRow.player.currentHealth} maxHealth={redRow.player.maxHealth} />
                                             </td>
@@ -1007,24 +1546,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                     role={redRow.metadata.role}
                                                 />
                                             </td>
-                                            <th className="mirror-player-cell mirror-player-cell-right">
-                                                <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
-                                                    <div className="player-champion-info mirror-player-champion-info-right">
-                                                        <div className=" player-champion-info-name mirror-player-name-right">
-                                                            <span>{redRow.metadata.summonerName}</span>
-                                                            <span className=" player-card-player-name">{getChampionDisplayName(redRow.metadata.championId)}</span>
-                                                        </div>
-                                                        <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
-                                                            {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
-                                                            <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
-                                                            <TeamTBDSVG className='player-champion' />
-                                                            <span className=" player-champion-info-level">{redRow.player.level}</span>
-                                                        </div>
-                                                        {getParticipantRuneTypes(redRow.championDetails, runes)}
-                                                        <svg className={`chevron-down ${isRedExpanded ? `rotated` : ``}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 429.3l22.6-22.6 192-192L493.3 192 448 146.7l-22.6 22.6L256 338.7 86.6 169.4 64 146.7 18.7 192l22.6 22.6 192 192L256 429.3z" /></svg>
-                                                    </div>
-                                                </button>
-                                            </th>
                                         </tr>
                                     ),
                                     shouldRenderExpandedRow ? (
@@ -1077,7 +1598,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 </span>
                 <button
                     type="button"
-                    className="footer-notes scoreboard-layout-toggle"
+                    className={`footer-notes scoreboard-layout-toggle ${scoreboardLayoutMode === `mirror` ? `active` : ``}`}
                     onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
                 >
                     {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
@@ -1114,7 +1635,14 @@ function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKill
                 {teamStats.barons}
             </div>
             <div className="team-stats heralds">
-                <HeraldSVG />
+                <span className={`team-stats-herald-icon-composite ${teamColor === `blue-team` ? `team-stats-herald-icon-composite-blue` : `team-stats-herald-icon-composite-red`}`}>
+                    <img
+                        src={HeraldIcon}
+                        alt=""
+                        className="team-stats-herald-icon-image"
+                    />
+                    <span className="team-stats-herald-icon-tint" aria-hidden="true" />
+                </span>
                 {inferredHeraldKills}
             </div>
             <div className="team-stats towers">
@@ -1141,8 +1669,8 @@ function getFormattedChampionStats(
             <div className='footer-notes'>마법 저항력: {championDetails.magicResistance}</div>
             <div className='footer-notes'>와드 파괴: {championDetails.wardsDestroyed}</div>
             <div className='footer-notes'>와드 설치: {championDetails.wardsPlaced}</div>
-            <div className='footer-notes'>대미지 기여도: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
-            <div className='footer-notes'>킬 관여율: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
+            <div className='footer-notes'>딜량 기여도: {Math.round(championDetails.championDamageShare * 10000) / 100}%</div>
+            <div className='footer-notes'>킬 관여도: {Math.round(championDetails.killParticipation * 10000) / 100}%</div>
             <div className='footer-notes'>스킬 순서: {championDetails.abilities.join('->')}</div>
             {getFormattedRunes(championDetails, runes, selectedRuneKey, onSelectRuneKey)}
         </div>
@@ -1371,12 +1899,12 @@ function getFormattedRunes(
 const STAT_SHARD_FALLBACK_BY_PERK_ID: {
     [perkId: number]: { name: string, description: string }
 } = {
-    5001: { name: `능력치 파편`, description: `공격 속도 +10%` },
-    5005: { name: `능력치 파편`, description: `적응형 힘 +9` },
-    5007: { name: `능력치 파편`, description: `스킬 가속 +8` },
-    5008: { name: `능력치 파편`, description: `이동 속도 +2%` },
-    5010: { name: `능력치 파편`, description: `체력 +10~180 (레벨에 따라 증가)` },
-    5011: { name: `능력치 파편`, description: `강인함 +10% / 둔화 저항 +15%` },
+    5001: { name: `스탯 파편`, description: `공격 속도 +10%` },
+    5005: { name: `스탯 파편`, description: `적응형 능력치 +9` },
+    5007: { name: `스탯 파편`, description: `스킬 가속 +8` },
+    5008: { name: `스탯 파편`, description: `이동 속도 +2%` },
+    5010: { name: `스탯 파편`, description: `체력 +10~180 (레벨에 따라 증가)` },
+    5011: { name: `스탯 파편`, description: `강인함 +10% / 둔화 저항 +15%` },
 }
 
 const STAT_SHARD_PRESENTATION_BY_PERK_ID: {
@@ -1496,8 +2024,9 @@ function getFormattedGoldDifference(goldDifference: number) {
 }
 
 function getDragonSVG(dragonName: string, teamColor: string, index: number) {
-    let key = `${teamColor}_${index}_${dragonName}`
-    switch (dragonName) {
+    const normalizedDragonName = normalizeDragonType(dragonName)
+    let key = `${teamColor}_${index}_${normalizedDragonName}`
+    switch (normalizedDragonName) {
         case "ocean": return <OceanDragonSVG className="dragon" key={key} />;
         case "hextech": return <HextechDragonSVG className="dragon" key={key} />;
         case "chemtech": return <ChemtechDragonSVG className="dragon" key={key} />;
@@ -1529,21 +2058,153 @@ function formatGoldInK(goldValue: number) {
     return `${displayValue}k`
 }
 
+function formatTeamGoldInK(goldValue: number) {
+    const normalizedK = Number(goldValue) / 1000
+    return `${normalizedK.toFixed(1)}k`
+}
+
+function getBaronPowerPlayClassName(teamKey: TeamKey) {
+    return teamKey === `blue` ? `team-blue` : `team-red`
+}
+
+function formatBaronPowerPlayValue(baronPowerPlay: number | null) {
+    if (baronPowerPlay === null) return ``
+    return `${baronPowerPlay > 0 ? `+` : ``}${Number(baronPowerPlay).toLocaleString(`en-us`)}`
+}
+
+function formatBaronPowerPlayRemainingTime(remainingSeconds: number | null) {
+    if (remainingSeconds === null) return ``
+    const safeSeconds = Math.max(0, remainingSeconds)
+    const minutes = Math.floor(safeSeconds / 60)
+    const seconds = safeSeconds % 60
+    return `${minutes}:${String(seconds).padStart(2, `0`)}`
+}
+
+function formatCountdownSeconds(remainingSeconds: number) {
+    const safeSeconds = Math.max(0, remainingSeconds)
+    const minutes = Math.floor(safeSeconds / 60)
+    const seconds = safeSeconds % 60
+    return `${minutes}:${String(seconds).padStart(2, `0`)}`
+}
+
+function formatSpawnCountdownSeconds(remainingSeconds: number) {
+    return `-${formatCountdownSeconds(remainingSeconds)}`
+}
+
+function getBaronObjectiveStatusLabel(
+    elapsedGameTimeSeconds: number,
+    currentFrameTimestampMs: number,
+    lastBaronKillTimestampMs: number | null,
+) {
+    if (elapsedGameTimeSeconds < BARON_FIRST_SPAWN_SECONDS) return null
+    if (!Number.isFinite(currentFrameTimestampMs)) return null
+    if (lastBaronKillTimestampMs === null) return `LIVE`
+
+    const elapsedSinceLastBaronKillSeconds = Math.max(0, Math.floor((currentFrameTimestampMs - lastBaronKillTimestampMs) / 1000))
+    const remainingSeconds = BARON_RESPAWN_SECONDS - elapsedSinceLastBaronKillSeconds
+    if (remainingSeconds <= 0) return `LIVE`
+
+    return formatSpawnCountdownSeconds(remainingSeconds)
+}
+
+function getHeraldObjectiveStatusLabel(
+    elapsedGameTimeSeconds: number,
+    hasHeraldBeenKilled: boolean,
+) {
+    if (hasHeraldBeenKilled) return null
+    if (elapsedGameTimeSeconds < HERALD_FIRST_SPAWN_SECONDS) {
+        return formatSpawnCountdownSeconds(HERALD_FIRST_SPAWN_SECONDS - elapsedGameTimeSeconds)
+    }
+    if (elapsedGameTimeSeconds < BARON_FIRST_SPAWN_SECONDS) return `LIVE`
+    return null
+}
+
+function getBaronPreSpawnStatusLabel(elapsedGameTimeSeconds: number) {
+    if (elapsedGameTimeSeconds >= BARON_FIRST_SPAWN_SECONDS) return null
+    return formatSpawnCountdownSeconds(BARON_FIRST_SPAWN_SECONDS - elapsedGameTimeSeconds)
+}
+
+function getDragonObjectiveStatusLabel(
+    elapsedGameTimeSeconds: number,
+    currentFrameTimestampMs: number,
+    lastDragonKillTimestampMs: number | null,
+    shouldUseElderDragonRespawnTimer: boolean,
+) {
+    if (elapsedGameTimeSeconds < DRAGON_FIRST_SPAWN_SECONDS) {
+        return formatSpawnCountdownSeconds(DRAGON_FIRST_SPAWN_SECONDS - elapsedGameTimeSeconds)
+    }
+    if (!Number.isFinite(currentFrameTimestampMs)) return null
+    if (lastDragonKillTimestampMs === null) return `LIVE`
+
+    const elapsedSinceLastDragonKillSeconds = Math.max(0, Math.floor((currentFrameTimestampMs - lastDragonKillTimestampMs) / 1000))
+    const dragonRespawnSeconds = shouldUseElderDragonRespawnTimer ? ELDER_DRAGON_RESPAWN_SECONDS : DRAGON_RESPAWN_SECONDS
+    const remainingSeconds = dragonRespawnSeconds - elapsedSinceLastDragonKillSeconds
+    if (remainingSeconds <= 0) return `LIVE`
+
+    return formatSpawnCountdownSeconds(remainingSeconds)
+}
+
+function getDragonKillCount(windowFrame: WindowFrame) {
+    const blueTeamDragonKillCount = Array.isArray(windowFrame.blueTeam.dragons) ? windowFrame.blueTeam.dragons.length : 0
+    const redTeamDragonKillCount = Array.isArray(windowFrame.redTeam.dragons) ? windowFrame.redTeam.dragons.length : 0
+    return blueTeamDragonKillCount + redTeamDragonKillCount
+}
+
+function normalizeDragonType(dragonType: string) {
+    return String(dragonType || ``).trim().toLowerCase()
+}
+
+function isElderDragonType(dragonType: string) {
+    const normalizedDragonType = normalizeDragonType(dragonType)
+    return normalizedDragonType === `elder` || normalizedDragonType.includes(`elder`)
+}
+
+function getNormalizedDragonTypes(dragonTypes: string[] | undefined) {
+    if (!Array.isArray(dragonTypes)) return []
+    return dragonTypes.map((dragonType) => normalizeDragonType(dragonType)).filter(Boolean)
+}
+
+function getAddedDragonTypes(previousDragonTypes: string[], currentDragonTypes: string[]) {
+    const previousTypeCounts = new Map<string, number>()
+    previousDragonTypes.forEach((dragonType) => {
+        previousTypeCounts.set(dragonType, (previousTypeCounts.get(dragonType) || 0) + 1)
+    })
+
+    const addedDragonTypes: string[] = []
+    currentDragonTypes.forEach((dragonType) => {
+        const existingCount = previousTypeCounts.get(dragonType) || 0
+        if (existingCount > 0) {
+            previousTypeCounts.set(dragonType, existingCount - 1)
+            return
+        }
+
+        addedDragonTypes.push(dragonType)
+    })
+
+    return addedDragonTypes
+}
+
+function getTeamElementalDragonKillCount(dragonTypes: string[] | undefined) {
+    if (!Array.isArray(dragonTypes)) return 0
+    return dragonTypes.filter((dragonType) => !isElderDragonType(dragonType)).length
+}
+
 function getGoldLeadSymbol(goldLead: number) {
-    if (goldLead > 0) return `◀`
-    if (goldLead < 0) return `▶`
+    if (goldLead > 0) return `\u25C0`
+    if (goldLead < 0) return `\u25B6`
     return ``
 }
 
 function getLiveGameStateLabel(gameState: string) {
     switch (gameState) {
         case GameState.in_game:
-            return `진행 중`
+            return `\uC9C4\uD589 \uC911`
         case GameState.paused:
-            return `일시정지`
+            return `\uC77C\uC2DC\uC815\uC9C0`
         case GameState.finished:
-            return `게임 종료`
+            return `\uAC8C\uC784 \uC885\uB8CC`
         default:
             return gameState.toUpperCase()
     }
 }
+

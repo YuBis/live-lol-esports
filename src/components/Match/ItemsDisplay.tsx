@@ -8,9 +8,10 @@ type Props = {
     items: Item[],
     patchVersion: string,
     role?: string,
+    reverseWithTrinketFirst?: boolean,
 }
 
-export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, role }: Props) {
+export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, role, reverseWithTrinketFirst = false }: Props) {
     const lastFrameItems = lastFrame.participants[participantId].items;
 
     /*
@@ -44,66 +45,48 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
 
     const itemsUrlWithPatchVersion = ITEMS_URL.replace(`PATCH_VERSION`, patchVersion)
 
+    const nonTrinketSlots = Array.from({ length: 7 }, (_, index) => constrainedItems[index])
+    const orderedNonTrinketSlots = reverseWithTrinketFirst ? nonTrinketSlots.slice().reverse() : nonTrinketSlots
+    const trinketSlot = trinket !== -1 ? trinket : undefined
+    const displaySlots = reverseWithTrinketFirst
+        ? [trinketSlot, ...orderedNonTrinketSlots]
+        : [...orderedNonTrinketSlots, trinketSlot]
+
     return (
         <div className="player-stats-items" key={`${participantId}`}>
-            {[...Array(7)].map((x, i) => {
-
-                if (constrainedItems[i] !== undefined) {
-                    let currentItem = items[constrainedItems[i]]
+            {displaySlots.map((itemId, slotIndex) => {
+                if (itemId === undefined) {
                     return (
-                        <div className="player-stats-item"
-                            key={`${participantId}_${i}_${constrainedItems[i]}`}
-                            id={`item_${participantId}_${i}_${constrainedItems[i]}`}
-                            onMouseEnter={() => showItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
-                            onMouseLeave={() => hideItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
-                            onTouchStart={() => showItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}
-                            onTouchEnd={() => hideItemDescription(`item_${participantId}_${i}_${constrainedItems[i]}`)}>
-                            <div className="itemDescription">
-                                <div className="itemName">{currentItem.name}</div>
-                                {formatItemDescription(currentItem)}
-                            </div>
-                            <img alt="" src={`${itemsUrlWithPatchVersion}${constrainedItems[i]}.png`} />
-                        </div>
-                    )
-                } else {
-                    return (
-                        <div className="player-stats-item empty" key={`${participantId}_${i}_${constrainedItems[i]}`} />
+                        <div className="player-stats-item empty" key={`${participantId}_${slotIndex}_empty`} />
                     )
                 }
 
-            })
-            }
-
-
-            {trinket !== -1 ? (() => {
-                const trinketElementId = `item_${participantId}_trinket_${trinket}`
-                const trinketItem = items[trinket]
-                if (!trinketItem) {
+                const currentItem = items[itemId]
+                if (!currentItem) {
                     return (
-                        <div className="player-stats-item">
-                            <img alt="" src={`${itemsUrlWithPatchVersion}${trinket}.png`} />
+                        <div className="player-stats-item" key={`${participantId}_${slotIndex}_${itemId}`}>
+                            <img alt="" src={`${itemsUrlWithPatchVersion}${itemId}.png`} />
                         </div>
                     )
                 }
 
+                const elementId = `item_${participantId}_${slotIndex}_${itemId}`
                 return (
                     <div className="player-stats-item"
-                        id={trinketElementId}
-                        onMouseEnter={() => showItemDescription(trinketElementId)}
-                        onMouseLeave={() => hideItemDescription(trinketElementId)}
-                        onTouchStart={() => showItemDescription(trinketElementId)}
-                        onTouchEnd={() => hideItemDescription(trinketElementId)}>
+                        key={`${participantId}_${slotIndex}_${itemId}`}
+                        id={elementId}
+                        onMouseEnter={() => showItemDescription(elementId)}
+                        onMouseLeave={() => hideItemDescription(elementId)}
+                        onTouchStart={() => showItemDescription(elementId)}
+                        onTouchEnd={() => hideItemDescription(elementId)}>
                         <div className="itemDescription">
-                            <div className="itemName">{trinketItem.name}</div>
-                            {formatItemDescription(trinketItem)}
+                            <div className="itemName">{currentItem.name}</div>
+                            {formatItemDescription(currentItem)}
                         </div>
-                        <img alt="" src={`${itemsUrlWithPatchVersion}${trinket}.png`} />
+                        <img alt="" src={`${itemsUrlWithPatchVersion}${itemId}.png`} />
                     </div>
                 )
-            })() : (
-                <div className="player-stats-item empty" />
-            )}
-
+            })}
         </div>
     );
 }
@@ -302,9 +285,85 @@ function formatItemDescription(item: Item) {
 }
 
 function showItemDescription(elementId: string) {
-    $(`#${elementId} .itemDescription`).show()
+    const itemElement = document.getElementById(elementId)
+    if (!itemElement) return
+
+    const tooltipElement = itemElement.querySelector(`.itemDescription`) as HTMLElement | null
+    if (!tooltipElement) return
+
+    tooltipElement.style.visibility = `hidden`
+    tooltipElement.style.display = `block`
+    positionItemDescription(itemElement, tooltipElement)
+    tooltipElement.style.visibility = `visible`
 }
 
 function hideItemDescription(elementId: string) {
-    $(`#${elementId} .itemDescription`).hide()
+    const tooltipElement = document.querySelector(`#${elementId} .itemDescription`) as HTMLElement | null
+    if (!tooltipElement) return
+
+    tooltipElement.style.visibility = `hidden`
+    tooltipElement.style.display = `none`
+}
+
+const TOOLTIP_EDGE_PADDING_PX = 12
+const TOOLTIP_ARROW_EDGE_PADDING_PX = 14
+const TOOLTIP_CORNER_TAIL_THRESHOLD_PX = 24
+const CLIPPING_OVERFLOW_VALUES = new Set([`hidden`, `clip`, `auto`, `scroll`])
+
+function positionItemDescription(itemElement: HTMLElement, tooltipElement: HTMLElement) {
+    tooltipElement.classList.remove(`itemDescription-corner-left`, `itemDescription-corner-right`)
+    tooltipElement.style.left = `0px`
+    tooltipElement.style.right = `auto`
+    tooltipElement.style.transform = `none`
+
+    const itemRect = itemElement.getBoundingClientRect()
+    const offsetParentElement = tooltipElement.offsetParent as HTMLElement | null
+    if (!offsetParentElement) return
+    const offsetParentRect = offsetParentElement.getBoundingClientRect()
+
+    const tooltipWidth = tooltipElement.offsetWidth
+    if (tooltipWidth <= 0) return
+
+    const { minLeft, maxRight } = getHorizontalClippingBounds(itemElement)
+    const maxLeft = Math.max(minLeft, maxRight - tooltipWidth)
+
+    const itemCenterX = itemRect.left + (itemRect.width / 2)
+    const preferredLeft = itemCenterX - (tooltipWidth / 2)
+    const clampedLeft = Math.min(Math.max(preferredLeft, minLeft), maxLeft)
+    const localLeft = clampedLeft - offsetParentRect.left
+
+    tooltipElement.style.left = `${localLeft}px`
+
+    const unclampedArrowLeft = itemCenterX - clampedLeft
+    const clampedArrowLeft = Math.min(
+        Math.max(unclampedArrowLeft, TOOLTIP_ARROW_EDGE_PADDING_PX),
+        tooltipWidth - TOOLTIP_ARROW_EDGE_PADDING_PX,
+    )
+    tooltipElement.style.setProperty(`--tooltip-arrow-left`, `${clampedArrowLeft}px`)
+
+    const shouldUseLeftCornerTail = unclampedArrowLeft < TOOLTIP_CORNER_TAIL_THRESHOLD_PX
+    const shouldUseRightCornerTail = unclampedArrowLeft > (tooltipWidth - TOOLTIP_CORNER_TAIL_THRESHOLD_PX)
+    if (shouldUseLeftCornerTail) {
+        tooltipElement.classList.add(`itemDescription-corner-left`)
+    } else if (shouldUseRightCornerTail) {
+        tooltipElement.classList.add(`itemDescription-corner-right`)
+    }
+}
+
+function getHorizontalClippingBounds(element: HTMLElement) {
+    let minLeft = TOOLTIP_EDGE_PADDING_PX
+    let maxRight = window.innerWidth - TOOLTIP_EDGE_PADDING_PX
+
+    let currentElement: HTMLElement | null = element.parentElement
+    while (currentElement) {
+        const currentStyle = window.getComputedStyle(currentElement)
+        if (CLIPPING_OVERFLOW_VALUES.has(currentStyle.overflowX)) {
+            const currentRect = currentElement.getBoundingClientRect()
+            minLeft = Math.max(minLeft, currentRect.left + TOOLTIP_EDGE_PADDING_PX)
+            maxRight = Math.min(maxRight, currentRect.right - TOOLTIP_EDGE_PADDING_PX)
+        }
+        currentElement = currentElement.parentElement
+    }
+
+    return { minLeft, maxRight }
 }

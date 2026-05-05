@@ -269,6 +269,24 @@ export interface WindowParticipant {
     maxHealth: number;
 }
 
+export interface ObjectiveTimerBackfillTeamSnapshot {
+    baseLead: number;
+    startedAtMs: number;
+}
+
+export interface ObjectiveTimerBackfillSeed {
+    lastBaronKillTimestampMs: number | null;
+    lastDragonKillTimestampMs: number | null;
+    baronPowerPlaySnapshotByTeam: {
+        blue: ObjectiveTimerBackfillTeamSnapshot | null;
+        red: ObjectiveTimerBackfillTeamSnapshot | null;
+    };
+    elderBuffEndAtMsByTeam: {
+        blue: number | null;
+        red: number | null;
+    };
+}
+
 export interface Item {
     name: string;
     description: string;
