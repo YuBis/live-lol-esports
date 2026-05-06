@@ -555,7 +555,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 hasActiveDeathTimer = true
             }
 
-            if (participant.currentHealth <= 0 && !hasActiveDeathTimer) {
+            if (participant.currentHealth <= 0 && participant.deaths > 0 && !hasActiveDeathTimer) {
                 // Refresh/reconnect can land mid-death without a detected death transition.
                 // Seed an estimated timer so dead players do not appear without countdown.
                 const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
