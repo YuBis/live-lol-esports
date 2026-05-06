@@ -52,6 +52,7 @@ type Props = {
 }
 
 type TeamKey = `blue` | `red`
+type DeathTimerSource = `death_transition` | `health_seed`
 type BaronPowerPlaySnapshot = {
     baseLead: number,
     startedAtMs: number,
@@ -102,6 +103,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
     const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
+    const deathTimerSourceByParticipantIdRef = useRef<Map<number, DeathTimerSource>>(new Map())
     const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
     const previousBaronKillCountsRef = useRef<{ blue: number, red: number }>({
         blue: Number(lastWindowFrame.blueTeam.barons || 0),
@@ -185,6 +187,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     return
                 }
                 deathTimerEndAtMsByParticipantIdRef.current.delete(participantId)
+                deathTimerSourceByParticipantIdRef.current.delete(participantId)
                 return
             }
             nextDeathTimerSecondsByParticipantId[participantId] = Math.ceil(remainingMs / 1000)
@@ -220,6 +223,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         previousKdaByParticipantIdRef.current.clear()
         previousVitalsByParticipantIdRef.current.clear()
         deathTimerEndAtMsByParticipantIdRef.current.clear()
+        deathTimerSourceByParticipantIdRef.current.clear()
         setKdaFlashByCell({})
         setDeathTimerSecondsByParticipantId({})
         setSelectedRuneKeyByParticipantId({})
@@ -543,15 +547,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         participants.forEach((participant) => {
             let hasActiveDeathTimer = deathTimerEndAtMsByParticipantIdRef.current.has(participant.participantId)
             const previousVitals = previousVitalsByParticipantIdRef.current.get(participant.participantId)
-            if (
-                previousVitals
-                && participant.deaths > previousVitals.deaths
-            ) {
+            const hasDeathTransition = Boolean(previousVitals && participant.deaths > previousVitals.deaths)
+            if (hasDeathTransition) {
                 const estimatedRespawnSeconds = getEstimatedRespawnSeconds(participant.level, elapsedGameTimeSeconds)
                 deathTimerEndAtMsByParticipantIdRef.current.set(
                     participant.participantId,
                     normalizedFrameTimestampMs + estimatedRespawnSeconds * 1000,
                 )
+                deathTimerSourceByParticipantIdRef.current.set(participant.participantId, `death_transition`)
                 hasActiveDeathTimer = true
             }
 
@@ -563,10 +566,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     participant.participantId,
                     normalizedFrameTimestampMs + estimatedRespawnSeconds * 1000,
                 )
+                deathTimerSourceByParticipantIdRef.current.set(participant.participantId, `health_seed`)
             }
 
-            if (participant.currentHealth > 0) {
+            const deathTimerSource = deathTimerSourceByParticipantIdRef.current.get(participant.participantId)
+            if (participant.currentHealth > 0 && deathTimerSource !== `death_transition`) {
                 deathTimerEndAtMsByParticipantIdRef.current.delete(participant.participantId)
+                deathTimerSourceByParticipantIdRef.current.delete(participant.participantId)
             }
             previousVitalsByParticipantIdRef.current.set(participant.participantId, {
                 deaths: participant.deaths,
