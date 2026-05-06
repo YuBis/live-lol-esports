@@ -1,7 +1,9 @@
 import {Link} from "react-router-dom";
 import {ReactComponent as TeamTBDSVG} from '../../assets/images/team-tbd.svg';
+import { useEffect, useMemo, useState } from "react";
 
-import {ScheduleEvent} from "../types/baseTypes";
+import { CustomTeam, ExtendedGame, ScheduleEvent, WindowFrame } from "../types/baseTypes";
+import { getEventDetailsResponse, getISODateMultiplyOf10, getWindowResponse } from "../../utils/LoLEsportsAPI";
 
 type Props = {
     scheduleEvent: ScheduleEvent;
@@ -17,7 +19,97 @@ export function EventCard({ scheduleEvent, leagueLogoUrl, teamRanks }: Props) {
     const redWins = scheduleEvent.match.teams[1].result ? scheduleEvent.match.teams[1].result.gameWins : 0
     const bestOfCount = scheduleEvent.match.strategy.count
     const status = getEventCardStatus(scheduleEvent)
-    const progressSegments = getSeriesProgressSegments(bestOfCount, blueWins, redWins)
+    const fallbackProgressSegments = useMemo(
+        () => getSeriesProgressSegments(bestOfCount, blueWins, redWins),
+        [bestOfCount, blueWins, redWins],
+    )
+    const [progressSegments, setProgressSegments] = useState<string[]>(fallbackProgressSegments)
+
+    useEffect(() => {
+        setProgressSegments(fallbackProgressSegments)
+    }, [fallbackProgressSegments])
+
+    useEffect(() => {
+        let isCancelled = false
+
+        async function syncSeriesProgressByGameOrder() {
+            const shouldResolvePerGameOrder = bestOfCount > 1 && (blueWins + redWins) > 0
+            if (!shouldResolvePerGameOrder) {
+                setProgressSegments(fallbackProgressSegments)
+                return
+            }
+
+            try {
+                const eventDetailsResponse = await getEventDetailsResponse(scheduleEvent.match.id)
+                const matchGames = eventDetailsResponse?.data?.data?.event?.match?.games as ExtendedGame[] | undefined
+
+                if (!matchGames || matchGames.length === 0) {
+                    if (!isCancelled) setProgressSegments(fallbackProgressSegments)
+                    return
+                }
+
+                const completedGames = matchGames
+                    .filter((game) => String(game.state).toLowerCase() === `completed`)
+                    .sort((a, b) => a.number - b.number)
+
+                if (completedGames.length === 0) {
+                    if (!isCancelled) setProgressSegments(fallbackProgressSegments)
+                    return
+                }
+
+                const winnerSideByGameNumber = new Map<number, `blue` | `red`>()
+
+                await Promise.all(completedGames.map(async (game) => {
+                    const winnerTeamId = await getWinnerTeamIdForGame(game.id, game.teams)
+                    if (!winnerTeamId) return
+
+                    const winnerTeam = game.teams.find((team) => team.id === winnerTeamId)
+                    if (winnerTeam?.side === `blue` || winnerTeam?.side === `red`) {
+                        winnerSideByGameNumber.set(game.number, winnerTeam.side)
+                    }
+                }))
+
+                if (isCancelled) return
+
+                const orderedCompletedSegmentsFallback = getSeriesProgressSegments(completedGames.length, blueWins, redWins)
+                const orderedSegments: string[] = []
+
+                completedGames.forEach((game, index) => {
+                    const winnerSide = winnerSideByGameNumber.get(game.number)
+                    if (winnerSide === `blue`) {
+                        orderedSegments.push(`blue`)
+                        return
+                    }
+                    if (winnerSide === `red`) {
+                        orderedSegments.push(`red`)
+                        return
+                    }
+                    orderedSegments.push(orderedCompletedSegmentsFallback[index] || `pending`)
+                })
+
+                while (orderedSegments.length < Math.max(bestOfCount, 1)) {
+                    orderedSegments.push(`pending`)
+                }
+
+                setProgressSegments(orderedSegments.slice(0, Math.max(bestOfCount, 1)))
+            } catch (error) {
+                console.error(error)
+                if (!isCancelled) setProgressSegments(fallbackProgressSegments)
+            }
+        }
+
+        syncSeriesProgressByGameOrder()
+
+        return () => {
+            isCancelled = true
+        }
+    }, [
+        scheduleEvent.match.id,
+        bestOfCount,
+        blueWins,
+        redWins,
+        fallbackProgressSegments,
+    ])
 
     return (
         <Link to={`live/${scheduleEvent.match.id}`}>
@@ -145,4 +237,81 @@ function getSeriesProgressSegments(bestOfCount: number, blueWins: number, redWin
         }
     }
     return segments
+}
+
+const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
+const COMPLETED_GAME_TAIL_LOOKAHEAD_MS = 4 * 60 * 60 * 1000
+const COMPLETED_GAME_TAIL_SAFE_NOW_OFFSET_MS = 60 * 1000
+
+async function getWinnerTeamIdForGame(gameId: string, gameTeams: CustomTeam[]): Promise<string | undefined> {
+    try {
+        const initialWindowResponse = await getWindowResponse(gameId)
+        if (!initialWindowResponse || !initialWindowResponse.data) return undefined
+
+        const initialFrames = initialWindowResponse.data.frames as WindowFrame[] | undefined
+        if (!initialFrames || initialFrames.length === 0) return undefined
+
+        const initialLastFrame = initialFrames[initialFrames.length - 1]
+        const winnerFromInitialFrame = inferWinnerSide(initialLastFrame)
+        if (winnerFromInitialFrame) {
+            return gameTeams.find((team) => team.side === winnerFromInitialFrame)?.id
+        }
+
+        const completedGameTailStartingTime = getCompletedGameTailStartingTime(initialFrames[0].rfc460Timestamp)
+        const tailWindowResponse = await getWindowResponse(gameId, completedGameTailStartingTime)
+        const tailFrames = tailWindowResponse?.data?.frames as WindowFrame[] | undefined
+        if (!tailFrames || tailFrames.length === 0) return undefined
+
+        const tailLastFrame = tailFrames[tailFrames.length - 1]
+        const winnerFromTailFrame = inferWinnerSide(tailLastFrame)
+        if (!winnerFromTailFrame) return undefined
+
+        return gameTeams.find((team) => team.side === winnerFromTailFrame)?.id
+    } catch (error) {
+        console.error(error)
+        return undefined
+    }
+}
+
+function inferWinnerSide(lastWindowFrame: WindowFrame): CustomTeam[`side`] | undefined {
+    const blueInhibitors = Number(lastWindowFrame.blueTeam.inhibitors || 0)
+    const redInhibitors = Number(lastWindowFrame.redTeam.inhibitors || 0)
+
+    if (blueInhibitors > 0 && redInhibitors === 0) return `blue`
+    if (redInhibitors > 0 && blueInhibitors === 0) return `red`
+
+    const blueGold = Number(lastWindowFrame.blueTeam.totalGold || 0)
+    const redGold = Number(lastWindowFrame.redTeam.totalGold || 0)
+    if (blueGold !== redGold) return blueGold > redGold ? `blue` : `red`
+
+    const blueKills = Number(lastWindowFrame.blueTeam.totalKills || 0)
+    const redKills = Number(lastWindowFrame.redTeam.totalKills || 0)
+    if (blueKills !== redKills) return blueKills > redKills ? `blue` : `red`
+
+    return undefined
+}
+
+function getCompletedGameTailStartingTime(firstWindowTimestamp: string | Date | undefined) {
+    const firstWindowTimestampValue = getTimestampValue(firstWindowTimestamp)
+    if (firstWindowTimestampValue === 0) return getISODateMultiplyOf10()
+
+    const fourHoursAfterStartTimestampValue = firstWindowTimestampValue + COMPLETED_GAME_TAIL_LOOKAHEAD_MS
+    const safeNowTimestampValue = Date.now() - COMPLETED_GAME_TAIL_SAFE_NOW_OFFSET_MS
+    const completedGameTailTimestampValue = alignTimestampToLiveStatsStep(
+        Math.min(fourHoursAfterStartTimestampValue, safeNowTimestampValue),
+    )
+    if (completedGameTailTimestampValue === 0) return getISODateMultiplyOf10()
+
+    return new Date(completedGameTailTimestampValue).toISOString()
+}
+
+function getTimestampValue(timestamp: string | Date | undefined) {
+    if (!timestamp) return 0
+    const value = new Date(timestamp).getTime()
+    return Number.isFinite(value) ? value : 0
+}
+
+function alignTimestampToLiveStatsStep(timestampValue: number) {
+    if (!Number.isFinite(timestampValue) || timestampValue <= 0) return 0
+    return timestampValue - (timestampValue % LIVE_STATS_STARTING_TIME_STEP_MS)
 }

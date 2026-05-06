@@ -102,6 +102,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
 
     const goldPercentage = getGoldPercentage(firstWindowFrame.blueTeam.totalGold, firstWindowFrame.redTeam.totalGold);
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, firstWindowFrame.rfc460Timestamp)
+    const elapsedGameTimeSeconds = 0
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
 
@@ -728,7 +729,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         {getVideoPlayer()}
                     </div> : null}
             </div>
-            <LiveAPIWatcher gameIndex={gameIndex} gameMetadata={gameMetadata} lastWindowFrame={firstWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
+            <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={firstWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
         </div>
     );
 }
