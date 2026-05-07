@@ -1623,8 +1623,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         <div id="video-player" className={chatEnabled ? `chatEnabled` : ``}></div>
                         {getVideoPlayer()}
                     </div> : null}
+                <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={lastWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
             </div>
-            <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={lastWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
         </div>
     );
 }

@@ -710,11 +710,14 @@ Status dragons
     background: var(--card-color);
     box-shadow: 0 1px 3px -1px rgba(0, 0, 0, 0.4);
     border-radius: 4px;
+    position: relative;
+    overflow: visible;
 }
 
 .status-live-game-card-content {
     margin: 1.5rem 1.5rem;
     padding: 20px 0px;
+    position: relative;
 }
 
 .status-live-game-card-content h3 {
@@ -1562,6 +1565,43 @@ svg.player-champion {
 /*
     Toast LiveAPIWatcher
 */
+
+.live-api-watcher-toast-layer {
+    position: absolute;
+    inset: 0;
+    --toast-top-offset: 0.75rem;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.live-api-watcher-toast-layer .Toastify__toast-container {
+    position: absolute !important;
+    width: min(22rem, calc(100% - 2rem));
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+}
+
+.live-api-watcher-toast-layer .Toastify__toast-container--top-left {
+    top: var(--toast-top-offset);
+    left: 0.75rem;
+}
+
+.live-api-watcher-toast-layer .Toastify__toast-container--top-right {
+    top: var(--toast-top-offset);
+    right: 0.75rem;
+    left: auto;
+}
+
+.live-api-watcher-toast-layer .Toastify__toast-container--top-center {
+    top: var(--toast-top-offset);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.live-api-watcher-toast-layer .Toastify__toast {
+    pointer-events: none;
+}
 
 .toast-watcher {
     display: flex;

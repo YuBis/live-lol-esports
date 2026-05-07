@@ -261,7 +261,9 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
     }, [lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata.blueTeamMetadata.participantMetadata, gameMetadata.redTeamMetadata.participantMetadata, championsUrlWithPatchVersion, trueBlueTeam.image, trueRedTeam.image]);
 
     return (
-        <ToastContainer limit={10}/>
+        <div className="live-api-watcher-toast-layer" aria-hidden="true">
+            <ToastContainer limit={10} />
+        </div>
     );
 }
 
