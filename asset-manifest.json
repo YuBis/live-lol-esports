@@ -1,7 +1,7 @@
 {
   "files": {
-    "main.css": "/live-lol-esports/static/css/main.51caf372.chunk.css",
-    "main.js": "/live-lol-esports/static/js/main.ef63d39f.chunk.js",
+    "main.css": "/live-lol-esports/static/css/main.3bed02ff.chunk.css",
+    "main.js": "/live-lol-esports/static/js/main.1dd2ad1d.chunk.js",
     "runtime-main.js": "/live-lol-esports/static/js/runtime-main.7747648f.js",
     "static/css/2.2a53c7b1.chunk.css": "/live-lol-esports/static/css/2.2a53c7b1.chunk.css",
     "static/js/2.04b6fcee.chunk.js": "/live-lol-esports/static/js/2.04b6fcee.chunk.js",
@@ -14,12 +14,18 @@
     "static/media/blue_inhibitor_destroyed.ogg": "/live-lol-esports/static/media/blue_inhibitor_destroyed.c2c77120.ogg",
     "static/media/blue_turret_destroyed.ogg": "/live-lol-esports/static/media/blue_turret_destroyed.e6dd3754.ogg",
     "static/media/champion_slain.ogg": "/live-lol-esports/static/media/champion_slain.fbea772e.ogg",
+    "static/media/dragon-chemtech-soul.81ecbadc.webp": "/live-lol-esports/static/media/dragon-chemtech-soul.81ecbadc.webp",
     "static/media/dragon-chemtech.515ce319.svg": "/live-lol-esports/static/media/dragon-chemtech.515ce319.svg",
+    "static/media/dragon-cloud-soul.a2b63266.webp": "/live-lol-esports/static/media/dragon-cloud-soul.a2b63266.webp",
     "static/media/dragon-cloud.1a55fc30.svg": "/live-lol-esports/static/media/dragon-cloud.1a55fc30.svg",
     "static/media/dragon-elder.2dd99da4.svg": "/live-lol-esports/static/media/dragon-elder.2dd99da4.svg",
+    "static/media/dragon-hextech-soul.92804847.webp": "/live-lol-esports/static/media/dragon-hextech-soul.92804847.webp",
     "static/media/dragon-hextech.50140336.svg": "/live-lol-esports/static/media/dragon-hextech.50140336.svg",
+    "static/media/dragon-infernal-soul.8a509f35.webp": "/live-lol-esports/static/media/dragon-infernal-soul.8a509f35.webp",
     "static/media/dragon-infernal.43bfa7f3.svg": "/live-lol-esports/static/media/dragon-infernal.43bfa7f3.svg",
+    "static/media/dragon-mountain-soul.3500be51.webp": "/live-lol-esports/static/media/dragon-mountain-soul.3500be51.webp",
     "static/media/dragon-mountain.69282d8c.svg": "/live-lol-esports/static/media/dragon-mountain.69282d8c.svg",
+    "static/media/dragon-ocean-soul.93631af3.webp": "/live-lol-esports/static/media/dragon-ocean-soul.93631af3.webp",
     "static/media/dragon-ocean.ad7cfa52.svg": "/live-lol-esports/static/media/dragon-ocean.ad7cfa52.svg",
     "static/media/dragon.6857c9ca.svg": "/live-lol-esports/static/media/dragon.6857c9ca.svg",
     "static/media/first_blood.ogg": "/live-lol-esports/static/media/first_blood.de565279.ogg",
@@ -41,7 +47,7 @@
     "static/js/runtime-main.7747648f.js",
     "static/css/2.2a53c7b1.chunk.css",
     "static/js/2.04b6fcee.chunk.js",
-    "static/css/main.51caf372.chunk.css",
-    "static/js/main.ef63d39f.chunk.js"
+    "static/css/main.3bed02ff.chunk.css",
+    "static/js/main.1dd2ad1d.chunk.js"
   ]
 }
