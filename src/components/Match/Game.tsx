@@ -53,6 +53,20 @@ type Props = {
 
 type TeamKey = `blue` | `red`
 type DeathTimerSource = `death_transition` | `health_seed`
+type ObjectiveBuffState = {
+    baron: boolean,
+    elder: boolean,
+}
+type ObjectiveBuffsByParticipantId = {
+    [participantId: number]: ObjectiveBuffState,
+}
+type HighlightedPurchasedItemsByParticipantId = {
+    [participantId: number]: number[],
+}
+type ObjectiveBuffParticipantIdsByTeam = {
+    blue: Set<number>,
+    red: Set<number>,
+}
 type BaronPowerPlaySnapshot = {
     baseLead: number,
     startedAtMs: number,
@@ -78,6 +92,33 @@ const ELDER_DRAGON_RESPAWN_SECONDS = 6 * 60
 const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
 const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
 const FORCE_BARON_UI_PREVIEW = false
+const FORCE_OBJECTIVE_BUFF_HOLDER_PREVIEW = false
+const FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW = false
+const FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW = false
+const ITEM_PURCHASE_HIGHLIGHT_DURATION_MS = 2000
+const LEVEL_UP_FLASH_DURATION_MS = 2000
+const LEVEL_UP_FLASH_TARGET_LEVELS = [6, 11, 16]
+const PURCHASE_HIGHLIGHT_UPGRADE_PAIRS = [
+    [3003, 3040], // Archangel's Staff -> Seraph's Embrace
+    [3004, 3042], // Manamune -> Muramana
+    [3119, 3121], // Winter's Approach -> Fimbulwinter
+    [2526, 2530], // Whispering Circlet -> Diadem of Songs
+    [3009, 3170], // Boots of Swiftness -> Swiftmarch
+    [3158, 3171], // Ionian Boots -> Crimson Lucidity
+    [3006, 3172], // Berserker's Greaves -> Gunmetal Greaves
+    [3111, 3173], // Mercury's Treads -> Chainlaced Crushers
+    [3047, 3174], // Plated Steelcaps -> Armored Advance
+    [3020, 3175], // Sorcerer's Shoes -> Spellslinger's Shoes
+    [3008, 3168],
+    [3010, 3013], // Symbiotic Soles -> Synchronized Souls
+    [3013, 3176], // Synchronized Souls -> Forever Forward
+] as const
+const PURCHASE_HIGHLIGHT_TARGET_BY_SOURCE_ITEM_ID = new Map<number, number>(PURCHASE_HIGHLIGHT_UPGRADE_PAIRS)
+const PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS = new Set<number>(
+    PURCHASE_HIGHLIGHT_UPGRADE_PAIRS.map(([, targetItemId]) => targetItemId),
+)
+const PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
+const PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055, 2138, 2139, 2140]
 
 function getInitialScoreboardLayoutMode(): ScoreboardLayoutMode {
     try {
@@ -100,11 +141,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [baronPowerPlayByTeam, setBaronPowerPlayByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
     const [baronPowerPlayRemainingSecondsByTeam, setBaronPowerPlayRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
     const [elderBuffRemainingSecondsByTeam, setElderBuffRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
+    const [objectiveBuffsByParticipantId, setObjectiveBuffsByParticipantId] = useState<ObjectiveBuffsByParticipantId>({})
+    const [highlightedPurchasedItemsByParticipantId, setHighlightedPurchasedItemsByParticipantId] = useState<HighlightedPurchasedItemsByParticipantId>({})
+    const [levelFlashByParticipantId, setLevelFlashByParticipantId] = useState<{ [participantId: number]: boolean }>({})
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
+    const previousLevelByParticipantIdRef = useRef<Map<number, number>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
     const deathTimerEndAtMsByParticipantIdRef = useRef<Map<number, number>>(new Map())
     const deathTimerSourceByParticipantIdRef = useRef<Map<number, DeathTimerSource>>(new Map())
     const flashClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+    const levelFlashClearTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+    const previousItemIdsByParticipantIdRef = useRef<Map<number, number[]>>(new Map())
+    const itemPurchaseHighlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
     const previousBaronKillCountsRef = useRef<{ blue: number, red: number }>({
         blue: Number(lastWindowFrame.blueTeam.barons || 0),
         red: Number(lastWindowFrame.redTeam.barons || 0),
@@ -124,6 +172,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const elderBuffEndAtMsByTeamRef = useRef<{ blue: number | null, red: number | null }>({
         blue: null,
         red: null,
+    })
+    const baronBuffParticipantIdsByTeamRef = useRef<ObjectiveBuffParticipantIdsByTeam>({
+        blue: new Set<number>(),
+        red: new Set<number>(),
+    })
+    const elderBuffParticipantIdsByTeamRef = useRef<ObjectiveBuffParticipantIdsByTeam>({
+        blue: new Set<number>(),
+        red: new Set<number>(),
     })
     const hasAppliedObjectiveTimerBackfillRef = useRef<boolean>(false)
     const lastBaronKillTimestampMsRef = useRef<number | null>(null)
@@ -156,9 +212,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     useEffect(() => {
         const flashClearTimers = flashClearTimersRef.current
+        const levelFlashClearTimers = levelFlashClearTimersRef.current
+        const itemPurchaseHighlightTimers = itemPurchaseHighlightTimersRef.current
         return () => {
             flashClearTimers.forEach((timerId) => clearTimeout(timerId))
             flashClearTimers.clear()
+            levelFlashClearTimers.forEach((timerId) => clearTimeout(timerId))
+            levelFlashClearTimers.clear()
+            itemPurchaseHighlightTimers.forEach((timerId) => clearTimeout(timerId))
+            itemPurchaseHighlightTimers.clear()
         }
     }, [])
 
@@ -221,16 +283,25 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     useEffect(() => {
         previousKdaByParticipantIdRef.current.clear()
+        previousLevelByParticipantIdRef.current.clear()
         previousVitalsByParticipantIdRef.current.clear()
         deathTimerEndAtMsByParticipantIdRef.current.clear()
         deathTimerSourceByParticipantIdRef.current.clear()
         setKdaFlashByCell({})
+        setLevelFlashByParticipantId({})
         setDeathTimerSecondsByParticipantId({})
         setSelectedRuneKeyByParticipantId({})
         setMirrorExpandedParticipantIds([])
         setBaronPowerPlayByTeam({ blue: null, red: null })
         setBaronPowerPlayRemainingSecondsByTeam({ blue: null, red: null })
         setElderBuffRemainingSecondsByTeam({ blue: null, red: null })
+        setObjectiveBuffsByParticipantId({})
+        setHighlightedPurchasedItemsByParticipantId({})
+        levelFlashClearTimersRef.current.forEach((timerId) => clearTimeout(timerId))
+        levelFlashClearTimersRef.current.clear()
+        previousItemIdsByParticipantIdRef.current.clear()
+        itemPurchaseHighlightTimersRef.current.forEach((timerId) => clearTimeout(timerId))
+        itemPurchaseHighlightTimersRef.current.clear()
         previousBaronKillCountsRef.current = {
             blue: 0,
             red: 0,
@@ -241,6 +312,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         hasInitializedDragonKillCountRef.current = false
         baronPowerPlaySnapshotByTeamRef.current = { blue: null, red: null }
         elderBuffEndAtMsByTeamRef.current = { blue: null, red: null }
+        baronBuffParticipantIdsByTeamRef.current = { blue: new Set<number>(), red: new Set<number>() }
+        elderBuffParticipantIdsByTeamRef.current = { blue: new Set<number>(), red: new Set<number>() }
         hasAppliedObjectiveTimerBackfillRef.current = false
         lastBaronKillTimestampMsRef.current = null
         lastDragonKillTimestampMsRef.current = null
@@ -265,19 +338,23 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             const seedSnapshot = objectiveTimerBackfillSeed.baronPowerPlaySnapshotByTeam[teamKey]
             if (!seedSnapshot) {
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
 
             const elapsedMs = Math.max(0, frameTimestampMs - seedSnapshot.startedAtMs)
             if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
 
             const currentLead = teamKey === `blue` ? blueTeamLead : redTeamLead
+            const teamParticipants = teamKey === `blue` ? lastWindowFrame.blueTeam.participants : lastWindowFrame.redTeam.participants
             const powerPlayValue = Math.round((currentLead - seedSnapshot.baseLead) + BARON_POWER_PLAY_BASELINE_GOLD)
             nextPowerPlayByTeam[teamKey] = powerPlayValue
             nextPowerPlayRemainingSecondsByTeam[teamKey] = Math.max(0, Math.ceil((BARON_POWER_PLAY_DURATION_MS - elapsedMs) / 1000))
+            baronBuffParticipantIdsByTeamRef.current[teamKey] = getAliveParticipantIdSet(teamParticipants)
 
             baronPowerPlaySnapshotByTeamRef.current[teamKey] = {
                 baseLead: seedSnapshot.baseLead,
@@ -297,15 +374,25 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         const nextElderBuffRemainingSecondsByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
         ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
             const elderBuffEndAtMs = elderBuffEndAtMsByTeamRef.current[teamKey]
-            if (!elderBuffEndAtMs) return
+            if (!elderBuffEndAtMs) {
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
+                return
+            }
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
             if (remainingSeconds <= 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
+            const teamParticipants = teamKey === `blue` ? lastWindowFrame.blueTeam.participants : lastWindowFrame.redTeam.participants
+            elderBuffParticipantIdsByTeamRef.current[teamKey] = getAliveParticipantIdSet(teamParticipants)
             nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
         })
         setElderBuffRemainingSecondsByTeam(nextElderBuffRemainingSecondsByTeam)
+        setObjectiveBuffsByParticipantId(buildObjectiveBuffsByParticipantId(
+            baronBuffParticipantIdsByTeamRef.current,
+            elderBuffParticipantIdsByTeamRef.current,
+        ))
 
         previousBaronKillCountsRef.current = {
             blue: Number(lastWindowFrame.blueTeam.barons || 0),
@@ -386,9 +473,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         }
         if (blueElderKillDetected) {
             elderBuffEndAtMsByTeamRef.current.blue = frameTimestampMs + ELDER_DRAGON_BUFF_DURATION_MS
+            elderBuffParticipantIdsByTeamRef.current.blue = getAliveParticipantIdSet(lastWindowFrame.blueTeam.participants)
         }
         if (redElderKillDetected) {
             elderBuffEndAtMsByTeamRef.current.red = frameTimestampMs + ELDER_DRAGON_BUFF_DURATION_MS
+            elderBuffParticipantIdsByTeamRef.current.red = getAliveParticipantIdSet(lastWindowFrame.redTeam.participants)
         }
 
         if (blueBaronKillDetected) {
@@ -398,6 +487,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 lastValue: 0,
                 active: true,
             }
+            baronBuffParticipantIdsByTeamRef.current.blue = getAliveParticipantIdSet(lastWindowFrame.blueTeam.participants)
         }
 
         if (redBaronKillDetected) {
@@ -407,6 +497,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 lastValue: 0,
                 active: true,
             }
+            baronBuffParticipantIdsByTeamRef.current.red = getAliveParticipantIdSet(lastWindowFrame.redTeam.participants)
         }
 
         const nextPowerPlayByTeam: { blue: number | null, red: number | null } = { blue: null, red: null }
@@ -419,6 +510,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
                 snapshot.active = false
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
 
@@ -443,6 +535,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
             if (remainingSeconds <= 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
             nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
@@ -458,6 +551,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             blue: [...currentDragonTypesByTeam.blue],
             red: [...currentDragonTypesByTeam.red],
         }
+        setObjectiveBuffsByParticipantId(buildObjectiveBuffsByParticipantId(
+            baronBuffParticipantIdsByTeamRef.current,
+            elderBuffParticipantIdsByTeamRef.current,
+        ))
     }, [
         lastWindowFrame.rfc460Timestamp,
         lastWindowFrame.blueTeam.totalGold,
@@ -468,6 +565,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         lastWindowFrame.redTeam.dragons,
         lastWindowFrame.blueTeam.dragons.length,
         lastWindowFrame.redTeam.dragons.length,
+        lastWindowFrame.blueTeam.participants,
+        lastWindowFrame.redTeam.participants,
     ])
 
     useEffect(() => {
@@ -490,6 +589,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             const elapsedMs = Math.max(0, effectiveFrameTimestampMs - snapshot.startedAtMs)
             if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
 
@@ -517,6 +617,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - effectiveFrameTimestampMs) / 1000))
             if (remainingSeconds <= 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
             nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
@@ -526,6 +627,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             previousState.blue === nextElderBuffRemainingSecondsByTeam.blue
             && previousState.red === nextElderBuffRemainingSecondsByTeam.red
         ) ? previousState : nextElderBuffRemainingSecondsByTeam)
+        setObjectiveBuffsByParticipantId(buildObjectiveBuffsByParticipantId(
+            baronBuffParticipantIdsByTeamRef.current,
+            elderBuffParticipantIdsByTeamRef.current,
+        ))
     }, [
         objectiveTimerTickMs,
         lastWindowFrame.rfc460Timestamp,
@@ -536,6 +641,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
     useEffect(() => {
         const flashCellKeys: string[] = []
+        const levelFlashParticipantIds: number[] = []
         const participants = [
             ...lastWindowFrame.blueTeam.participants,
             ...lastWindowFrame.redTeam.participants,
@@ -543,6 +649,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
         const normalizedFrameTimestampMs = Number.isFinite(frameTimestampMs) ? frameTimestampMs : Date.now()
         const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
+        let objectiveBuffsChanged = false
 
         participants.forEach((participant) => {
             let hasActiveDeathTimer = deathTimerEndAtMsByParticipantIdRef.current.has(participant.participantId)
@@ -556,6 +663,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 )
                 deathTimerSourceByParticipantIdRef.current.set(participant.participantId, `death_transition`)
                 hasActiveDeathTimer = true
+                objectiveBuffsChanged = removeParticipantObjectiveBuffs(
+                    participant.participantId,
+                    baronBuffParticipantIdsByTeamRef.current,
+                    elderBuffParticipantIdsByTeamRef.current,
+                ) || objectiveBuffsChanged
             }
 
             if (participant.currentHealth <= 0 && participant.deaths > 0 && !hasActiveDeathTimer) {
@@ -567,6 +679,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     normalizedFrameTimestampMs + estimatedRespawnSeconds * 1000,
                 )
                 deathTimerSourceByParticipantIdRef.current.set(participant.participantId, `health_seed`)
+            }
+            if (participant.currentHealth <= 0 && participant.deaths > 0) {
+                objectiveBuffsChanged = removeParticipantObjectiveBuffs(
+                    participant.participantId,
+                    baronBuffParticipantIdsByTeamRef.current,
+                    elderBuffParticipantIdsByTeamRef.current,
+                ) || objectiveBuffsChanged
             }
 
             const deathTimerSource = deathTimerSourceByParticipantIdRef.current.get(participant.participantId)
@@ -596,8 +715,61 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 deaths: participant.deaths,
                 assists: participant.assists,
             })
+
+            const previousLevel = previousLevelByParticipantIdRef.current.get(participant.participantId)
+            if (
+                previousLevel !== undefined
+                && participant.level > previousLevel
+                && LEVEL_UP_FLASH_TARGET_LEVELS.includes(participant.level)
+            ) {
+                levelFlashParticipantIds.push(participant.participantId)
+            }
+            previousLevelByParticipantIdRef.current.set(participant.participantId, participant.level)
         })
 
+        if (objectiveBuffsChanged) {
+            setObjectiveBuffsByParticipantId(buildObjectiveBuffsByParticipantId(
+                baronBuffParticipantIdsByTeamRef.current,
+                elderBuffParticipantIdsByTeamRef.current,
+            ))
+        }
+        if (levelFlashParticipantIds.length > 0) {
+            setLevelFlashByParticipantId((previousState) => {
+                const nextState = { ...previousState }
+                levelFlashParticipantIds.forEach((participantId) => {
+                    nextState[participantId] = false
+                })
+                return nextState
+            })
+
+            requestAnimationFrame(() => {
+                setLevelFlashByParticipantId((previousState) => {
+                    const nextState = { ...previousState }
+                    levelFlashParticipantIds.forEach((participantId) => {
+                        nextState[participantId] = true
+                    })
+                    return nextState
+                })
+            })
+
+            levelFlashParticipantIds.forEach((participantId) => {
+                const existingTimerId = levelFlashClearTimersRef.current.get(participantId)
+                if (existingTimerId) {
+                    clearTimeout(existingTimerId)
+                }
+
+                const timerId = setTimeout(() => {
+                    setLevelFlashByParticipantId((previousState) => {
+                        if (!previousState[participantId]) return previousState
+                        const nextState = { ...previousState }
+                        delete nextState[participantId]
+                        return nextState
+                    })
+                    levelFlashClearTimersRef.current.delete(participantId)
+                }, LEVEL_UP_FLASH_DURATION_MS)
+                levelFlashClearTimersRef.current.set(participantId, timerId)
+            })
+        }
         if (flashCellKeys.length === 0) return
 
         setKdaFlashByCell((previousState) => {
@@ -639,6 +811,74 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         lastWindowFrame.rfc460Timestamp,
         lastWindowFrame.blueTeam.participants,
         lastWindowFrame.redTeam.participants,
+    ])
+
+    useEffect(() => {
+        const highlightedPurchases: Array<{ participantId: number, itemId: number }> = []
+
+        lastDetailsFrame.participants.forEach((participant) => {
+            const currentItemIds = sanitizeDetailsItemIds(participant.items)
+            const previousItemIds = previousItemIdsByParticipantIdRef.current.get(participant.participantId)
+
+            if (!previousItemIds) {
+                previousItemIdsByParticipantIdRef.current.set(participant.participantId, currentItemIds)
+                return
+            }
+
+            const addedItemIds = getAddedItemIdsByCount(previousItemIds, currentItemIds)
+            addedItemIds.forEach((addedItemId) => {
+                const highlightItemId = getMajorPurchaseHighlightItemId(addedItemId, currentItemIds, items)
+                if (highlightItemId === undefined) return
+                highlightedPurchases.push({
+                    participantId: participant.participantId,
+                    itemId: highlightItemId,
+                })
+            })
+
+            previousItemIdsByParticipantIdRef.current.set(participant.participantId, currentItemIds)
+        })
+
+        if (highlightedPurchases.length === 0) return
+
+        setHighlightedPurchasedItemsByParticipantId((previousState) => {
+            const nextState: HighlightedPurchasedItemsByParticipantId = { ...previousState }
+            highlightedPurchases.forEach(({ participantId, itemId }) => {
+                const existingItemIds = nextState[participantId] || []
+                if (existingItemIds.includes(itemId)) return
+                nextState[participantId] = [...existingItemIds, itemId]
+            })
+            return nextState
+        })
+
+        highlightedPurchases.forEach(({ participantId, itemId }) => {
+            const highlightKey = `${participantId}_${itemId}`
+            const existingTimerId = itemPurchaseHighlightTimersRef.current.get(highlightKey)
+            if (existingTimerId) {
+                clearTimeout(existingTimerId)
+            }
+
+            const timerId = setTimeout(() => {
+                setHighlightedPurchasedItemsByParticipantId((previousState) => {
+                    const existingItemIds = previousState[participantId]
+                    if (!existingItemIds || !existingItemIds.includes(itemId)) return previousState
+
+                    const remainingItemIds = existingItemIds.filter((highlightedItemId) => highlightedItemId !== itemId)
+                    const nextState = { ...previousState }
+                    if (remainingItemIds.length === 0) {
+                        delete nextState[participantId]
+                    } else {
+                        nextState[participantId] = remainingItemIds
+                    }
+                    return nextState
+                })
+                itemPurchaseHighlightTimersRef.current.delete(highlightKey)
+            }, ITEM_PURCHASE_HIGHLIGHT_DURATION_MS)
+            itemPurchaseHighlightTimersRef.current.set(highlightKey, timerId)
+        })
+    }, [
+        lastDetailsFrame.rfc460Timestamp,
+        lastDetailsFrame.participants,
+        items,
     ])
 
     useEffect(() => {
@@ -1052,6 +1292,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         const metadata = gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1]
         const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
         const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+        const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
         return {
             side: `blue` as const,
             player,
@@ -1059,6 +1301,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             metadata,
             hasDeathTimer,
             deathTimerSeconds,
+            objectiveBuffState,
+            objectiveBuffClassName,
+            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``,
             killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
             deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
             assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
@@ -1070,6 +1315,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         const metadata = gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6]
         const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
         const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+        const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
         return {
             side: `red` as const,
             player,
@@ -1077,6 +1324,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             metadata,
             hasDeathTimer,
             deathTimerSeconds,
+            objectiveBuffState,
+            objectiveBuffClassName,
+            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``,
             killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
             deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
             assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
@@ -1258,16 +1508,20 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
                                 const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
                                 const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+                                const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
+                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
-                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``} ${objectiveBuffClassName} ${levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                {renderObjectiveBuffBackdropIcons(objectiveBuffState)}
                                                 {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
                                                     {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
-                                                    <span className=" player-champion-info-level">{player.level}</span>
+                                                    <span className={` player-champion-info-level ${levelFlashClassName}`}>{player.level}</span>
                                                 </div>
                                                 <div className=" player-champion-info-name">
                                                     <span>{gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].summonerName}</span>
@@ -1286,6 +1540,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                 items={items}
                                                 patchVersion={formattedPatchVersion}
                                                 role={gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].role}
+                                                highlightedItemIds={highlightedPurchasedItemsByParticipantId[player.participantId]}
+                                                forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                             />
                                         </td>
                                         <td>
@@ -1368,17 +1624,21 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
                                 const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
                                 const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
+                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+                                const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
+                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``
 
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
                                         <th>
-                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                            <div className={`player-champion-info ${hasDeathTimer ? `player-champion-info-dead` : ``} ${objectiveBuffClassName} ${levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                {renderObjectiveBuffBackdropIcons(objectiveBuffState)}
                                                 {getParticipantRuneTypes(championDetails, runes)}
                                                 <div className={`player-champion-wrapper ${hasDeathTimer ? `dead` : ``}`}>
                                                     {hasDeathTimer ? <span className="player-death-timer">{deathTimerSeconds}</span> : null}
                                                     <img src={`${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                     <TeamTBDSVG className='player-champion' />
-                                                    <span className=" player-champion-info-level">{player.level}</span>
+                                                    <span className={` player-champion-info-level ${levelFlashClassName}`}>{player.level}</span>
                                                 </div>
                                                 <div className=" player-champion-info-name">
                                                     <span>{gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].summonerName}</span>
@@ -1396,6 +1656,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                 items={items}
                                                 patchVersion={formattedPatchVersion}
                                                 role={gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].role}
+                                                highlightedItemIds={highlightedPurchasedItemsByParticipantId[player.participantId]}
+                                                forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                             />
                                         </td>
                                         <td>
@@ -1487,6 +1749,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                     patchVersion={formattedPatchVersion}
                                                     role={blueRow.metadata.role}
                                                     reverseWithTrinketFirst={true}
+                                                    highlightedItemIds={highlightedPurchasedItemsByParticipantId[blueRow.player.participantId]}
+                                                    forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                                 />
                                             </td>
                                             <td>
@@ -1494,7 +1758,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             </td>
                                             <th className="mirror-player-cell mirror-player-cell-left">
                                                 <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
-                                                    <div className={`player-champion-info mirror-player-champion-info-left ${blueRow.hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                                    <div className={`player-champion-info mirror-player-champion-info-left ${blueRow.hasDeathTimer ? `player-champion-info-dead` : ``} ${blueRow.objectiveBuffClassName} ${blueRow.levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                        {renderObjectiveBuffBackdropIcons(blueRow.objectiveBuffState)}
                                                         <div className=" player-champion-info-name mirror-player-name-left">
                                                             <span>{blueRow.metadata.summonerName}</span>
                                                             <span className=" player-card-player-name">{getChampionDisplayName(blueRow.metadata.championId)}</span>
@@ -1503,7 +1768,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                             {blueRow.hasDeathTimer ? <span className="player-death-timer">{blueRow.deathTimerSeconds}</span> : null}
                                                             <img src={`${championsUrlWithPatchVersion}${blueRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                             <TeamTBDSVG className='player-champion' />
-                                                            <span className=" player-champion-info-level">{blueRow.player.level}</span>
+                                                            <span className={` player-champion-info-level ${blueRow.levelFlashClassName}`}>{blueRow.player.level}</span>
                                                         </div>
                                                         {getParticipantRuneTypes(blueRow.championDetails, runes)}
                                                     </div>
@@ -1525,13 +1790,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                             <td><div className={` player-stats player-stats-kda ${redRow.assistFlashClassName}`}>{redRow.player.assists}</div></td>
                                             <th className="mirror-player-cell mirror-player-cell-right">
                                                 <button type="button" className="mirror-player-toggle" onClick={() => toggleMirrorParticipantStats(blueRow.player.participantId, redRow.player.participantId)}>
-                                                    <div className={`player-champion-info mirror-player-champion-info-right ${redRow.hasDeathTimer ? `player-champion-info-dead` : ``}`}>
+                                                    <div className={`player-champion-info mirror-player-champion-info-right ${redRow.hasDeathTimer ? `player-champion-info-dead` : ``} ${redRow.objectiveBuffClassName} ${redRow.levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                        {renderObjectiveBuffBackdropIcons(redRow.objectiveBuffState)}
                                                         {getParticipantRuneTypes(redRow.championDetails, runes)}
                                                         <div className={`player-champion-wrapper ${redRow.hasDeathTimer ? `dead` : ``}`}>
                                                             {redRow.hasDeathTimer ? <span className="player-death-timer">{redRow.deathTimerSeconds}</span> : null}
                                                             <img src={`${championsUrlWithPatchVersion}${redRow.metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
                                                             <TeamTBDSVG className='player-champion' />
-                                                            <span className=" player-champion-info-level">{redRow.player.level}</span>
+                                                            <span className={` player-champion-info-level ${redRow.levelFlashClassName}`}>{redRow.player.level}</span>
                                                         </div>
                                                         <div className=" player-champion-info-name mirror-player-name-right">
                                                             <span>{redRow.metadata.summonerName}</span>
@@ -1550,6 +1816,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                                     items={items}
                                                     patchVersion={formattedPatchVersion}
                                                     role={redRow.metadata.role}
+                                                    highlightedItemIds={highlightedPurchasedItemsByParticipantId[redRow.player.participantId]}
+                                                    forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                                 />
                                             </td>
                                         </tr>
@@ -1993,6 +2261,162 @@ function areNumericRecordValuesEqual(
     if (leftKeys.length !== rightKeys.length) return false
 
     return leftKeys.every((key) => left[Number(key)] === right[Number(key)])
+}
+
+function getAliveParticipantIdSet(participants: WindowParticipant[]) {
+    return new Set<number>(
+        participants
+            .filter((participant) => Number(participant.currentHealth) > 0)
+            .map((participant) => participant.participantId),
+    )
+}
+
+function removeParticipantObjectiveBuffs(
+    participantId: number,
+    baronBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+    elderBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+) {
+    let changed = false
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        changed = baronBuffParticipantIdsByTeam[teamKey].delete(participantId) || changed
+        changed = elderBuffParticipantIdsByTeam[teamKey].delete(participantId) || changed
+    })
+    return changed
+}
+
+function buildObjectiveBuffsByParticipantId(
+    baronBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+    elderBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+) {
+    const objectiveBuffsByParticipantId: ObjectiveBuffsByParticipantId = {}
+
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        baronBuffParticipantIdsByTeam[teamKey].forEach((participantId) => {
+            objectiveBuffsByParticipantId[participantId] = {
+                ...(objectiveBuffsByParticipantId[participantId] || { baron: false, elder: false }),
+                baron: true,
+            }
+        })
+        elderBuffParticipantIdsByTeam[teamKey].forEach((participantId) => {
+            objectiveBuffsByParticipantId[participantId] = {
+                ...(objectiveBuffsByParticipantId[participantId] || { baron: false, elder: false }),
+                elder: true,
+            }
+        })
+    })
+
+    return objectiveBuffsByParticipantId
+}
+
+function getDisplayObjectiveBuffState(
+    participantId: number,
+    objectiveBuffsByParticipantId: ObjectiveBuffsByParticipantId,
+): ObjectiveBuffState | undefined {
+    if (FORCE_OBJECTIVE_BUFF_HOLDER_PREVIEW) {
+        const previewSlot = ((participantId - 1) % 5) + 1
+        if (previewSlot === 1) return { baron: true, elder: false }
+        if (previewSlot === 2) return { baron: false, elder: true }
+        if (previewSlot === 3) return { baron: true, elder: true }
+    }
+
+    return objectiveBuffsByParticipantId[participantId]
+}
+
+function getObjectiveBuffClassName(objectiveBuffState?: ObjectiveBuffState) {
+    if (!objectiveBuffState) return ``
+    if (objectiveBuffState.baron && objectiveBuffState.elder) return `player-champion-info-objective-buffs`
+    if (objectiveBuffState.baron) return `player-champion-info-baron-buff`
+    if (objectiveBuffState.elder) return `player-champion-info-elder-buff`
+    return ``
+}
+
+function shouldShowLevelFlash(
+    participantId: number,
+    levelFlashByParticipantId: { [participantId: number]: boolean },
+) {
+    if (FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW) {
+        const previewSlot = ((participantId - 1) % 5) + 1
+        return previewSlot === 1 || previewSlot === 3 || previewSlot === 5
+    }
+    return Boolean(levelFlashByParticipantId[participantId])
+}
+
+function sanitizeDetailsItemIds(itemIds: number[] | undefined) {
+    if (!Array.isArray(itemIds)) return []
+    return itemIds.filter((itemId) => Number.isFinite(itemId) && itemId > 0)
+}
+
+function getAddedItemIdsByCount(previousItemIds: number[], currentItemIds: number[]) {
+    const previousItemCountById = getItemCountById(previousItemIds)
+    const addedItemIds: number[] = []
+
+    currentItemIds.forEach((itemId) => {
+        const previousCount = previousItemCountById.get(itemId) || 0
+        if (previousCount > 0) {
+            previousItemCountById.set(itemId, previousCount - 1)
+            return
+        }
+        addedItemIds.push(itemId)
+    })
+
+    return addedItemIds
+}
+
+function getItemCountById(itemIds: number[]) {
+    const itemCountById = new Map<number, number>()
+    itemIds.forEach((itemId) => {
+        itemCountById.set(itemId, (itemCountById.get(itemId) || 0) + 1)
+    })
+    return itemCountById
+}
+
+function getMajorPurchaseHighlightItemId(addedItemId: number, currentItemIds: number[], items: Item[]) {
+    if (isMajorPurchaseHighlightItem(addedItemId, items)) return addedItemId
+
+    const registeredTargetItemId = PURCHASE_HIGHLIGHT_TARGET_BY_SOURCE_ITEM_ID.get(addedItemId)
+    if (
+        registeredTargetItemId !== undefined
+        && currentItemIds.includes(registeredTargetItemId)
+        && isMajorPurchaseHighlightItem(registeredTargetItemId, items)
+    ) {
+        return registeredTargetItemId
+    }
+
+    return undefined
+}
+
+function isMajorPurchaseHighlightItem(itemId: number, items: Item[]) {
+    if (isPurchaseHighlightTrinketItem(itemId, items)) return false
+    if (isPurchaseHighlightConsumableItem(itemId, items)) return false
+
+    const item = items[itemId]
+    const hasUpgradeTargets = Boolean(item && Array.isArray(item.into) && item.into.length > 0)
+    if (!hasUpgradeTargets) return true
+    return PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS.has(itemId)
+}
+
+function isPurchaseHighlightTrinketItem(itemId: number, items: Item[]) {
+    const item = items[itemId]
+    if (item?.tags && item.tags.includes(`Trinket`)) return true
+    return PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS.includes(itemId)
+}
+
+function isPurchaseHighlightConsumableItem(itemId: number, items: Item[]) {
+    const item = items[itemId]
+    if (item?.consumed) return true
+    if (item?.tags && item.tags.includes(`Consumable`)) return true
+    return PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS.includes(itemId)
+}
+
+function renderObjectiveBuffBackdropIcons(objectiveBuffState?: ObjectiveBuffState) {
+    if (!objectiveBuffState || (!objectiveBuffState.baron && !objectiveBuffState.elder)) return null
+
+    return (
+        <span className="player-objective-buff-icons" aria-hidden="true">
+            {objectiveBuffState.baron ? <BaronSVG className="player-objective-buff-icon player-objective-buff-icon-baron" /> : null}
+            {objectiveBuffState.elder ? <ElderDragonSVG className="player-objective-buff-icon player-objective-buff-icon-elder" /> : null}
+        </span>
+    )
 }
 
 function getInGameTime(startTime: string, currentTime: string) {

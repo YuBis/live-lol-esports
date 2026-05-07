@@ -9,9 +9,11 @@ type Props = {
     patchVersion: string,
     role?: string,
     reverseWithTrinketFirst?: boolean,
+    highlightedItemIds?: number[],
+    forcePreviewHighlight?: boolean,
 }
 
-export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, role, reverseWithTrinketFirst = false }: Props) {
+export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, role, reverseWithTrinketFirst = false, highlightedItemIds = [], forcePreviewHighlight = false }: Props) {
     const lastFrameItems = lastFrame.participants[participantId].items;
 
     /*
@@ -62,9 +64,13 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
                 }
 
                 const currentItem = items[itemId]
+                const itemHighlightClassName = (
+                    highlightedItemIds.includes(itemId)
+                    || (forcePreviewHighlight && slotIndex === getPreviewHighlightSlotIndex(displaySlots, participantId))
+                ) ? `item-purchase-highlight` : ``
                 if (!currentItem) {
                     return (
-                        <div className="player-stats-item" key={`${participantId}_${slotIndex}_${itemId}`}>
+                        <div className={`player-stats-item ${itemHighlightClassName}`} key={`${participantId}_${slotIndex}_${itemId}`}>
                             <img alt="" src={`${itemsUrlWithPatchVersion}${itemId}.png`} />
                         </div>
                     )
@@ -72,7 +78,7 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
 
                 const elementId = `item_${participantId}_${slotIndex}_${itemId}`
                 return (
-                    <div className="player-stats-item"
+                    <div className={`player-stats-item ${itemHighlightClassName}`}
                         key={`${participantId}_${slotIndex}_${itemId}`}
                         id={elementId}
                         onMouseEnter={() => showItemDescription(elementId)}
@@ -89,6 +95,14 @@ export function ItemsDisplay({ participantId, lastFrame, items, patchVersion, ro
             })}
         </div>
     );
+}
+
+function getPreviewHighlightSlotIndex(displaySlots: Array<number | undefined>, participantId: number) {
+    const occupiedSlotIndexes = displaySlots
+        .map((itemId, slotIndex) => itemId === undefined ? -1 : slotIndex)
+        .filter((slotIndex) => slotIndex >= 0)
+    if (occupiedSlotIndexes.length === 0) return -1
+    return occupiedSlotIndexes[participantId % occupiedSlotIndexes.length]
 }
 
 /*

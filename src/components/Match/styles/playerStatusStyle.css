@@ -1104,6 +1104,12 @@ Status dragons
     align-items: center;
     min-width: 0;
     border-radius: 6px;
+    overflow: visible;
+    position: relative;
+}
+
+.player-champion-info-level-flashing {
+    z-index: 20;
 }
 
 .player-champion-info-level {
@@ -1120,6 +1126,45 @@ Status dragons
     background: rgba(10, 15, 26, 0.85);
     padding: 0 2px;
     z-index: 3;
+}
+
+.player-champion-info-level.player-champion-info-level-flash {
+    animation: level-up-flash 2s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 30;
+}
+
+@keyframes level-up-flash {
+    0% {
+        transform: scale(1);
+        color: var(--text);
+        background: rgba(10, 15, 26, 0.85);
+        box-shadow: 0 0 0 rgba(255, 214, 86, 0);
+    }
+
+    18% {
+        transform: scale(1.45);
+        color: #10151f;
+        background: #ffd656;
+        box-shadow:
+            0 0 0 2px rgba(255, 214, 86, 0.35),
+            0 0 14px rgba(255, 214, 86, 0.8);
+    }
+
+    62% {
+        transform: scale(1.18);
+        color: #10151f;
+        background: rgba(255, 214, 86, 0.85);
+        box-shadow:
+            0 0 0 1px rgba(255, 214, 86, 0.22),
+            0 0 8px rgba(255, 214, 86, 0.45);
+    }
+
+    100% {
+        transform: scale(1);
+        color: var(--text);
+        background: rgba(10, 15, 26, 0.85);
+        box-shadow: 0 0 0 rgba(255, 214, 86, 0);
+    }
 }
 
 .player-champion-info-name {
@@ -1156,6 +1201,128 @@ Status dragons
         rgba(255, 59, 59, 0.14) 52%,
         rgba(255, 59, 59, 0.04) 100%
     );
+}
+
+.player-champion-info:not(.player-champion-info-dead).player-champion-info-baron-buff {
+    background: linear-gradient(
+        90deg,
+        rgba(154, 105, 255, 0.3) 0%,
+        rgba(154, 105, 255, 0.16) 52%,
+        rgba(154, 105, 255, 0.05) 100%
+    );
+}
+
+.player-champion-info:not(.player-champion-info-dead).player-champion-info-elder-buff {
+    background: linear-gradient(
+        90deg,
+        rgba(110, 231, 255, 0.3) 0%,
+        rgba(110, 231, 255, 0.16) 52%,
+        rgba(110, 231, 255, 0.05) 100%
+    );
+}
+
+.player-champion-info:not(.player-champion-info-dead).player-champion-info-objective-buffs {
+    background:
+        linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0) 52%,
+            rgba(6, 12, 20, 0.1) 100%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(154, 105, 255, 0.28) 0%,
+            rgba(154, 105, 255, 0.22) 38%,
+            rgba(132, 166, 255, 0.2) 50%,
+            rgba(110, 231, 255, 0.22) 62%,
+            rgba(110, 231, 255, 0.28) 100%
+        );
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-left:not(.player-champion-info-dead).player-champion-info-objective-buffs {
+    background:
+        linear-gradient(
+            270deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0) 52%,
+            rgba(6, 12, 20, 0.1) 100%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(154, 105, 255, 0.28) 0%,
+            rgba(154, 105, 255, 0.22) 38%,
+            rgba(132, 166, 255, 0.2) 50%,
+            rgba(110, 231, 255, 0.22) 62%,
+            rgba(110, 231, 255, 0.28) 100%
+        );
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-left:not(.player-champion-info-dead).player-champion-info-baron-buff {
+    background: linear-gradient(
+        270deg,
+        rgba(154, 105, 255, 0.3) 0%,
+        rgba(154, 105, 255, 0.16) 52%,
+        rgba(154, 105, 255, 0.05) 100%
+    );
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-left:not(.player-champion-info-dead).player-champion-info-elder-buff {
+    background: linear-gradient(
+        270deg,
+        rgba(110, 231, 255, 0.3) 0%,
+        rgba(110, 231, 255, 0.16) 52%,
+        rgba(110, 231, 255, 0.05) 100%
+    );
+}
+
+.player-champion-info > .player-rune-types,
+.player-champion-info > .player-champion-wrapper,
+.player-champion-info > .player-champion-info-name {
+    position: relative;
+    z-index: 1;
+}
+
+.player-objective-buff-icons {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: rgba(255, 255, 255, 0.42);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-left .player-objective-buff-icons {
+    right: auto;
+    left: 6px;
+}
+
+.status-live-game-card-table-mirror .mirror-player-champion-info-right .player-objective-buff-icons {
+    right: 6px;
+    left: auto;
+}
+
+.player-objective-buff-icon {
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+}
+
+.player-objective-buff-icon path,
+.player-objective-buff-icon g {
+    fill: currentColor;
+}
+
+.player-objective-buff-icon-baron {
+    color: rgba(180, 140, 255, 0.82);
+}
+
+.player-objective-buff-icon-elder {
+    color: rgba(130, 235, 255, 0.82);
 }
 
 .player-champion-info-name > span:first-child {
@@ -1252,6 +1419,14 @@ svg.player-champion {
 
 .player-stats-row th {
     cursor: pointer;
+}
+
+.status-live-game-card-table .player-stats-row > th:has(.player-champion-info-level-flash),
+.status-live-game-card-table .player-stats-row > td:has(.item-purchase-highlight),
+.status-live-game-card-table-mirror .mirror-player-row > th:has(.player-champion-info-level-flash),
+.status-live-game-card-table-mirror .mirror-player-row > td:has(.item-purchase-highlight) {
+    position: relative;
+    z-index: 20;
 }
 
 .champion-stats-content {
@@ -1520,11 +1695,51 @@ svg.player-champion {
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .player-stats-item>img {
     height: 26px;
     border-radius: 4px;
+}
+
+.player-stats-item.item-purchase-highlight {
+    z-index: 8;
+}
+
+.player-stats-item.item-purchase-highlight>img {
+    animation: item-purchase-highlight 2s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: center;
+}
+
+@keyframes item-purchase-highlight {
+    0% {
+        transform: scale(1);
+        box-shadow:
+            0 0 0 0 rgba(255, 214, 86, 0),
+            0 0 0 rgba(255, 214, 86, 0);
+    }
+
+    16% {
+        transform: scale(1.5);
+        box-shadow:
+            0 0 0 2px rgba(255, 214, 86, 0.98),
+            0 0 18px rgba(255, 214, 86, 0.85);
+    }
+
+    62% {
+        transform: scale(1.18);
+        box-shadow:
+            0 0 0 2px rgba(255, 214, 86, 0.55),
+            0 0 12px rgba(255, 214, 86, 0.45);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow:
+            0 0 0 0 rgba(255, 214, 86, 0),
+            0 0 0 rgba(255, 214, 86, 0);
+    }
 }
 
 /*
