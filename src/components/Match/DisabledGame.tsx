@@ -20,6 +20,12 @@ import { ReactComponent as InfernalDragonSVG } from '../../assets/images/dragon-
 import { ReactComponent as CloudDragonSVG } from '../../assets/images/dragon-cloud.svg';
 import { ReactComponent as MountainDragonSVG } from '../../assets/images/dragon-mountain.svg';
 import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-elder.svg';
+import OceanDragonSoulImage from '../../assets/images/dragon-ocean-soul.webp';
+import HextechDragonSoulImage from '../../assets/images/dragon-hextech-soul.webp';
+import ChemtechDragonSoulImage from '../../assets/images/dragon-chemtech-soul.webp';
+import InfernalDragonSoulImage from '../../assets/images/dragon-infernal-soul.webp';
+import CloudDragonSoulImage from '../../assets/images/dragon-cloud-soul.webp';
+import MountainDragonSoulImage from '../../assets/images/dragon-mountain-soul.webp';
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
 import { CHAMPIONS_URL, getFormattedPatchVersion } from '../../utils/LoLEsportsAPI';
@@ -27,6 +33,16 @@ import { BUILD_LABEL } from '../../utils/buildInfo';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
+import {
+    applyScoreboardLayoutBodyClassNames,
+    getScoreboardLayoutModeClassName,
+    isMirrorScoreboardLayoutMode,
+    parseScoreboardLayoutMode,
+    SCOREBOARD_LAYOUT_MODE_LABELS,
+    SCOREBOARD_LAYOUT_MODE_OPTIONS,
+    SCOREBOARD_LAYOUT_MODE_STORAGE_KEY,
+    ScoreboardLayoutMode,
+} from './scoreboardLayout';
 
 type Props = {
     firstWindowFrame: WindowFrame,
@@ -39,41 +55,18 @@ type Props = {
     },
     inferredHeraldKillCounts?: { blue: number, red: number },
 }
-
-type ScoreboardLayoutMode = `classic` | `mirror` | `mirrorCompact2` | `mirrorCompact3`
-const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
-const SCOREBOARD_LAYOUT_MODE_OPTIONS: ScoreboardLayoutMode[] = [`classic`, `mirror`, `mirrorCompact2`, `mirrorCompact3`]
-const SCOREBOARD_LAYOUT_MODE_LABELS: { [layoutMode in ScoreboardLayoutMode]: string } = {
-    classic: `\uB808\uC774\uC544\uC6C3: \uAE30\uBCF8`,
-    mirror: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC`,
-    mirrorCompact2: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 2\uBC30\uC555\uCD95`,
-    mirrorCompact3: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 3\uBC30\uC555\uCD95`,
+type DragonIconRenderItem = {
+    type: `dragon` | `soul`,
+    dragonType: string,
 }
 
-function parseScoreboardLayoutMode(value: string | null): ScoreboardLayoutMode {
-    return SCOREBOARD_LAYOUT_MODE_OPTIONS.includes(value as ScoreboardLayoutMode)
-        ? value as ScoreboardLayoutMode
-        : `classic`
-}
-
-function isMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
-    return layoutMode !== `classic`
-}
-
-function isCompactMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
-    return layoutMode === `mirrorCompact2` || layoutMode === `mirrorCompact3`
-}
-
-function getScoreboardLayoutModeClassName(layoutMode: ScoreboardLayoutMode) {
-    if (layoutMode === `classic`) return ``
-    const compactClassName = isCompactMirrorScoreboardLayoutMode(layoutMode) ? `status-live-game-card-mirror-compact-mode` : ``
-    const splitClassName = layoutMode === `mirrorCompact2`
-        ? `status-live-game-card-mirror-compact-2-mode`
-        : layoutMode === `mirrorCompact3`
-            ? `status-live-game-card-mirror-compact-3-mode`
-            : ``
-
-    return [`status-live-game-card-mirror-mode`, compactClassName, splitClassName].filter(Boolean).join(` `)
+const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
+    ocean: OceanDragonSoulImage,
+    hextech: HextechDragonSoulImage,
+    chemtech: ChemtechDragonSoulImage,
+    infernal: InfernalDragonSoulImage,
+    cloud: CloudDragonSoulImage,
+    mountain: MountainDragonSoulImage,
 }
 
 export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
@@ -100,18 +93,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     }, [scoreboardLayoutMode])
 
     useEffect(() => {
-        const mirrorModeClassName = `mirror-scoreboard-mode`
-        const compactModeClassName = `mirror-scoreboard-compact-mode`
-        const compact2ModeClassName = `mirror-scoreboard-compact-2-mode`
-        const compact3ModeClassName = `mirror-scoreboard-compact-3-mode`
-        document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
-        if (isMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(mirrorModeClassName)
-        if (isCompactMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(compactModeClassName)
-        if (scoreboardLayoutMode === `mirrorCompact2`) document.body.classList.add(compact2ModeClassName)
-        if (scoreboardLayoutMode === `mirrorCompact3`) document.body.classList.add(compact3ModeClassName)
-        return () => {
-            document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
-        }
+        return applyScoreboardLayoutBodyClassNames(scoreboardLayoutMode)
     }, [scoreboardLayoutMode])
 
     useEffect(() => {
@@ -137,6 +119,8 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     }
 
     const goldPercentage = getGoldPercentage(firstWindowFrame.blueTeam.totalGold, firstWindowFrame.redTeam.totalGold);
+    const blueDragonIconRenderItems = getDragonIconRenderItems(firstWindowFrame.blueTeam.dragons)
+    const redDragonIconRenderItems = getDragonIconRenderItems(firstWindowFrame.redTeam.dragons, true)
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, firstWindowFrame.rfc460Timestamp)
     const elapsedGameTimeSeconds = 0
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
@@ -447,14 +431,14 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                     </div>
                     <div className="live-game-stats-header-dragons">
                         <div className="blue-team">
-                            {firstWindowFrame.blueTeam.dragons.map((dragon, i) => (
-                                getDragonSVG(dragon, 'blue', i)
+                            {blueDragonIconRenderItems.map((dragonRenderItem, index) => (
+                                getDragonOrSoulIcon(dragonRenderItem, 'blue', index)
                             ))}
                         </div>
                         <div className="red-team">
 
-                            {firstWindowFrame.redTeam.dragons.slice().reverse().map((dragon, i) => (
-                                getDragonSVG(dragon, 'red', i)
+                            {redDragonIconRenderItems.map((dragonRenderItem, index) => (
+                                getDragonOrSoulIcon(dragonRenderItem, 'red', index)
                             ))}
                         </div>
                     </div>
@@ -837,8 +821,9 @@ function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
 }
 
 function getDragonSVG(dragonName: string, teamColor: string, index: number) {
-    let key = `${teamColor}_${index}_${dragonName}`
-    switch (dragonName) {
+    const normalizedDragonName = normalizeDragonType(dragonName)
+    let key = `${teamColor}_${index}_${normalizedDragonName}`
+    switch (normalizedDragonName) {
         case "ocean": return <OceanDragonSVG className="dragon" key={key} />;
         case "hextech": return <HextechDragonSVG className="dragon" key={key} />;
         case "chemtech": return <ChemtechDragonSVG className="dragon" key={key} />;
@@ -847,6 +832,65 @@ function getDragonSVG(dragonName: string, teamColor: string, index: number) {
         case "mountain": return <MountainDragonSVG className="dragon" key={key} />
         case "elder": return <ElderDragonSVG className="dragon" key={key} />
     }
+}
+
+function getDragonOrSoulIcon(dragonRenderItem: DragonIconRenderItem, teamColor: string, index: number) {
+    const normalizedDragonType = normalizeDragonType(dragonRenderItem.dragonType)
+    if (dragonRenderItem.type === `soul`) {
+        const soulImageSrc = DRAGON_SOUL_IMAGE_BY_TYPE[normalizedDragonType]
+        if (!soulImageSrc) return null
+        return (
+            <img
+                src={soulImageSrc}
+                alt=""
+                className="dragon dragon-soul"
+                key={`${teamColor}_${index}_${normalizedDragonType}_soul`}
+            />
+        )
+    }
+    return getDragonSVG(normalizedDragonType, teamColor, index)
+}
+
+function normalizeDragonType(dragonType: string) {
+    return String(dragonType || ``).trim().toLowerCase()
+}
+
+function isElderDragonType(dragonType: string) {
+    const normalizedDragonType = normalizeDragonType(dragonType)
+    return normalizedDragonType === `elder` || normalizedDragonType.includes(`elder`)
+}
+
+function getNormalizedDragonTypes(dragonTypes: string[] | undefined) {
+    if (!Array.isArray(dragonTypes)) return []
+    return dragonTypes.map((dragonType) => normalizeDragonType(dragonType)).filter(Boolean)
+}
+
+function getDragonIconRenderItems(dragonTypes: string[] | undefined, reverseOrder = false) {
+    const normalizedDragonTypes = getNormalizedDragonTypes(dragonTypes)
+    const renderItems: DragonIconRenderItem[] = []
+    const elementalDragonTypeCounts = new Map<string, number>()
+    let elementalDragonKillCount = 0
+    let shouldAppendSoulIcons = true
+
+    normalizedDragonTypes.forEach((dragonType) => {
+        renderItems.push({ type: `dragon`, dragonType })
+
+        if (isElderDragonType(dragonType)) return
+
+        elementalDragonKillCount += 1
+        elementalDragonTypeCounts.set(dragonType, (elementalDragonTypeCounts.get(dragonType) || 0) + 1)
+
+        if (!shouldAppendSoulIcons || elementalDragonKillCount < 4) return
+
+        elementalDragonTypeCounts.forEach((count, elementalDragonType) => {
+            if (count >= 2 && DRAGON_SOUL_IMAGE_BY_TYPE[elementalDragonType]) {
+                renderItems.push({ type: `soul`, dragonType: elementalDragonType })
+            }
+        })
+        shouldAppendSoulIcons = false
+    })
+
+    return reverseOrder ? renderItems.slice().reverse() : renderItems
 }
 
 function getGoldLeadSymbol(goldLead: number) {

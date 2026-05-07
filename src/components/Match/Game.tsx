@@ -22,6 +22,12 @@ import { ReactComponent as CloudDragonSVG } from '../../assets/images/dragon-clo
 import { ReactComponent as MountainDragonSVG } from '../../assets/images/dragon-mountain.svg';
 import { ReactComponent as ElderDragonSVG } from '../../assets/images/dragon-elder.svg';
 import { ReactComponent as DragonObjectiveSVG } from '../../assets/images/dragon.svg';
+import OceanDragonSoulImage from '../../assets/images/dragon-ocean-soul.webp';
+import HextechDragonSoulImage from '../../assets/images/dragon-hextech-soul.webp';
+import ChemtechDragonSoulImage from '../../assets/images/dragon-chemtech-soul.webp';
+import InfernalDragonSoulImage from '../../assets/images/dragon-infernal-soul.webp';
+import CloudDragonSoulImage from '../../assets/images/dragon-cloud-soul.webp';
+import MountainDragonSoulImage from '../../assets/images/dragon-mountain-soul.webp';
 import { ItemsDisplay } from "./ItemsDisplay";
 
 import { LiveAPIWatcher } from "./LiveAPIWatcher";
@@ -30,6 +36,17 @@ import { BUILD_LABEL } from '../../utils/buildInfo';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
+import {
+    applyScoreboardLayoutBodyClassNames,
+    getInitialScoreboardLayoutMode,
+    getScoreboardLayoutModeClassName,
+    isMirrorScoreboardLayoutMode,
+    parseScoreboardLayoutMode,
+    SCOREBOARD_LAYOUT_MODE_LABELS,
+    SCOREBOARD_LAYOUT_MODE_OPTIONS,
+    SCOREBOARD_LAYOUT_MODE_STORAGE_KEY,
+    ScoreboardLayoutMode,
+} from './scoreboardLayout';
 
 type Props = {
     firstWindowFrame: WindowFrame,
@@ -73,6 +90,10 @@ type BaronPowerPlaySnapshot = {
     lastValue: number,
     active: boolean,
 }
+type DragonIconRenderItem = {
+    type: `dragon` | `soul`,
+    dragonType: string,
+}
 
 enum GameState {
     in_game = "in game",
@@ -80,7 +101,6 @@ enum GameState {
     finished = "game ended"
 }
 
-type ScoreboardLayoutMode = `classic` | `mirror` | `mirrorCompact2` | `mirrorCompact3`
 const BARON_POWER_PLAY_DURATION_MS = 180 * 1000
 const BARON_POWER_PLAY_BASELINE_GOLD = 1500
 const BARON_FIRST_SPAWN_SECONDS = 20 * 60
@@ -90,14 +110,6 @@ const DRAGON_FIRST_SPAWN_SECONDS = 5 * 60
 const DRAGON_RESPAWN_SECONDS = 5 * 60
 const ELDER_DRAGON_RESPAWN_SECONDS = 6 * 60
 const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
-const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
-const SCOREBOARD_LAYOUT_MODE_OPTIONS: ScoreboardLayoutMode[] = [`classic`, `mirror`, `mirrorCompact2`, `mirrorCompact3`]
-const SCOREBOARD_LAYOUT_MODE_LABELS: { [layoutMode in ScoreboardLayoutMode]: string } = {
-    classic: `\uB808\uC774\uC544\uC6C3: \uAE30\uBCF8`,
-    mirror: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC`,
-    mirrorCompact2: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 2\uBC30\uC555\uCD95`,
-    mirrorCompact3: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 3\uBC30\uC555\uCD95`,
-}
 const FORCE_BARON_UI_PREVIEW = false
 const FORCE_OBJECTIVE_BUFF_HOLDER_PREVIEW = false
 const FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW = false
@@ -105,6 +117,14 @@ const FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW = false
 const ITEM_PURCHASE_HIGHLIGHT_DURATION_MS = 2000
 const LEVEL_UP_FLASH_DURATION_MS = 2000
 const LEVEL_UP_FLASH_TARGET_LEVELS = [6, 11, 16]
+const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
+    ocean: OceanDragonSoulImage,
+    hextech: HextechDragonSoulImage,
+    chemtech: ChemtechDragonSoulImage,
+    infernal: InfernalDragonSoulImage,
+    cloud: CloudDragonSoulImage,
+    mountain: MountainDragonSoulImage,
+}
 const PURCHASE_HIGHLIGHT_UPGRADE_PAIRS = [
     [3003, 3040], // Archangel's Staff -> Seraph's Embrace
     [3004, 3042], // Manamune -> Muramana
@@ -126,40 +146,6 @@ const PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS = new Set<number>(
 )
 const PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055, 2138, 2139, 2140]
-
-function getInitialScoreboardLayoutMode(): ScoreboardLayoutMode {
-    try {
-        return parseScoreboardLayoutMode(localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY))
-    } catch {
-        return `classic`
-    }
-}
-
-function parseScoreboardLayoutMode(value: string | null): ScoreboardLayoutMode {
-    return SCOREBOARD_LAYOUT_MODE_OPTIONS.includes(value as ScoreboardLayoutMode)
-        ? value as ScoreboardLayoutMode
-        : `classic`
-}
-
-function isMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
-    return layoutMode !== `classic`
-}
-
-function isCompactMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
-    return layoutMode === `mirrorCompact2` || layoutMode === `mirrorCompact3`
-}
-
-function getScoreboardLayoutModeClassName(layoutMode: ScoreboardLayoutMode) {
-    if (layoutMode === `classic`) return ``
-    const compactClassName = isCompactMirrorScoreboardLayoutMode(layoutMode) ? `status-live-game-card-mirror-compact-mode` : ``
-    const splitClassName = layoutMode === `mirrorCompact2`
-        ? `status-live-game-card-mirror-compact-2-mode`
-        : layoutMode === `mirrorCompact3`
-            ? `status-live-game-card-mirror-compact-3-mode`
-            : ``
-
-    return [`status-live-game-card-mirror-mode`, compactClassName, splitClassName].filter(Boolean).join(` `)
-}
 
 export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, objectiveTimerBackfillSeed }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
@@ -224,18 +210,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const streamEnabled = streamData ? streamData === `unmute` : false
 
     useEffect(() => {
-        const mirrorModeClassName = `mirror-scoreboard-mode`
-        const compactModeClassName = `mirror-scoreboard-compact-mode`
-        const compact2ModeClassName = `mirror-scoreboard-compact-2-mode`
-        const compact3ModeClassName = `mirror-scoreboard-compact-3-mode`
-        document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
-        if (isMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(mirrorModeClassName)
-        if (isCompactMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(compactModeClassName)
-        if (scoreboardLayoutMode === `mirrorCompact2`) document.body.classList.add(compact2ModeClassName)
-        if (scoreboardLayoutMode === `mirrorCompact3`) document.body.classList.add(compact3ModeClassName)
-        return () => {
-            document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
-        }
+        return applyScoreboardLayoutBodyClassNames(scoreboardLayoutMode)
     }, [scoreboardLayoutMode])
 
     useEffect(() => {
@@ -1032,6 +1007,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const baronPreSpawnStatusLabel = getBaronPreSpawnStatusLabel(elapsedGameTimeSeconds)
     const blueElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.blueTeam.dragons)
     const redElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.redTeam.dragons)
+    const blueDragonIconRenderItems = getDragonIconRenderItems(lastWindowFrame.blueTeam.dragons)
+    const redDragonIconRenderItems = getDragonIconRenderItems(lastWindowFrame.redTeam.dragons, true)
+    const hasBlueBaronPowerPlay = displayBlueBaronPowerPlay !== null
+    const hasRedBaronPowerPlay = displayRedBaronPowerPlay !== null
     const shouldUseElderDragonObjectiveIcon = FORCE_BARON_UI_PREVIEW || blueElementalDragonKillCount >= 4 || redElementalDragonKillCount >= 4
     const DragonObjectiveStatusIcon = shouldUseElderDragonObjectiveIcon ? ElderDragonSVG : DragonObjectiveSVG
     const BaronOrHeraldObjectiveIcon = shouldShowHeraldInBaronSlot ? `herald` : `baron`
@@ -1452,15 +1431,20 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                         <span className="team-gold-elder-buff-remaining">{formattedBlueElderBuffRemaining}</span>
                                     </span>
                                 ) : null}
-                                {displayBlueBaronPowerPlay !== null ? (
-                                    <span className={`team-gold-power-play-block team-gold-power-play-block-near-blue ${blueBaronPowerPlayClassName}`}>
-                                        <span className="team-gold-power-play-remaining">{formattedBlueBaronPowerPlayRemaining}</span>
+                                <span
+                                    className={`team-gold-power-play-block team-gold-power-play-block-near-blue ${blueBaronPowerPlayClassName} ${hasBlueBaronPowerPlay ? `` : `team-gold-power-play-block-placeholder`}`}
+                                    aria-hidden={!hasBlueBaronPowerPlay}
+                                >
+                                        <span className="team-gold-power-play-remaining">
+                                            {hasBlueBaronPowerPlay ? formattedBlueBaronPowerPlayRemaining : `0:00`}
+                                        </span>
                                         <span className={`team-gold-power-play ${blueBaronPowerPlayClassName}`}>
                                             <BaronSVG className="team-gold-power-play-icon" />
-                                            <span className="team-gold-power-play-value">{formattedBlueBaronPowerPlay}</span>
+                                            <span className="team-gold-power-play-value">
+                                                {hasBlueBaronPowerPlay ? formattedBlueBaronPowerPlay : `+0,000`}
+                                            </span>
                                         </span>
-                                    </span>
-                                ) : null}
+                                </span>
                                 <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
                             </span>
                             <span className={`gold-lead-indicator ${goldLeadColorClass}`}>
@@ -1471,15 +1455,20 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                             </span>
                             <span className="team-gold-side-group team-gold-side-group-red">
                                 <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
-                                {displayRedBaronPowerPlay !== null ? (
-                                    <span className={`team-gold-power-play-block team-gold-power-play-block-near-red ${redBaronPowerPlayClassName}`}>
-                                        <span className="team-gold-power-play-remaining">{formattedRedBaronPowerPlayRemaining}</span>
+                                <span
+                                    className={`team-gold-power-play-block team-gold-power-play-block-near-red ${redBaronPowerPlayClassName} ${hasRedBaronPowerPlay ? `` : `team-gold-power-play-block-placeholder`}`}
+                                    aria-hidden={!hasRedBaronPowerPlay}
+                                >
+                                        <span className="team-gold-power-play-remaining">
+                                            {hasRedBaronPowerPlay ? formattedRedBaronPowerPlayRemaining : `0:00`}
+                                        </span>
                                         <span className={`team-gold-power-play ${redBaronPowerPlayClassName}`}>
                                             <BaronSVG className="team-gold-power-play-icon" />
-                                            <span className="team-gold-power-play-value">{formattedRedBaronPowerPlay}</span>
+                                            <span className="team-gold-power-play-value">
+                                                {hasRedBaronPowerPlay ? formattedRedBaronPowerPlay : `+0,000`}
+                                            </span>
                                         </span>
-                                    </span>
-                                ) : null}
+                                </span>
                                 {displayRedElderBuffRemainingSeconds !== null ? (
                                     <span className="team-gold-elder-buff team-gold-elder-buff-red">
                                         <ElderDragonSVG className="team-gold-elder-buff-icon" />
@@ -1495,14 +1484,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </div>
                     <div className="live-game-stats-header-dragons">
                         <div className="blue-team">
-                            {lastWindowFrame.blueTeam.dragons.map((dragon, i) => (
-                                getDragonSVG(dragon, 'blue', i)
+                            {blueDragonIconRenderItems.map((dragonRenderItem, index) => (
+                                getDragonOrSoulIcon(dragonRenderItem, 'blue', index)
                             ))}
                         </div>
                         <div className="red-team">
 
-                            {lastWindowFrame.redTeam.dragons.slice().reverse().map((dragon, i) => (
-                                getDragonSVG(dragon, 'red', i)
+                            {redDragonIconRenderItems.map((dragonRenderItem, index) => (
+                                getDragonOrSoulIcon(dragonRenderItem, 'red', index)
                             ))}
                         </div>
                     </div>
@@ -2511,6 +2500,23 @@ function getDragonSVG(dragonName: string, teamColor: string, index: number) {
     }
 }
 
+function getDragonOrSoulIcon(dragonRenderItem: DragonIconRenderItem, teamColor: string, index: number) {
+    const normalizedDragonType = normalizeDragonType(dragonRenderItem.dragonType)
+    if (dragonRenderItem.type === `soul`) {
+        const soulImageSrc = DRAGON_SOUL_IMAGE_BY_TYPE[normalizedDragonType]
+        if (!soulImageSrc) return null
+        return (
+            <img
+                src={soulImageSrc}
+                alt=""
+                className="dragon dragon-soul"
+                key={`${teamColor}_${index}_${normalizedDragonType}_soul`}
+            />
+        )
+    }
+    return getDragonSVG(normalizedDragonType, teamColor, index)
+}
+
 function getGoldPercentage(goldBlue: number, goldRed: number) {
     const total = goldBlue + goldRed;
     if (total <= 0) {
@@ -2661,6 +2667,34 @@ function getAddedDragonTypes(previousDragonTypes: string[], currentDragonTypes: 
 function getTeamElementalDragonKillCount(dragonTypes: string[] | undefined) {
     if (!Array.isArray(dragonTypes)) return 0
     return dragonTypes.filter((dragonType) => !isElderDragonType(dragonType)).length
+}
+
+function getDragonIconRenderItems(dragonTypes: string[] | undefined, reverseOrder = false) {
+    const normalizedDragonTypes = getNormalizedDragonTypes(dragonTypes)
+    const renderItems: DragonIconRenderItem[] = []
+    const elementalDragonTypeCounts = new Map<string, number>()
+    let elementalDragonKillCount = 0
+    let shouldAppendSoulIcons = true
+
+    normalizedDragonTypes.forEach((dragonType) => {
+        renderItems.push({ type: `dragon`, dragonType })
+
+        if (isElderDragonType(dragonType)) return
+
+        elementalDragonKillCount += 1
+        elementalDragonTypeCounts.set(dragonType, (elementalDragonTypeCounts.get(dragonType) || 0) + 1)
+
+        if (!shouldAppendSoulIcons || elementalDragonKillCount < 4) return
+
+        elementalDragonTypeCounts.forEach((count, elementalDragonType) => {
+            if (count >= 2 && DRAGON_SOUL_IMAGE_BY_TYPE[elementalDragonType]) {
+                renderItems.push({ type: `soul`, dragonType: elementalDragonType })
+            }
+        })
+        shouldAppendSoulIcons = false
+    })
+
+    return reverseOrder ? renderItems.slice().reverse() : renderItems
 }
 
 function getGoldLeadSymbol(goldLead: number) {
