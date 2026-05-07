@@ -1335,6 +1335,7 @@ const AGGRESSIVE_MISSING_ITEM_INFERENCE_PAIRS: MissingItemInferencePair[] = [
     { sourceItemId: 3003, targetItemId: 3040, type: `transform` }, // Archangel's Staff -> Seraph's Embrace
     { sourceItemId: 3004, targetItemId: 3042, type: `transform` }, // Manamune -> Muramana
     { sourceItemId: 3119, targetItemId: 3121, type: `transform` }, // Winter's Approach -> Fimbulwinter
+    { sourceItemId: 2526, targetItemId: 2530, type: `transform` }, // Whispering Circlet -> Diadem of Songs
     { sourceItemId: 3009, targetItemId: 3170, type: `boots` }, // Boots of Swiftness -> Swiftmarch
     { sourceItemId: 3158, targetItemId: 3171, type: `boots` }, // Ionian Boots -> Crimson Lucidity
     { sourceItemId: 3006, targetItemId: 3172, type: `boots` }, // Berserker's Greaves -> Gunmetal Greaves
@@ -1410,9 +1411,20 @@ const TEAR_LINE_UPGRADE_INFERENCE_BRANCHES: TearLineUpgradeInferenceBranch[] = [
         targetItemId: 3121, // Fimbulwinter
         profile: `tank`,
         componentHintItemIds: [1011, 3067],
-        subComponentHintItemIds: [1028, 1027],
+        // Ruby Crystal (1028) is too cross-build noisy for tear-line disambiguation.
+        subComponentHintItemIds: [1027],
         highConfidenceComponentHintItemIds: [1011, 3067],
-        highConfidenceSubComponentHintItemIds: [1028],
+        highConfidenceSubComponentHintItemIds: [],
+    },
+    {
+        sourceItemId: 2526, // Whispering Circlet
+        targetItemId: 2530, // Diadem of Songs
+        profile: `ap`,
+        // Diadem line is support-skewed. Include support quest items as soft hints.
+        componentHintItemIds: [3114, 3865, 3866, 3867, 3869, 3870, 3871, 3876, 3877],
+        subComponentHintItemIds: [1004],
+        highConfidenceComponentHintItemIds: [3114, 3869, 3870, 3871, 3876, 3877],
+        highConfidenceSubComponentHintItemIds: [1004],
     },
 ]
 const TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS = TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.reduce<number[]>((itemIds, branch) => {
@@ -1692,14 +1704,16 @@ function getPreferredTearLineRecoveredItemId(
 ) {
     const hasCurrentTear = currentItemIds.includes(TEAR_OF_THE_GODDESS_ITEM_ID)
     const sourceWasObserved = observedItems.has(branch.sourceItemId)
-    if (hasCurrentTear && !sourceWasObserved) {
-        // Prevent speculative source-tier tear upgrades (e.g. 3003/3004/3119)
-        // while Tear is still explicitly present in the current inventory payload.
+    const targetWasObserved = observedItems.has(branch.targetItemId)
+    if (hasCurrentTear && !sourceWasObserved && !targetWasObserved) {
+        // Prevent speculative tear-line recovery while Tear is still explicitly
+        // present in the current inventory payload and no concrete branch state
+        // has been observed yet.
         return undefined
     }
 
-    if (observedItems.has(branch.targetItemId)) return branch.targetItemId
-    if (observedItems.has(branch.sourceItemId)) return branch.sourceItemId
+    if (targetWasObserved) return branch.targetItemId
+    if (sourceWasObserved) return branch.sourceItemId
 
     const canAssumeTransformedItem = participant.level >= 14 || participant.totalGoldEarned >= 10500
     return canAssumeTransformedItem ? branch.targetItemId : branch.sourceItemId
