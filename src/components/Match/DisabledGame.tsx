@@ -40,15 +40,48 @@ type Props = {
     inferredHeraldKillCounts?: { blue: number, red: number },
 }
 
-type ScoreboardLayoutMode = `classic` | `mirror`
+type ScoreboardLayoutMode = `classic` | `mirror` | `mirrorCompact2` | `mirrorCompact3`
 const SCOREBOARD_LAYOUT_MODE_STORAGE_KEY = `scoreboardLayoutMode`
+const SCOREBOARD_LAYOUT_MODE_OPTIONS: ScoreboardLayoutMode[] = [`classic`, `mirror`, `mirrorCompact2`, `mirrorCompact3`]
+const SCOREBOARD_LAYOUT_MODE_LABELS: { [layoutMode in ScoreboardLayoutMode]: string } = {
+    classic: `\uB808\uC774\uC544\uC6C3: \uAE30\uBCF8`,
+    mirror: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC`,
+    mirrorCompact2: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 2\uBC30\uC555\uCD95`,
+    mirrorCompact3: `\uB808\uC774\uC544\uC6C3: \uBBF8\uB7EC 3\uBC30\uC555\uCD95`,
+}
+
+function parseScoreboardLayoutMode(value: string | null): ScoreboardLayoutMode {
+    return SCOREBOARD_LAYOUT_MODE_OPTIONS.includes(value as ScoreboardLayoutMode)
+        ? value as ScoreboardLayoutMode
+        : `classic`
+}
+
+function isMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
+    return layoutMode !== `classic`
+}
+
+function isCompactMirrorScoreboardLayoutMode(layoutMode: ScoreboardLayoutMode) {
+    return layoutMode === `mirrorCompact2` || layoutMode === `mirrorCompact3`
+}
+
+function getScoreboardLayoutModeClassName(layoutMode: ScoreboardLayoutMode) {
+    if (layoutMode === `classic`) return ``
+    const compactClassName = isCompactMirrorScoreboardLayoutMode(layoutMode) ? `status-live-game-card-mirror-compact-mode` : ``
+    const splitClassName = layoutMode === `mirrorCompact2`
+        ? `status-live-game-card-mirror-compact-2-mode`
+        : layoutMode === `mirrorCompact3`
+            ? `status-live-game-card-mirror-compact-3-mode`
+            : ``
+
+    return [`status-live-game-card-mirror-mode`, compactClassName, splitClassName].filter(Boolean).join(` `)
+}
 
 export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => {
         try {
-            return localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY) === `mirror` ? `mirror` : `classic`
+            return parseScoreboardLayoutMode(localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY))
         } catch {
             return `classic`
         }
@@ -68,13 +101,16 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
 
     useEffect(() => {
         const mirrorModeClassName = `mirror-scoreboard-mode`
-        if (scoreboardLayoutMode === `mirror`) {
-            document.body.classList.add(mirrorModeClassName)
-        } else {
-            document.body.classList.remove(mirrorModeClassName)
-        }
+        const compactModeClassName = `mirror-scoreboard-compact-mode`
+        const compact2ModeClassName = `mirror-scoreboard-compact-2-mode`
+        const compact3ModeClassName = `mirror-scoreboard-compact-3-mode`
+        document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
+        if (isMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(mirrorModeClassName)
+        if (isCompactMirrorScoreboardLayoutMode(scoreboardLayoutMode)) document.body.classList.add(compactModeClassName)
+        if (scoreboardLayoutMode === `mirrorCompact2`) document.body.classList.add(compact2ModeClassName)
+        if (scoreboardLayoutMode === `mirrorCompact3`) document.body.classList.add(compact3ModeClassName)
         return () => {
-            document.body.classList.remove(mirrorModeClassName)
+            document.body.classList.remove(mirrorModeClassName, compactModeClassName, compact2ModeClassName, compact3ModeClassName)
         }
     }, [scoreboardLayoutMode])
 
@@ -355,8 +391,11 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
         }
     }
 
+    const isMirrorScoreboardLayout = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
+    const scoreboardLayoutModeClassName = getScoreboardLayoutModeClassName(scoreboardLayoutMode)
+
     return (
-        <div className={`status-live-game-card ${scoreboardLayoutMode === `mirror` ? `status-live-game-card-mirror-mode` : ``}`}>
+        <div className={`status-live-game-card ${scoreboardLayoutModeClassName}`}>
             <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} />
             <div className="status-live-game-card-content">
                 {/* {eventDetails ? (<h3>{eventDetails?.league.name}</h3>) : null} */}
@@ -420,7 +459,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </div>
                     </div>
                 </div>
-                {scoreboardLayoutMode === `classic` ? (
+                {!isMirrorScoreboardLayout ? (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
@@ -707,13 +746,18 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                 <span className="footer-notes build-revision" title={`Build revision: ${BUILD_LABEL}`}>
                     Revision: {BUILD_LABEL}
                 </span>
-                <button
-                    type="button"
-                    className={`footer-notes scoreboard-layout-toggle ${scoreboardLayoutMode === `mirror` ? `active` : ``}`}
-                    onClick={() => setScoreboardLayoutMode((previousMode) => previousMode === `classic` ? `mirror` : `classic`)}
+                <select
+                    className="footer-notes scoreboard-layout-select"
+                    value={scoreboardLayoutMode}
+                    onChange={(event) => setScoreboardLayoutMode(parseScoreboardLayoutMode(event.target.value))}
+                    aria-label="Scoreboard layout"
                 >
-                    {scoreboardLayoutMode === `classic` ? `레이아웃: 기본` : `레이아웃: 미러`}
-                </button>
+                    {SCOREBOARD_LAYOUT_MODE_OPTIONS.map((layoutMode) => (
+                        <option key={layoutMode} value={layoutMode}>
+                            {SCOREBOARD_LAYOUT_MODE_LABELS[layoutMode]}
+                        </option>
+                    ))}
+                </select>
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>
