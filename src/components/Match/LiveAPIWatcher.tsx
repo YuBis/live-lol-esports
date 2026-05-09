@@ -7,6 +7,7 @@ import { ToastContainer, toast } from 'react-toastify';
 
 const kill = require("../../assets/audios/champion_slain.ogg");
 const first_blood = require("../../assets/audios/first_blood.ogg");
+const executed = require("../../assets/audios/executed.ogg");
 const blue_ace = require("../../assets/audios/blue_ace.ogg");
 const red_ace = require("../../assets/audios/red_ace.ogg");
 const welcome_rift = require("../../assets/audios/welcome_rift.ogg");
@@ -78,7 +79,10 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
 
     const statusRef = useRef<StatusWatcher>({
         elapsedGameTimeSeconds: elapsedGameTimeSeconds,
-        totalKills: { blue: lastWindowFrame.blueTeam.totalKills, red: lastWindowFrame.redTeam.totalKills },
+        totalKills: {
+            blue: getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants),
+            red: getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants),
+        },
         dragons: { blue: lastWindowFrame.blueTeam.dragons.length, red: lastWindowFrame.redTeam.dragons.length },
         gameIndex: gameIndex,
         inhibitors: { blue: lastWindowFrame.blueTeam.inhibitors, red: lastWindowFrame.redTeam.inhibitors },
@@ -94,7 +98,10 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
 
     const firstBloodPlayedRef = useRef<{ gameIndex: number, played: boolean }>({
         gameIndex: gameIndex,
-        played: (lastWindowFrame.blueTeam.totalKills + lastWindowFrame.redTeam.totalKills) > 0,
+        played: (
+            getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants)
+            + getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants)
+        ) > 0,
     })
 
     useEffect(() => {
@@ -103,8 +110,8 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
         const status = statusRef.current
 
         const currentTotalKills = {
-            blue: lastWindowFrame.blueTeam.totalKills,
-            red: lastWindowFrame.redTeam.totalKills,
+            blue: getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants),
+            red: getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants),
         }
         const totalKillsBefore = status.totalKills.blue + status.totalKills.red
         const totalKillsNow = currentTotalKills.blue + currentTotalKills.red
@@ -181,6 +188,35 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                         eventType: "kill",
                     })
                 }
+            }
+
+            const blueDeathIncreaseEvents = getDeathIncreaseToastEvents(
+                status.participants.blue,
+                lastWindowFrame.blueTeam.participants,
+                true,
+                gameMetadata.blueTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+            const redDeathIncreaseEvents = getDeathIncreaseToastEvents(
+                status.participants.red,
+                lastWindowFrame.redTeam.participants,
+                false,
+                gameMetadata.redTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+            const blueDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.blue, lastWindowFrame.blueTeam.participants)
+            const redDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.red, lastWindowFrame.redTeam.participants)
+            const blueKillIncreaseCount = Math.max(0, currentTotalKills.blue - status.totalKills.blue)
+            const redKillIncreaseCount = Math.max(0, currentTotalKills.red - status.totalKills.red)
+            const totalDeathIncreaseCount = blueDeathIncreaseCount + redDeathIncreaseCount
+            const totalKillIncreaseCount = blueKillIncreaseCount + redKillIncreaseCount
+            const inferredBlueExecutionCount = Math.max(0, blueDeathIncreaseCount - redKillIncreaseCount)
+            const inferredRedExecutionCount = Math.max(0, redDeathIncreaseCount - blueKillIncreaseCount)
+            const shouldShowExecutionToast = totalDeathIncreaseCount === 1 && totalKillIncreaseCount === 0
+
+            if (shouldShowExecutionToast) {
+                toastQueue.push(...blueDeathIncreaseEvents.slice(0, inferredBlueExecutionCount))
+                toastQueue.push(...redDeathIncreaseEvents.slice(0, inferredRedExecutionCount))
             }
         }
 
@@ -321,7 +357,45 @@ function hasAnyDeathIncrease(previousParticipants: WindowParticipant[], nextPart
     return false
 }
 
+function getTeamDeathIncreaseCount(previousParticipants: WindowParticipant[], nextParticipants: WindowParticipant[]) {
+    const participantCount = Math.min(previousParticipants.length, nextParticipants.length)
+    let deathIncreaseCount = 0
+    for (let i = 0; i < participantCount; i++) {
+        deathIncreaseCount += Math.max(0, Number(nextParticipants[i].deaths || 0) - Number(previousParticipants[i].deaths || 0))
+    }
+    return deathIncreaseCount
+}
+
+function getDeathIncreaseToastEvents(
+    previousParticipants: WindowParticipant[],
+    nextParticipants: WindowParticipant[],
+    blueTeam: boolean,
+    participantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
+    championsUrlWithPatchVersion: string,
+): ToastEvent[] {
+    const participantCount = Math.min(previousParticipants.length, nextParticipants.length)
+    const toastEvents: ToastEvent[] = []
+    for (let i = 0; i < participantCount; i++) {
+        const deathIncreaseCount = Math.max(0, Number(nextParticipants[i].deaths || 0) - Number(previousParticipants[i].deaths || 0))
+        for (let deathIndex = 0; deathIndex < deathIncreaseCount; deathIndex++) {
+            toastEvents.push({
+                blueTeam,
+                sound: executed.default,
+                message: "처형되었습니다",
+                image: `${championsUrlWithPatchVersion}${participantMetadata[i].championId}.png`,
+                diff: deathIndex,
+            })
+        }
+    }
+    return toastEvents
+}
+
 function areAllParticipantsDead(participants: WindowParticipant[]) {
     if (!participants || participants.length === 0) return false
     return participants.every((participant) => Number(participant.currentHealth) <= 0)
+}
+
+function getTeamKillCountFromParticipants(participants: WindowParticipant[] | undefined) {
+    if (!Array.isArray(participants)) return 0
+    return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
 }

@@ -21,7 +21,7 @@ import Loading from '../../assets/images/loading.svg'
 import { ReactComponent as TeamTBDSVG } from '../../assets/images/team-tbd.svg';
 import { MatchDetails } from "./MatchDetails"
 import { Game } from "./Game";
-import { EventDetails, DetailsFrame, GameMetadata, Item, ObjectiveTimerBackfillSeed, Outcome, Record, Result, ScheduleEvent, Standing, WindowFrame, Rune, ExtendedVod } from "../types/baseTypes"
+import { EventDetails, DetailsFrame, GameMetadata, Item, ObjectiveTimerBackfillSeed, Outcome, Record, Result, ScheduleEvent, Standing, WindowFrame, WindowParticipant, Rune, ExtendedVod } from "../types/baseTypes"
 import { ChatToggler } from '../Navbar/ChatToggler';
 import { TwitchEmbed, TwitchEmbedLayout } from 'twitch-player';
 import { GameDetails } from './GameDetails';
@@ -1222,8 +1222,10 @@ function stabilizeDetailsFrame(
         )
         const magicalFootwearNormalizedItems = removeInjectedMagicalFootwearWhenUpgraded(magicalFootwearRecoveredItems)
         const normalizedTearItems = normalizeLikelyStaleTearBaseItem(magicalFootwearNormalizedItems, previousItems, participant, observedItems)
+        const armguardRecoveredItems = inferShatteredArmguardFromUsedSeeker(normalizedTearItems, previousItems)
+        const armguardNormalizedItems = removeShatteredArmguardWhenZhonyaOwned(armguardRecoveredItems)
         const trinketRestoreResult = restoreMissingTrinketOnUnexpectedMissingSlot(
-            normalizedTearItems,
+            armguardNormalizedItems,
             previousItems,
             observedItems,
             lastKnownTrinketItemId,
@@ -1432,6 +1434,9 @@ const TEAR_LINE_SOURCE_AND_TARGET_ITEM_IDS = TEAR_LINE_UPGRADE_INFERENCE_BRANCHE
     return itemIds
 }, [])
 const EARLY_STALE_TEAR_INVENTORY_ITEM_COUNT_THRESHOLD = 4
+const SEEKER_ARMGUARD_ITEM_ID = 2420
+const SHATTERED_ARMGUARD_ITEM_ID = 2421
+const ZHONYAS_HOURGLASS_ITEM_ID = 3157
 
 function getObservedItemsForParticipant(observedItemsByParticipantId: ObservedDetailsItemsByParticipantId | undefined, participantId: number) {
     if (!observedItemsByParticipantId) return undefined
@@ -2157,6 +2162,22 @@ function normalizeLikelyStaleTearBaseItem(
     })
 }
 
+function inferShatteredArmguardFromUsedSeeker(itemIds: number[], previousItemIds: number[]) {
+    if (itemIds.includes(SEEKER_ARMGUARD_ITEM_ID)) return itemIds
+    if (itemIds.includes(SHATTERED_ARMGUARD_ITEM_ID)) return itemIds
+    if (itemIds.includes(ZHONYAS_HOURGLASS_ITEM_ID)) return itemIds
+    if (!previousItemIds.includes(SEEKER_ARMGUARD_ITEM_ID)) return itemIds
+
+    return appendOrReplaceInferredItem(itemIds, SHATTERED_ARMGUARD_ITEM_ID)
+}
+
+function removeShatteredArmguardWhenZhonyaOwned(itemIds: number[]) {
+    if (!itemIds.includes(ZHONYAS_HOURGLASS_ITEM_ID)) return itemIds
+    if (!itemIds.includes(SHATTERED_ARMGUARD_ITEM_ID)) return itemIds
+
+    return itemIds.filter((itemId) => itemId !== SHATTERED_ARMGUARD_ITEM_ID)
+}
+
 function getTearLineBranchByItemId(itemId: number) {
     return TEAR_LINE_UPGRADE_INFERENCE_BRANCHES.find((branch) =>
         branch.sourceItemId === itemId || branch.targetItemId === itemId
@@ -2507,9 +2528,17 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
         blue: null,
         red: null,
     }
+    const baronBuffParticipantIdsByTeam = {
+        blue: new Set<number>(),
+        red: new Set<number>(),
+    }
     const elderBuffEndAtMsByTeam: ObjectiveTimerBackfillSeed[`elderBuffEndAtMsByTeam`] = {
         blue: null,
         red: null,
+    }
+    const elderBuffParticipantIdsByTeam = {
+        blue: new Set<number>(),
+        red: new Set<number>(),
     }
 
     normalizedFrames.forEach(({ frame, timestampValue }) => {
@@ -2526,6 +2555,7 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
                 baseLead: blueTeamLead,
                 startedAtMs: timestampValue,
             }
+            baronBuffParticipantIdsByTeam.blue = getAliveFrameParticipantIdSet(frame.blueTeam.participants)
         }
         if (currentBaronCounts.red > previousBaronCounts.red) {
             lastBaronKillTimestampMs = timestampValue
@@ -2533,7 +2563,11 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
                 baseLead: redTeamLead,
                 startedAtMs: timestampValue,
             }
+            baronBuffParticipantIdsByTeam.red = getAliveFrameParticipantIdSet(frame.redTeam.participants)
         }
+
+        removeDeadFrameParticipantsFromSet(baronBuffParticipantIdsByTeam.blue, frame.blueTeam.participants)
+        removeDeadFrameParticipantsFromSet(baronBuffParticipantIdsByTeam.red, frame.redTeam.participants)
 
         const currentDragonKillCount = getFrameDragonKillCount(frame)
         if (currentDragonKillCount > previousDragonKillCount) {
@@ -2549,10 +2583,15 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
 
         if (blueAddedDragonTypes.some(isElderDragonTypeFromFrame)) {
             elderBuffEndAtMsByTeam.blue = timestampValue + ELDER_DRAGON_BUFF_DURATION_MS
+            elderBuffParticipantIdsByTeam.blue = getAliveFrameParticipantIdSet(frame.blueTeam.participants)
         }
         if (redAddedDragonTypes.some(isElderDragonTypeFromFrame)) {
             elderBuffEndAtMsByTeam.red = timestampValue + ELDER_DRAGON_BUFF_DURATION_MS
+            elderBuffParticipantIdsByTeam.red = getAliveFrameParticipantIdSet(frame.redTeam.participants)
         }
+
+        removeDeadFrameParticipantsFromSet(elderBuffParticipantIdsByTeam.blue, frame.blueTeam.participants)
+        removeDeadFrameParticipantsFromSet(elderBuffParticipantIdsByTeam.red, frame.redTeam.participants)
 
         previousBaronCounts = currentBaronCounts
         previousDragonKillCount = currentDragonKillCount
@@ -2566,14 +2605,19 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
         const baronSnapshot = baronPowerPlaySnapshotByTeam[teamKey]
         if (baronSnapshot) {
             const elapsedMs = Math.max(0, currentTimestampValue - baronSnapshot.startedAtMs)
-            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS || baronBuffParticipantIdsByTeam[teamKey].size === 0) {
                 baronPowerPlaySnapshotByTeam[teamKey] = null
+                baronBuffParticipantIdsByTeam[teamKey].clear()
             }
         }
 
         const elderBuffEndAtMs = elderBuffEndAtMsByTeam[teamKey]
-        if (elderBuffEndAtMs !== null && elderBuffEndAtMs <= currentTimestampValue) {
+        if (
+            elderBuffEndAtMs !== null
+            && (elderBuffEndAtMs <= currentTimestampValue || elderBuffParticipantIdsByTeam[teamKey].size === 0)
+        ) {
             elderBuffEndAtMsByTeam[teamKey] = null
+            elderBuffParticipantIdsByTeam[teamKey].clear()
         }
     })
 
@@ -2581,8 +2625,32 @@ function buildObjectiveTimerBackfillSeedFromWindowFrames(
         lastBaronKillTimestampMs,
         lastDragonKillTimestampMs,
         baronPowerPlaySnapshotByTeam,
+        baronBuffParticipantIdsByTeam: {
+            blue: Array.from(baronBuffParticipantIdsByTeam.blue),
+            red: Array.from(baronBuffParticipantIdsByTeam.red),
+        },
         elderBuffEndAtMsByTeam,
+        elderBuffParticipantIdsByTeam: {
+            blue: Array.from(elderBuffParticipantIdsByTeam.blue),
+            red: Array.from(elderBuffParticipantIdsByTeam.red),
+        },
     }
+}
+
+function getAliveFrameParticipantIdSet(participants: WindowParticipant[] | undefined) {
+    return new Set<number>(
+        (participants || [])
+            .filter((participant) => Number(participant.currentHealth) > 0)
+            .map((participant) => participant.participantId),
+    )
+}
+
+function removeDeadFrameParticipantsFromSet(participantIds: Set<number>, participants: WindowParticipant[] | undefined) {
+    ;(participants || []).forEach((participant) => {
+        if (Number(participant.currentHealth) <= 0) {
+            participantIds.delete(participant.participantId)
+        }
+    })
 }
 
 function getFrameDragonKillCount(frame: WindowFrame) {

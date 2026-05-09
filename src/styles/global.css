@@ -95,6 +95,13 @@ body.mirror-scoreboard-compact-2-mode .container {
     max-width: 90.74rem;
 }
 
+body.basic-scoreboard-compact-mode .container {
+    max-width: min(calc(100vw - 0.5rem), calc(34rem + 32px));
+    min-height: auto;
+    padding: 0 0.25rem 0;
+    padding-bottom: 4rem;
+}
+
 #video-player[added] {
     margin-top: 10px;
     width: 100%;

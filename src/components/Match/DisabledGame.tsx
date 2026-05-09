@@ -35,6 +35,8 @@ import { ChatToggler } from '../Navbar/ChatToggler';
 import { StreamToggler } from '../Navbar/StreamToggler';
 import {
     applyScoreboardLayoutBodyClassNames,
+    getInitialScoreboardLayoutMode,
+    isBasicCompactScoreboardLayoutMode,
     getScoreboardLayoutModeClassName,
     isMirrorScoreboardLayoutMode,
     parseScoreboardLayoutMode,
@@ -72,13 +74,7 @@ const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
 export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
-    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => {
-        try {
-            return parseScoreboardLayoutMode(localStorage.getItem(SCOREBOARD_LAYOUT_MODE_STORAGE_KEY))
-        } catch {
-            return `classic`
-        }
-    })
+    const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => getInitialScoreboardLayoutMode())
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -376,7 +372,10 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     }
 
     const isMirrorScoreboardLayout = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
+    const isBasicCompactScoreboardLayout = isBasicCompactScoreboardLayoutMode(scoreboardLayoutMode)
     const scoreboardLayoutModeClassName = getScoreboardLayoutModeClassName(scoreboardLayoutMode)
+    const blueTeamKillDisplayValue = getTeamKillCountFromParticipants(firstWindowFrame.blueTeam.participants)
+    const redTeamKillDisplayValue = getTeamKillCountFromParticipants(firstWindowFrame.redTeam.participants)
 
     return (
         <div className={`status-live-game-card ${scoreboardLayoutModeClassName}`}>
@@ -402,9 +401,9 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                             <div className="gamestate-bg-game-disabled">데이터 수집 중</div>
                             <div>{inGameTime}</div>
                             <div className="live-game-kill-score">
-                                <span className="blue-team-kills">{firstWindowFrame.blueTeam.totalKills}</span>
+                                <span className="blue-team-kills">{blueTeamKillDisplayValue}</span>
                                 <KillSVG className="live-game-kill-score-icon" />
-                                <span className="red-team-kills">{firstWindowFrame.redTeam.totalKills}</span>
+                                <span className="red-team-kills">{redTeamKillDisplayValue}</span>
                             </div>
                         </h1>
                         <div className="live-game-card-team">
@@ -444,6 +443,159 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                     </div>
                 </div>
                 {!isMirrorScoreboardLayout ? (
+                isBasicCompactScoreboardLayout ? (
+                <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-basic-compact">
+                    <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
+                        <thead>
+                            <tr key={`${blueTeam.code.toUpperCase()}_basic_compact`}>
+                                <th className="table-top-row-champion" title="champion/team">
+                                    <span>{blueTeam.code.toUpperCase()}</span>
+                                </th>
+                                <th className="basic-compact-stats-header-cell" title="stats">
+                                    <div className="basic-compact-stats-header-top">
+                                        <span>K</span>
+                                        <span>D</span>
+                                        <span>A</span>
+                                        <span>GOLD</span>
+                                    </div>
+                                    <div className="basic-compact-stats-header-bottom">
+                                        <span>ITEMS</span>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {firstWindowFrame.blueTeam.participants.map((player: WindowParticipant) => {
+                                const metadata = gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1]
+                                const goldDifference = getGoldDifference(player, firstWindowFrame)
+                                if (!metadata) return null
+
+                                return [(
+                                    <tr className="player-stats-row basic-compact-player-row" key={`disabled_basic_blue_${gameIndex}_${player.participantId}`}>
+                                        <th className="basic-compact-name-cell">
+                                            <div className="basic-compact-name-stack">
+                                                <div className="player-champion-info">
+                                                    <div className='player-champion-wrapper'>
+                                                        <img src={`${championsUrlWithPatchVersion}${metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                        <TeamTBDSVG className='player-champion' />
+                                                        <span className=" player-champion-info-level">{player.level}</span>
+                                                    </div>
+                                                    <div className=" player-champion-info-name">
+                                                        <span>{metadata.summonerName}</span>
+                                                        <span className=" player-card-player-name">{getChampionDisplayName(metadata.championId)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="basic-compact-name-health">
+                                                    <MiniHealthBar currentHealth={player.currentHealth} maxHealth={player.maxHealth} />
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td className="basic-compact-summary-cell">
+                                            <div className="basic-compact-summary-top">
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.kills}</div>
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.deaths}</div>
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.assists}</div>
+                                                <div className="player-stats player-stats-gold basic-compact-stat basic-compact-stat-gold">
+                                                    <span>{Number(player.totalGold).toLocaleString(`en-us`)}</span>
+                                                    <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="basic-compact-summary-bottom">
+                                                <div className="basic-compact-summary-items">
+                                                    <div className="player-stats-items" />
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ), (
+                                    <tr key={`disabled_basic_blue_stats_${gameIndex}_${player.participantId}`} className='champion-stats-row'>
+                                        <td colSpan={2}>
+                                            <span />
+                                        </td>
+                                    </tr>
+                                )]
+                            })}
+                        </tbody>
+                    </table>
+
+                    <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
+                        <thead>
+                            <tr key={`${redTeam.code.toUpperCase()}_basic_compact`}>
+                                <th className="table-top-row-champion" title="champion/team">
+                                    <span>{redTeam.code.toUpperCase()}</span>
+                                </th>
+                                <th className="basic-compact-stats-header-cell" title="stats">
+                                    <div className="basic-compact-stats-header-top">
+                                        <span>K</span>
+                                        <span>D</span>
+                                        <span>A</span>
+                                        <span>GOLD</span>
+                                    </div>
+                                    <div className="basic-compact-stats-header-bottom">
+                                        <span>ITEMS</span>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {firstWindowFrame.redTeam.participants.map((player: WindowParticipant) => {
+                                const metadata = gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6]
+                                const goldDifference = getGoldDifference(player, firstWindowFrame)
+                                if (!metadata) return null
+
+                                return [(
+                                    <tr className="player-stats-row basic-compact-player-row" key={`disabled_basic_red_${gameIndex}_${player.participantId}`}>
+                                        <th className="basic-compact-name-cell">
+                                            <div className="basic-compact-name-stack">
+                                                <div className="player-champion-info">
+                                                    <div className='player-champion-wrapper'>
+                                                        <img src={`${championsUrlWithPatchVersion}${metadata.championId}.png`} alt="" className='player-champion' onError={({ currentTarget }) => { currentTarget.style.display = `none` }} />
+                                                        <TeamTBDSVG className='player-champion' />
+                                                        <span className=" player-champion-info-level">{player.level}</span>
+                                                    </div>
+                                                    <div className=" player-champion-info-name">
+                                                        <span>{metadata.summonerName}</span>
+                                                        <span className=" player-card-player-name">{getChampionDisplayName(metadata.championId)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="basic-compact-name-health">
+                                                    <MiniHealthBar currentHealth={player.currentHealth} maxHealth={player.maxHealth} />
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td className="basic-compact-summary-cell">
+                                            <div className="basic-compact-summary-top">
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.kills}</div>
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.deaths}</div>
+                                                <div className="player-stats player-stats-kda basic-compact-stat">{player.assists}</div>
+                                                <div className="player-stats player-stats-gold basic-compact-stat basic-compact-stat-gold">
+                                                    <span>{Number(player.totalGold).toLocaleString(`en-us`)}</span>
+                                                    <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="basic-compact-summary-bottom">
+                                                <div className="basic-compact-summary-items">
+                                                    <div className="player-stats-items" />
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ), (
+                                    <tr key={`disabled_basic_red_stats_${gameIndex}_${player.participantId}`} className='champion-stats-row'>
+                                        <td colSpan={2}>
+                                            <span />
+                                        </td>
+                                    </tr>
+                                )]
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                ) : (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
@@ -623,6 +775,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </tbody>
                     </table>
                 </div>
+                )
                 ) : (
                 <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-mirror">
                     <table className="status-live-game-card-table status-live-game-card-table-mirror">
@@ -897,6 +1050,11 @@ function getGoldLeadSymbol(goldLead: number) {
     if (goldLead > 0) return `\u25C0`
     if (goldLead < 0) return `\u25B6`
     return ``
+}
+
+function getTeamKillCountFromParticipants(participants: WindowParticipant[] | undefined) {
+    if (!Array.isArray(participants)) return 0
+    return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
 }
 
 function getGoldPercentage(goldBlue: number, goldRed: number) {

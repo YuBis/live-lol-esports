@@ -203,12 +203,17 @@ function inferWinnerSide(lastWindowFrame: WindowFrame): WinnerSide | undefined {
 
     if (blueGold !== redGold) return blueGold > redGold ? `blue` : `red`
 
-    const blueKills = Number(lastWindowFrame.blueTeam.totalKills || 0)
-    const redKills = Number(lastWindowFrame.redTeam.totalKills || 0)
+    const blueKills = getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants)
+    const redKills = getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants)
 
     if (blueKills !== redKills) return blueKills > redKills ? `blue` : `red`
 
     return undefined
+}
+
+function getTeamKillCountFromParticipants(participants: Array<{ kills: number }> | undefined) {
+    if (!Array.isArray(participants)) return 0
+    return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
 }
 
 function getCompletedGameTailStartingTime(firstWindowTimestamp: string | Date | undefined) {

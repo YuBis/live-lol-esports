@@ -39,6 +39,7 @@ import { StreamToggler } from '../Navbar/StreamToggler';
 import {
     applyScoreboardLayoutBodyClassNames,
     getInitialScoreboardLayoutMode,
+    isBasicCompactScoreboardLayoutMode,
     getScoreboardLayoutModeClassName,
     isMirrorScoreboardLayoutMode,
     parseScoreboardLayoutMode,
@@ -362,10 +363,19 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
 
             const currentLead = teamKey === `blue` ? blueTeamLead : redTeamLead
             const teamParticipants = teamKey === `blue` ? lastWindowFrame.blueTeam.participants : lastWindowFrame.redTeam.participants
+            const seededBaronBuffParticipantIds = objectiveTimerBackfillSeed.baronBuffParticipantIdsByTeam?.[teamKey]
+            const baronBuffParticipantIds = Array.isArray(seededBaronBuffParticipantIds)
+                ? new Set<number>(seededBaronBuffParticipantIds)
+                : getAliveParticipantIdSet(teamParticipants)
+            if (baronBuffParticipantIds.size === 0) {
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
+                return
+            }
             const powerPlayValue = Math.round((currentLead - seedSnapshot.baseLead) + BARON_POWER_PLAY_BASELINE_GOLD)
             nextPowerPlayByTeam[teamKey] = powerPlayValue
             nextPowerPlayRemainingSecondsByTeam[teamKey] = Math.max(0, Math.ceil((BARON_POWER_PLAY_DURATION_MS - elapsedMs) / 1000))
-            baronBuffParticipantIdsByTeamRef.current[teamKey] = getAliveParticipantIdSet(teamParticipants)
+            baronBuffParticipantIdsByTeamRef.current[teamKey] = baronBuffParticipantIds
 
             baronPowerPlaySnapshotByTeamRef.current[teamKey] = {
                 baseLead: seedSnapshot.baseLead,
@@ -396,7 +406,16 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 return
             }
             const teamParticipants = teamKey === `blue` ? lastWindowFrame.blueTeam.participants : lastWindowFrame.redTeam.participants
-            elderBuffParticipantIdsByTeamRef.current[teamKey] = getAliveParticipantIdSet(teamParticipants)
+            const seededElderBuffParticipantIds = objectiveTimerBackfillSeed.elderBuffParticipantIdsByTeam?.[teamKey]
+            const elderBuffParticipantIds = Array.isArray(seededElderBuffParticipantIds)
+                ? new Set<number>(seededElderBuffParticipantIds)
+                : getAliveParticipantIdSet(teamParticipants)
+            if (elderBuffParticipantIds.size === 0) {
+                elderBuffEndAtMsByTeamRef.current[teamKey] = null
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
+                return
+            }
+            elderBuffParticipantIdsByTeamRef.current[teamKey] = elderBuffParticipantIds
             nextElderBuffRemainingSecondsByTeam[teamKey] = remainingSeconds
         })
         setElderBuffRemainingSecondsByTeam(nextElderBuffRemainingSecondsByTeam)
@@ -518,7 +537,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             if (!snapshot) return
 
             const elapsedMs = Math.max(0, frameTimestampMs - snapshot.startedAtMs)
-            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS || baronBuffParticipantIdsByTeamRef.current[teamKey].size === 0) {
                 snapshot.active = false
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
                 baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
@@ -544,7 +563,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             const elderBuffEndAtMs = elderBuffEndAtMsByTeamRef.current[teamKey]
             if (!elderBuffEndAtMs) return
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
-            if (remainingSeconds <= 0) {
+            if (remainingSeconds <= 0 || elderBuffParticipantIdsByTeamRef.current[teamKey].size === 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
                 elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
@@ -598,7 +617,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             if (!snapshot) return
 
             const elapsedMs = Math.max(0, effectiveFrameTimestampMs - snapshot.startedAtMs)
-            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS) {
+            if (elapsedMs >= BARON_POWER_PLAY_DURATION_MS || baronBuffParticipantIdsByTeamRef.current[teamKey].size === 0) {
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
                 baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
@@ -626,7 +645,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             if (!elderBuffEndAtMs) return
 
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - effectiveFrameTimestampMs) / 1000))
-            if (remainingSeconds <= 0) {
+            if (remainingSeconds <= 0 || elderBuffParticipantIdsByTeamRef.current[teamKey].size === 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
                 elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
@@ -738,7 +757,33 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             previousLevelByParticipantIdRef.current.set(participant.participantId, participant.level)
         })
 
-        if (objectiveBuffsChanged) {
+        const baronPowerPlayEndedByBuffLoss = clearHolderlessBaronPowerPlaySnapshots(
+            baronPowerPlaySnapshotByTeamRef.current,
+            baronBuffParticipantIdsByTeamRef.current,
+        )
+        const elderBuffEndedByBuffLoss = clearHolderlessElderBuffs(
+            elderBuffEndAtMsByTeamRef.current,
+            elderBuffParticipantIdsByTeamRef.current,
+        )
+
+        if (baronPowerPlayEndedByBuffLoss) {
+            setBaronPowerPlayByTeam((previousState) => ({
+                blue: baronPowerPlaySnapshotByTeamRef.current.blue ? previousState.blue : null,
+                red: baronPowerPlaySnapshotByTeamRef.current.red ? previousState.red : null,
+            }))
+            setBaronPowerPlayRemainingSecondsByTeam((previousState) => ({
+                blue: baronPowerPlaySnapshotByTeamRef.current.blue ? previousState.blue : null,
+                red: baronPowerPlaySnapshotByTeamRef.current.red ? previousState.red : null,
+            }))
+        }
+        if (elderBuffEndedByBuffLoss) {
+            setElderBuffRemainingSecondsByTeam((previousState) => ({
+                blue: elderBuffEndAtMsByTeamRef.current.blue ? previousState.blue : null,
+                red: elderBuffEndAtMsByTeamRef.current.red ? previousState.red : null,
+            }))
+        }
+
+        if (objectiveBuffsChanged || baronPowerPlayEndedByBuffLoss || elderBuffEndedByBuffLoss) {
             setObjectiveBuffsByParticipantId(buildObjectiveBuffsByParticipantId(
                 baronBuffParticipantIdsByTeamRef.current,
                 elderBuffParticipantIdsByTeamRef.current,
@@ -976,6 +1021,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const formattedRedBaronPowerPlayRemaining = formatBaronPowerPlayRemainingTime(displayRedBaronPowerPlayRemainingSeconds)
     const formattedBlueElderBuffRemaining = formatBaronPowerPlayRemainingTime(displayBlueElderBuffRemainingSeconds)
     const formattedRedElderBuffRemaining = formatBaronPowerPlayRemainingTime(displayRedElderBuffRemainingSeconds)
+    const blueTeamKillDisplayValue = getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants)
+    const redTeamKillDisplayValue = getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants)
     const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
     const goldLeadColorClass = goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
     const backfillStatusClassName = backfillStatus === `running` ? `running` : backfillStatus === `completed` ? `completed` : `idle`
@@ -1349,6 +1396,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     })
 
     const isMirrorScoreboardLayout = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
+    const isBasicCompactScoreboardLayout = isBasicCompactScoreboardLayoutMode(scoreboardLayoutMode)
     const scoreboardLayoutModeClassName = getScoreboardLayoutModeClassName(scoreboardLayoutMode)
 
     return (
@@ -1375,9 +1423,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                             <div className={`gamestate-bg-${gameState.split(` `).join(`-`)}`}>{getLiveGameStateLabel(gameState)}</div>
                             <div>{inGameTime}</div>
                             <div className="live-game-kill-score">
-                                <span className="blue-team-kills">{lastWindowFrame.blueTeam.totalKills}</span>
+                                <span className="blue-team-kills">{blueTeamKillDisplayValue}</span>
                                 <KillSVG className="live-game-kill-score-icon" />
-                                <span className="red-team-kills">{lastWindowFrame.redTeam.totalKills}</span>
+                                <span className="red-team-kills">{redTeamKillDisplayValue}</span>
                             </div>
                             {displayBaronObjectiveStatusLabel || displayDragonObjectiveStatusLabel ? (
                                 <div className="live-game-objective-statuses">
@@ -1497,6 +1545,205 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     </div>
                 </div>
                 {!isMirrorScoreboardLayout ? (
+                isBasicCompactScoreboardLayout ? (
+                <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-basic-compact">
+                    <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
+                        <thead>
+                            <tr key={`${blueTeam.code.toUpperCase()}_basic_compact`}>
+                                <th className="table-top-row-champion" title="champion/team">
+                                    <span>{blueTeam.code.toUpperCase()}</span>
+                                </th>
+                                <th className="basic-compact-stats-header-cell" title="stats">
+                                    <div className="basic-compact-stats-header-top">
+                                        <span>K</span>
+                                        <span>D</span>
+                                        <span>A</span>
+                                        <span>GOLD</span>
+                                    </div>
+                                    <div className="basic-compact-stats-header-bottom">
+                                        <span>ITEMS</span>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {blueRows.map((row) => {
+                                const goldDifference = getGoldDifference(row.player, lastWindowFrame)
+                                return [(
+                                    <tr className="player-stats-row basic-compact-player-row" key={`basic_blue_${gameIndex}_${row.player.participantId}`}>
+                                        <th className="basic-compact-name-cell">
+                                            <div className="basic-compact-name-stack">
+                                                <div className={`player-champion-info ${row.hasDeathTimer ? `player-champion-info-dead` : ``} ${row.objectiveBuffClassName} ${row.levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                    {renderObjectiveBuffBackdropIcons(row.objectiveBuffState)}
+                                                    {getParticipantRuneTypes(row.championDetails, runes)}
+                                                    <div className={`player-champion-wrapper ${row.hasDeathTimer ? `dead` : ``}`}>
+                                                        {row.hasDeathTimer ? <span className="player-death-timer">{row.deathTimerSeconds}</span> : null}
+                                                        <img
+                                                            src={`${championsUrlWithPatchVersion}${row.metadata.championId}.png`}
+                                                            alt=""
+                                                            className='player-champion'
+                                                            onError={({ currentTarget }) => { currentTarget.style.display = `none` }}
+                                                        />
+                                                        <TeamTBDSVG className='player-champion' />
+                                                        <span className={` player-champion-info-level ${row.levelFlashClassName}`}>{row.player.level}</span>
+                                                    </div>
+                                                    <div className=" player-champion-info-name">
+                                                        <span>{row.metadata.summonerName}</span>
+                                                        <span className=" player-card-player-name">{getChampionDisplayName(row.metadata.championId)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="basic-compact-name-health">
+                                                    <MiniHealthBar currentHealth={row.player.currentHealth} maxHealth={row.player.maxHealth} />
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td className="basic-compact-summary-cell">
+                                            <div className="basic-compact-summary-top">
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.killFlashClassName}`}>{row.player.kills}</div>
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.deathFlashClassName}`}>{row.player.deaths}</div>
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.assistFlashClassName}`}>{row.player.assists}</div>
+                                                <div className="player-stats player-stats-gold basic-compact-stat basic-compact-stat-gold">
+                                                    <span>{Number(row.player.totalGold).toLocaleString(`en-us`)}</span>
+                                                    <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="basic-compact-summary-bottom">
+                                                <div className="basic-compact-summary-items">
+                                                    <ItemsDisplay
+                                                        participantId={row.player.participantId - 1}
+                                                        lastFrame={lastDetailsFrame}
+                                                        items={items}
+                                                        patchVersion={formattedPatchVersion}
+                                                        role={row.metadata.role}
+                                                        highlightedItemIds={highlightedPurchasedItemsByParticipantId[row.player.participantId]}
+                                                        forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ), (
+                                    <tr key={`basic_blue_stats_${gameIndex}_${row.player.participantId}`} className='champion-stats-row'>
+                                        <td colSpan={2}>
+                                            <span>
+                                                {getFormattedChampionStats(
+                                                    row.championDetails,
+                                                    runes,
+                                                    selectedRuneKeyByParticipantId[row.championDetails.participantId],
+                                                    (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                        ...previousState,
+                                                        [row.championDetails.participantId]: runeKey,
+                                                    })),
+                                                )}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                )]
+                            })}
+                        </tbody>
+                    </table>
+
+                    <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
+                        <thead>
+                            <tr key={`${redTeam.code.toUpperCase()}_basic_compact`}>
+                                <th className="table-top-row-champion" title="champion/team">
+                                    <span>{redTeam.code.toUpperCase()}</span>
+                                </th>
+                                <th className="basic-compact-stats-header-cell" title="stats">
+                                    <div className="basic-compact-stats-header-top">
+                                        <span>K</span>
+                                        <span>D</span>
+                                        <span>A</span>
+                                        <span>GOLD</span>
+                                    </div>
+                                    <div className="basic-compact-stats-header-bottom">
+                                        <span>ITEMS</span>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {redRows.map((row) => {
+                                const goldDifference = getGoldDifference(row.player, lastWindowFrame)
+                                return [(
+                                    <tr className="player-stats-row basic-compact-player-row" key={`basic_red_${gameIndex}_${row.player.participantId}`}>
+                                        <th className="basic-compact-name-cell">
+                                            <div className="basic-compact-name-stack">
+                                                <div className={`player-champion-info ${row.hasDeathTimer ? `player-champion-info-dead` : ``} ${row.objectiveBuffClassName} ${row.levelFlashClassName ? `player-champion-info-level-flashing` : ``}`}>
+                                                    {renderObjectiveBuffBackdropIcons(row.objectiveBuffState)}
+                                                    {getParticipantRuneTypes(row.championDetails, runes)}
+                                                    <div className={`player-champion-wrapper ${row.hasDeathTimer ? `dead` : ``}`}>
+                                                        {row.hasDeathTimer ? <span className="player-death-timer">{row.deathTimerSeconds}</span> : null}
+                                                        <img
+                                                            src={`${championsUrlWithPatchVersion}${row.metadata.championId}.png`}
+                                                            alt=""
+                                                            className='player-champion'
+                                                            onError={({ currentTarget }) => { currentTarget.style.display = `none` }}
+                                                        />
+                                                        <TeamTBDSVG className='player-champion' />
+                                                        <span className={` player-champion-info-level ${row.levelFlashClassName}`}>{row.player.level}</span>
+                                                    </div>
+                                                    <div className=" player-champion-info-name">
+                                                        <span>{row.metadata.summonerName}</span>
+                                                        <span className=" player-card-player-name">{getChampionDisplayName(row.metadata.championId)}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="basic-compact-name-health">
+                                                    <MiniHealthBar currentHealth={row.player.currentHealth} maxHealth={row.player.maxHealth} />
+                                                </div>
+                                            </div>
+                                        </th>
+                                        <td className="basic-compact-summary-cell">
+                                            <div className="basic-compact-summary-top">
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.killFlashClassName}`}>{row.player.kills}</div>
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.deathFlashClassName}`}>{row.player.deaths}</div>
+                                                <div className={`player-stats player-stats-kda basic-compact-stat ${row.assistFlashClassName}`}>{row.player.assists}</div>
+                                                <div className="player-stats player-stats-gold basic-compact-stat basic-compact-stat-gold">
+                                                    <span>{Number(row.player.totalGold).toLocaleString(`en-us`)}</span>
+                                                    <span className={`player-stats-gold-diff ${goldDifference > 0 ? `player-gold-positive` : goldDifference < 0 ? `player-gold-negative` : ``}`}>
+                                                        {getFormattedGoldDifference(goldDifference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="basic-compact-summary-bottom">
+                                                <div className="basic-compact-summary-items">
+                                                    <ItemsDisplay
+                                                        participantId={row.player.participantId - 1}
+                                                        lastFrame={lastDetailsFrame}
+                                                        items={items}
+                                                        patchVersion={formattedPatchVersion}
+                                                        role={row.metadata.role}
+                                                        highlightedItemIds={highlightedPurchasedItemsByParticipantId[row.player.participantId]}
+                                                        forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ), (
+                                    <tr key={`basic_red_stats_${gameIndex}_${row.player.participantId}`} className='champion-stats-row'>
+                                        <td colSpan={2}>
+                                            <span>
+                                                {getFormattedChampionStats(
+                                                    row.championDetails,
+                                                    runes,
+                                                    selectedRuneKeyByParticipantId[row.championDetails.participantId],
+                                                    (runeKey) => setSelectedRuneKeyByParticipantId((previousState) => ({
+                                                        ...previousState,
+                                                        [row.championDetails.participantId]: runeKey,
+                                                    })),
+                                                )}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                )]
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                ) : (
                 <div className="status-live-game-card-table-wrapper">
                     <table className="status-live-game-card-table">
                         <thead>
@@ -1730,6 +1977,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </tbody>
                     </table>
                 </div>
+                )
                 ) : (
                 <div className="status-live-game-card-table-wrapper status-live-game-card-table-wrapper-mirror">
                     <table className="status-live-game-card-table status-live-game-card-table-mirror">
@@ -2317,6 +2565,34 @@ function removeParticipantObjectiveBuffs(
     return changed
 }
 
+function clearHolderlessBaronPowerPlaySnapshots(
+    baronPowerPlaySnapshotByTeam: { blue: BaronPowerPlaySnapshot | null, red: BaronPowerPlaySnapshot | null },
+    baronBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+) {
+    let changed = false
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        if (baronPowerPlaySnapshotByTeam[teamKey] && baronBuffParticipantIdsByTeam[teamKey].size === 0) {
+            baronPowerPlaySnapshotByTeam[teamKey] = null
+            changed = true
+        }
+    })
+    return changed
+}
+
+function clearHolderlessElderBuffs(
+    elderBuffEndAtMsByTeam: { blue: number | null, red: number | null },
+    elderBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
+) {
+    let changed = false
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        if (elderBuffEndAtMsByTeam[teamKey] && elderBuffParticipantIdsByTeam[teamKey].size === 0) {
+            elderBuffEndAtMsByTeam[teamKey] = null
+            changed = true
+        }
+    })
+    return changed
+}
+
 function buildObjectiveBuffsByParticipantId(
     baronBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
     elderBuffParticipantIdsByTeam: ObjectiveBuffParticipantIdsByTeam,
@@ -2628,6 +2904,11 @@ function getDragonKillCount(windowFrame: WindowFrame) {
     const blueTeamDragonKillCount = Array.isArray(windowFrame.blueTeam.dragons) ? windowFrame.blueTeam.dragons.length : 0
     const redTeamDragonKillCount = Array.isArray(windowFrame.redTeam.dragons) ? windowFrame.redTeam.dragons.length : 0
     return blueTeamDragonKillCount + redTeamDragonKillCount
+}
+
+function getTeamKillCountFromParticipants(participants: WindowParticipant[] | undefined) {
+    if (!Array.isArray(participants)) return 0
+    return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
 }
 
 function normalizeDragonType(dragonType: string) {

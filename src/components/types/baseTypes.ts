@@ -281,9 +281,17 @@ export interface ObjectiveTimerBackfillSeed {
         blue: ObjectiveTimerBackfillTeamSnapshot | null;
         red: ObjectiveTimerBackfillTeamSnapshot | null;
     };
+    baronBuffParticipantIdsByTeam: {
+        blue: number[];
+        red: number[];
+    };
     elderBuffEndAtMsByTeam: {
         blue: number | null;
         red: number | null;
+    };
+    elderBuffParticipantIdsByTeam: {
+        blue: number[];
+        red: number[];
     };
 }
 
