@@ -1550,9 +1550,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
                         <thead>
                             <tr key={`${blueTeam.code.toUpperCase()}_basic_compact`}>
-                                <th className="table-top-row-champion" title="champion/team">
-                                    <span>{blueTeam.code.toUpperCase()}</span>
-                                </th>
+                                <th className="table-top-row-champion" title="champion" aria-label="champion" />
                                 <th className="basic-compact-stats-header-cell" title="stats">
                                     <div className="basic-compact-stats-header-top">
                                         <span>K</span>
@@ -1648,9 +1646,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                     <table className="status-live-game-card-table status-live-game-card-table-basic-compact">
                         <thead>
                             <tr key={`${redTeam.code.toUpperCase()}_basic_compact`}>
-                                <th className="table-top-row-champion" title="champion/team">
-                                    <span>{redTeam.code.toUpperCase()}</span>
-                                </th>
+                                <th className="table-top-row-champion" title="champion" aria-label="champion" />
                                 <th className="basic-compact-stats-header-cell" title="stats">
                                     <div className="basic-compact-stats-header-top">
                                         <span>K</span>

@@ -278,9 +278,12 @@ span.mini-current-health {
 
 .team-stats {
     color: var(--text);
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
     width: 24px;
+    line-height: 1;
 }
 
 .team-stats>span {
@@ -291,6 +294,8 @@ span.mini-current-health {
 .team-stats>svg {
     width: 24px;
     height: 24px;
+    display: block;
+    flex: 0 0 auto;
 }
 
 .team-stats-herald-icon-image {
@@ -304,9 +309,9 @@ span.mini-current-health {
 .team-stats-herald-icon-composite {
     width: 24px;
     height: 24px;
-    display: inline-block;
+    display: block;
+    flex: 0 0 auto;
     position: relative;
-    vertical-align: top;
     transform: translateY(-1px);
 }
 
@@ -1140,6 +1145,9 @@ Status dragons
     );
     --basic-compact-name-cell-height: 42px;
     --basic-compact-health-row-height: 20px;
+    --basic-compact-header-row-height: 12px;
+    --basic-compact-stat-font-size: 18px;
+    --basic-compact-gold-font-size: 16px;
     --basic-compact-row-gap: 2px;
     --basic-compact-item-row-height: 35px;
     --basic-compact-item-size: var(--basic-compact-item-row-height);
@@ -1226,6 +1234,8 @@ Status dragons
 
 .status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact .table-top-row-champion {
     width: var(--basic-compact-champion-col-width);
+    height: var(--basic-compact-header-row-height);
+    line-height: var(--basic-compact-header-row-height);
     text-align: center;
 }
 
@@ -1239,14 +1249,39 @@ Status dragons
     width: var(--basic-compact-summary-col-width);
     min-width: var(--basic-compact-summary-col-width);
     max-width: var(--basic-compact-summary-col-width);
-    padding-top: 2px;
-    padding-bottom: 2px;
+    height: var(--basic-compact-header-row-height);
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact thead {
+    --basic-compact-header-divider-bottom: 6px;
+    --basic-compact-header-divider-height: 1px;
+    --basic-compact-header-divider-color: rgba(188, 215, 255, 0.18);
+    background-image: linear-gradient(
+        var(--basic-compact-header-divider-color),
+        var(--basic-compact-header-divider-color)
+    );
+    background-repeat: no-repeat;
+    background-size: 100% var(--basic-compact-header-divider-height);
+    background-position: left bottom var(--basic-compact-header-divider-bottom);
+}
+
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-wrapper-basic-compact .status-live-game-card-table-basic-compact:nth-of-type(1) thead {
+    --basic-compact-header-divider-color: var(--blue-twitter);
+}
+
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-wrapper-basic-compact .status-live-game-card-table-basic-compact:nth-of-type(2) thead {
+    --basic-compact-header-divider-color: var(--red);
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-stats-header-top {
     display: grid;
     grid-template-columns: repeat(3, var(--basic-compact-kda-col-width)) minmax(var(--basic-compact-gold-col-width), 1fr);
     gap: calc(var(--stat-col-gap) * 2);
+    height: calc(var(--basic-compact-header-row-height) / 2);
+    line-height: calc(var(--basic-compact-header-row-height) / 2);
+    overflow: hidden;
     width: calc(var(--basic-compact-summary-col-width) * var(--basic-compact-top-row-scale));
     margin-left: auto;
     margin-right: auto;
@@ -1256,10 +1291,13 @@ Status dragons
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: calc(var(--stat-col-gap) * 2);
+    height: calc(var(--basic-compact-header-row-height) / 2);
+    line-height: calc(var(--basic-compact-header-row-height) / 2);
+    overflow: hidden;
     width: calc(var(--basic-compact-summary-col-width) * var(--basic-compact-bottom-row-scale));
     margin-left: auto;
     margin-right: auto;
-    margin-top: 2px;
+    margin-top: 0;
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-stats-header-top > span,
@@ -1319,23 +1357,23 @@ Status dragons
 .status-live-game-card-basic-compact-mode .basic-compact-stat {
     height: var(--basic-compact-kdag-row-height);
     line-height: var(--basic-compact-kdag-row-height);
-    font-size: 11px;
+    font-size: var(--basic-compact-stat-font-size);
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-stat-gold {
     gap: 1px;
     padding: 0 2px;
-    font-size: 10px;
+    font-size: var(--basic-compact-gold-font-size);
 }
 
 .status-live-game-card-basic-compact-mode .mini-health-bar > div > div {
     height: var(--basic-compact-health-row-height);
 }
 
-.status-live-game-card-basic-compact-mode .player-stats,
+.status-live-game-card-basic-compact-mode .player-stats:not(.basic-compact-stat),
 .status-live-game-card-basic-compact-mode .footer-notes,
 .status-live-game-card-basic-compact-mode span.mini-current-health {
-    font-size: 11px;
+    font-size: var(--basic-compact-stat-font-size);
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-summary-items .player-stats-items {
@@ -1374,6 +1412,36 @@ Status dragons
 .status-live-game-card-basic-compact-mode .status-live-game-card-table-wrapper-basic-compact .champion-stats-row > td {
     padding-top: 2px;
     padding-bottom: 3px;
+}
+
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-wrapper-basic-compact .champion-stats-row > td > span,
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-wrapper-basic-compact .champion-stats-content {
+    overflow: visible;
+}
+
+.status-live-game-card-basic-compact-mode .champion-stats-content {
+    gap: 4px;
+}
+
+.status-live-game-card-basic-compact-mode .rune-style-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+}
+
+.status-live-game-card-basic-compact-mode .rune-style-board {
+    gap: 8px;
+}
+
+.status-live-game-card-basic-compact-mode .rune-style-column {
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 120px;
+}
+
+.status-live-game-card-basic-compact-mode .rune-detail-panel {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .status-live-game-card-mirror-compact-mode {
@@ -2005,9 +2073,14 @@ svg.player-champion {
 
 .champion-stats-content > .footer-notes {
     margin: 0;
+    height: auto;
+    min-height: 28px;
+    line-height: 1.35;
     max-width: 100%;
     white-space: normal;
     overflow-wrap: anywhere;
+    display: inline-flex;
+    align-items: center;
 }
 
 .champion-stats-content .rune-list {
