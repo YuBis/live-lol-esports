@@ -1129,7 +1129,7 @@ Status dragons
     --basic-compact-champion-col-width: calc(16rem * 0.85);
     --basic-compact-health-col-width: 9.2rem;
     --basic-compact-items-col-width: calc(13.5rem * 0.6);
-    --basic-compact-cs-col-width: calc(2.5rem * 0.6);
+    --basic-compact-cs-col-width: calc(2.5rem * 1.2);
     --basic-compact-kda-col-width: calc(2.2rem * 1.2);
     --basic-compact-gold-col-width: 5.4rem;
     --basic-compact-top-stats-col-width: calc((var(--basic-compact-kda-col-width) * 3) + var(--basic-compact-gold-col-width) + 6px);
@@ -1140,6 +1140,7 @@ Status dragons
     --basic-compact-bottom-row-scale: 1;
     --basic-compact-table-width: calc(
         var(--basic-compact-champion-col-width)
+        + var(--basic-compact-cs-col-width)
         + var(--basic-compact-summary-col-width)
         + 20px
     );
@@ -1225,8 +1226,13 @@ Status dragons
     max-width: var(--basic-compact-champion-col-width);
 }
 
-.status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact .player-stats-row td:nth-child(2),
-.status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact .player-stats-row td:last-child {
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact .player-stats-row td:nth-child(2) {
+    width: var(--basic-compact-cs-col-width);
+    min-width: var(--basic-compact-cs-col-width);
+    max-width: var(--basic-compact-cs-col-width);
+}
+
+.status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact .player-stats-row td:nth-child(3) {
     width: var(--basic-compact-summary-col-width);
     min-width: var(--basic-compact-summary-col-width);
     max-width: var(--basic-compact-summary-col-width);
@@ -1252,6 +1258,21 @@ Status dragons
     height: var(--basic-compact-header-row-height);
     padding-top: 0;
     padding-bottom: 0;
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-header-cell {
+    width: var(--basic-compact-cs-col-width);
+    min-width: var(--basic-compact-cs-col-width);
+    max-width: var(--basic-compact-cs-col-width);
+    height: var(--basic-compact-header-row-height);
+    line-height: var(--basic-compact-header-row-height);
+    padding-top: 0;
+    padding-bottom: 0;
+    text-align: center;
+    font-size: 10px;
+    color: transparent;
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact thead {
@@ -1333,6 +1354,48 @@ Status dragons
 .status-live-game-card-basic-compact-mode .basic-compact-summary-cell {
     padding-top: 0;
     padding-bottom: 0;
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-cell {
+    padding: 0;
+    overflow: hidden;
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-stack {
+    display: grid;
+    grid-template-rows: calc(var(--basic-compact-kdag-row-height) + var(--basic-compact-row-gap)) var(--basic-compact-item-row-height);
+    width: 100%;
+    height: calc(var(--basic-compact-name-cell-height) + var(--basic-compact-health-row-height) + var(--basic-compact-row-gap));
+    box-sizing: border-box;
+    overflow: hidden;
+    border-left: 1px solid rgba(188, 215, 255, 0.28);
+    border-right: 1px solid rgba(188, 215, 255, 0.28);
+    border-bottom: 1px solid rgba(188, 215, 255, 0.28);
+    background: rgba(6, 13, 23, 0.42);
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-label,
+.status-live-game-card-basic-compact-mode .basic-compact-cs-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    line-height: 1;
+    box-sizing: border-box;
+    background: rgba(6, 13, 23, 0.42);
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-label {
+    border-bottom: 1px solid rgba(188, 215, 255, 0.28);
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 0.02em;
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-value {
+    font-size: var(--basic-compact-stat-font-size);
+    line-height: 1;
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-summary-top {
@@ -2420,6 +2483,7 @@ svg.player-champion {
     position: absolute;
     inset: 0;
     --toast-top-offset: 0.75rem;
+    --toast-kill-feed-scale: 1.5;
     pointer-events: none;
     z-index: 20;
 }
@@ -2453,9 +2517,17 @@ svg.player-champion {
     pointer-events: none;
 }
 
+.live-api-watcher-toast-layer .Toastify__toast-body {
+    margin: 0;
+    width: 100%;
+    justify-content: flex-start;
+}
+
 .toast-watcher {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
+    width: 100%;
 }
 
 .toast-image {
@@ -2465,6 +2537,56 @@ svg.player-champion {
     height: 2rem;
 
     margin-right: 1rem;
+}
+
+.toast-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.toast-watcher-kill-feed {
+    align-items: flex-end;
+    justify-content: center;
+    gap: calc(0.35rem * var(--toast-kill-feed-scale));
+}
+
+.toast-watcher-kill-feed .toast-image {
+    margin-right: 0;
+}
+
+.toast-kill-feed-icons {
+    display: flex;
+    align-items: flex-end;
+    gap: calc(0.2rem * var(--toast-kill-feed-scale));
+}
+
+.toast-kill-feed-assistants:empty {
+    display: none;
+}
+
+.toast-image-assister {
+    width: calc(1.2rem * var(--toast-kill-feed-scale));
+    height: calc(1.2rem * var(--toast-kill-feed-scale));
+}
+
+.toast-image-killer,
+.toast-image-victim {
+    width: calc(2rem * var(--toast-kill-feed-scale));
+    height: calc(2rem * var(--toast-kill-feed-scale));
+}
+
+.toast-kill-feed-divider {
+    width: calc(1.24rem * var(--toast-kill-feed-scale));
+    height: calc(1.24rem * var(--toast-kill-feed-scale));
+    align-self: center;
+    flex-shrink: 0;
+    margin: 0 calc(0.1rem * var(--toast-kill-feed-scale));
+}
+
+.toast-kill-feed-divider path,
+.toast-kill-feed-divider g {
+    fill: #fff;
 }
 
 .game-selector {

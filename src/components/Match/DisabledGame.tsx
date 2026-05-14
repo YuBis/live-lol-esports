@@ -449,6 +449,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         <thead>
                             <tr key={`${blueTeam.code.toUpperCase()}_basic_compact`}>
                                 <th className="table-top-row-champion" title="champion" aria-label="champion" />
+                                <th className="basic-compact-cs-header-cell" title="creep score" aria-label="creep score" />
                                 <th className="basic-compact-stats-header-cell" title="stats">
                                     <div className="basic-compact-stats-header-top">
                                         <span>K</span>
@@ -488,6 +489,12 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                             </div>
                                         </th>
+                                        <td className="basic-compact-cs-cell">
+                                            <div className="basic-compact-cs-stack">
+                                                <div className="basic-compact-cs-label">CS</div>
+                                                <div className="player-stats player-stats-cs basic-compact-cs-value">{player.creepScore}</div>
+                                            </div>
+                                        </td>
                                         <td className="basic-compact-summary-cell">
                                             <div className="basic-compact-summary-top">
                                                 <div className="player-stats player-stats-kda basic-compact-stat">{player.kills}</div>
@@ -509,7 +516,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     </tr>
                                 ), (
                                     <tr key={`disabled_basic_blue_stats_${gameIndex}_${player.participantId}`} className='champion-stats-row'>
-                                        <td colSpan={2}>
+                                        <td colSpan={3}>
                                             <span />
                                         </td>
                                     </tr>
@@ -522,6 +529,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         <thead>
                             <tr key={`${redTeam.code.toUpperCase()}_basic_compact`}>
                                 <th className="table-top-row-champion" title="champion" aria-label="champion" />
+                                <th className="basic-compact-cs-header-cell" title="creep score" aria-label="creep score" />
                                 <th className="basic-compact-stats-header-cell" title="stats">
                                     <div className="basic-compact-stats-header-top">
                                         <span>K</span>
@@ -561,6 +569,12 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                                 </div>
                                             </div>
                                         </th>
+                                        <td className="basic-compact-cs-cell">
+                                            <div className="basic-compact-cs-stack">
+                                                <div className="basic-compact-cs-label">CS</div>
+                                                <div className="player-stats player-stats-cs basic-compact-cs-value">{player.creepScore}</div>
+                                            </div>
+                                        </td>
                                         <td className="basic-compact-summary-cell">
                                             <div className="basic-compact-summary-top">
                                                 <div className="player-stats player-stats-kda basic-compact-stat">{player.kills}</div>
@@ -582,7 +596,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                                     </tr>
                                 ), (
                                     <tr key={`disabled_basic_red_stats_${gameIndex}_${player.participantId}`} className='champion-stats-row'>
-                                        <td colSpan={2}>
+                                        <td colSpan={3}>
                                             <span />
                                         </td>
                                     </tr>

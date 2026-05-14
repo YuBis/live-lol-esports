@@ -4,6 +4,7 @@ import { GameMetadata, Team, WindowFrame, WindowParticipant } from "../types/bas
 
 import { useEffect, useRef } from "react";
 import { ToastContainer, toast } from 'react-toastify';
+import { ReactComponent as KillFeedSVG } from '../../assets/images/kill.svg';
 
 const kill = require("../../assets/audios/champion_slain.ogg");
 const first_blood = require("../../assets/audios/first_blood.ogg");
@@ -62,10 +63,13 @@ type StatusWatcher = {
 type ToastEvent = {
     blueTeam: boolean;
     sound: string;
-    message: string;
-    image: string;
+    message?: string;
+    image?: string;
     diff?: number;
     eventType?: "kill";
+    assistants?: string[];
+    killers?: string[];
+    victims?: string[];
 }
 
 export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata, championsUrlWithPatchVersion, blueTeam, redTeam }: Props) {
@@ -164,30 +168,32 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                 toastQueue.push({ blueTeam: false, sound: tower_blue.default, message: "\uD0C0\uC6CC \uD30C\uAD34", image: trueRedTeam.image })
             }
 
-            for (let i = 0; i < status.participants.blue.length; i++) {
-                if (status.participants.blue[i].kills !== lastWindowFrame.blueTeam.participants[i].kills) {
-                    toastQueue.push({
-                        blueTeam: true,
-                        sound: kill.default,
-                        message: "\uCC54\uD53C\uC5B8 \uCC98\uCE58",
-                        image: `${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[status.participants.blue[i].participantId - 1].championId}.png`,
-                        diff: lastWindowFrame.blueTeam.participants[i].kills - status.participants.blue[i].kills,
-                        eventType: "kill",
-                    })
-                }
+            const blueKillToastEvent = buildKillToastEvent(
+                true,
+                status.participants.blue,
+                lastWindowFrame.blueTeam.participants,
+                gameMetadata.blueTeamMetadata.participantMetadata,
+                status.participants.red,
+                lastWindowFrame.redTeam.participants,
+                gameMetadata.redTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+            if (blueKillToastEvent) {
+                toastQueue.push(blueKillToastEvent)
             }
 
-            for (let i = 0; i < status.participants.red.length; i++) {
-                if (status.participants.red[i].kills !== lastWindowFrame.redTeam.participants[i].kills) {
-                    toastQueue.push({
-                        blueTeam: false,
-                        sound: kill.default,
-                        message: "\uCC54\uD53C\uC5B8 \uCC98\uCE58",
-                        image: `${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[status.participants.red[i].participantId - 6].championId}.png`,
-                        diff: lastWindowFrame.redTeam.participants[i].kills - status.participants.red[i].kills,
-                        eventType: "kill",
-                    })
-                }
+            const redKillToastEvent = buildKillToastEvent(
+                false,
+                status.participants.red,
+                lastWindowFrame.redTeam.participants,
+                gameMetadata.redTeamMetadata.participantMetadata,
+                status.participants.blue,
+                lastWindowFrame.blueTeam.participants,
+                gameMetadata.blueTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+            if (redKillToastEvent) {
+                toastQueue.push(redKillToastEvent)
             }
 
             const blueDeathIncreaseEvents = getDeathIncreaseToastEvents(
@@ -272,14 +278,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
             soundAlreadyPlaying = true
         }
         toastQueue.forEach((toastEvent) => {
-            createToast(
-                toastEvent.blueTeam,
-                soundAlreadyPlaying,
-                toastEvent.sound,
-                toastEvent.message,
-                toastEvent.image,
-                toastEvent.diff
-            );
+            createToast(toastEvent, soundAlreadyPlaying);
             soundAlreadyPlaying = true;
         });
 
@@ -303,41 +302,155 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
     );
 }
 
-function createToast(blueTeam: boolean, soundIsPlaying: boolean, sound: string, message: string, image: string, diff?: number) {
+function createToast(toastEvent: ToastEvent, soundIsPlaying: boolean) {
     if (!soundIsPlaying) {
-        playSound(sound)
+        playSound(toastEvent.sound)
     }
 
-    let toastId = `${blueTeam}_${image}_${message}_${diff}`;
-    if (blueTeam) {
-        toast.info(
-            <div className="toast-watcher">
-                <div className="toast-image">
-                    <img src={image} alt="blue team" />
-                </div>
-                <h4 style={{ color: "#FFF" }}>{message}</h4>
-            </div>
-            , {
-                pauseOnHover: false,
-                pauseOnFocusLoss: false,
-                position: toast.POSITION.TOP_LEFT,
-                toastId: toastId,
-            }
-        )
-    } else {
-        toast.error(
-            <div className="toast-watcher">
-                <img className="toast-image" src={image} alt="red team" />
-                <h4 style={{ color: "#FFF" }}>{message}</h4>
-            </div>
-            , {
-                pauseOnHover: false,
-                pauseOnFocusLoss: false,
-                position: toast.POSITION.TOP_RIGHT,
-                toastId: toastId,
-            }
-        )
+    const isKillToast = isKillToastEvent(toastEvent)
+    const toastOptions: any = {
+        pauseOnHover: false,
+        pauseOnFocusLoss: false,
+        position: toastEvent.blueTeam ? toast.POSITION.TOP_LEFT : toast.POSITION.TOP_RIGHT,
     }
+
+    if (!isKillToast) {
+        toastOptions.toastId = `${toastEvent.blueTeam}_${toastEvent.image || ""}_${toastEvent.message || ""}_${toastEvent.diff}`
+    }
+
+    const content = isKillToast ? (
+        <div className="toast-watcher toast-watcher-kill-feed">
+            <div className="toast-kill-feed-icons toast-kill-feed-assistants">
+                {toastEvent.assistants.map((image, index) => (
+                    <img key={`assist_${index}_${image}`} className="toast-image toast-image-assister" src={image} alt="assist" />
+                ))}
+            </div>
+            <div className="toast-kill-feed-icons toast-kill-feed-killers">
+                {toastEvent.killers.map((image, index) => (
+                    <img key={`killer_${index}_${image}`} className="toast-image toast-image-killer" src={image} alt="killer" />
+                ))}
+            </div>
+            <KillFeedSVG className="toast-kill-feed-divider" />
+            <div className="toast-kill-feed-icons toast-kill-feed-victims">
+                {toastEvent.victims.map((image, index) => (
+                    <img key={`victim_${index}_${image}`} className="toast-image toast-image-victim" src={image} alt="victim" />
+                ))}
+            </div>
+        </div>
+    ) : (
+        <div className="toast-watcher">
+            <div className="toast-image">
+                <img src={toastEvent.image} alt={toastEvent.blueTeam ? "blue team" : "red team"} />
+            </div>
+            <h4 style={{ color: "#FFF" }}>{toastEvent.message}</h4>
+        </div>
+    )
+
+    if (toastEvent.blueTeam) {
+        toast.info(content, toastOptions)
+    } else {
+        toast.error(content, toastOptions)
+    }
+}
+
+function isKillToastEvent(toastEvent: ToastEvent): toastEvent is ToastEvent & Required<Pick<ToastEvent, "assistants" | "killers" | "victims">> {
+    return toastEvent.eventType === "kill"
+        && Array.isArray(toastEvent.assistants)
+        && Array.isArray(toastEvent.killers)
+        && Array.isArray(toastEvent.victims)
+}
+
+function buildKillToastEvent(
+    blueTeam: boolean,
+    previousTeamParticipants: WindowParticipant[],
+    nextTeamParticipants: WindowParticipant[],
+    teamParticipantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
+    previousOpponentParticipants: WindowParticipant[],
+    nextOpponentParticipants: WindowParticipant[],
+    opponentParticipantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
+    championsUrlWithPatchVersion: string,
+): ToastEvent | null {
+    const killers = getChampionIconsByDelta(
+        previousTeamParticipants,
+        nextTeamParticipants,
+        teamParticipantMetadata,
+        championsUrlWithPatchVersion,
+        "kills",
+    )
+    const assistants = getChampionIconsByDelta(
+        previousTeamParticipants,
+        nextTeamParticipants,
+        teamParticipantMetadata,
+        championsUrlWithPatchVersion,
+        "assists",
+    )
+    const victims = getChampionIconsByDelta(
+        previousOpponentParticipants,
+        nextOpponentParticipants,
+        opponentParticipantMetadata,
+        championsUrlWithPatchVersion,
+        "deaths",
+    )
+
+    if (killers.length === 0 || victims.length === 0) {
+        return null
+    }
+
+    return {
+        blueTeam,
+        sound: kill.default,
+        eventType: "kill",
+        assistants,
+        killers,
+        victims,
+        diff: killers.length + victims.length,
+    }
+}
+
+function getChampionIconsByDelta(
+    previousParticipants: WindowParticipant[],
+    nextParticipants: WindowParticipant[],
+    participantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
+    championsUrlWithPatchVersion: string,
+    deltaKey: "kills" | "assists" | "deaths",
+): string[] {
+    const participantCount = Math.min(previousParticipants.length, nextParticipants.length)
+    const championIcons: string[] = []
+
+    for (let i = 0; i < participantCount; i++) {
+        const delta = Math.max(
+            0,
+            Number(nextParticipants[i][deltaKey] || 0) - Number(previousParticipants[i][deltaKey] || 0)
+        )
+        if (delta === 0) {
+            continue
+        }
+
+        const participantId = Number(nextParticipants[i].participantId || previousParticipants[i].participantId)
+        const championIcon = getChampionIconForParticipant(participantId, participantMetadata, championsUrlWithPatchVersion)
+        if (!championIcon) {
+            continue
+        }
+
+        for (let count = 0; count < delta; count++) {
+            championIcons.push(championIcon)
+        }
+    }
+
+    return championIcons
+}
+
+function getChampionIconForParticipant(
+    participantId: number,
+    participantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
+    championsUrlWithPatchVersion: string,
+): string {
+    const matchedMetadata = participantMetadata.find((metadata) => Number(metadata.participantId) === Number(participantId))
+    const fallbackMetadata = matchedMetadata || participantMetadata[0]
+    if (!fallbackMetadata) {
+        return ""
+    }
+    return `${championsUrlWithPatchVersion}${fallbackMetadata.championId}.png`
 }
 
 function playSound(sound: string) {
