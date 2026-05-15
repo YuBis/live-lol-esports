@@ -52,6 +52,7 @@ import {
 type Props = {
     firstWindowFrame: WindowFrame,
     lastWindowFrame: WindowFrame,
+    playbackTimestamp?: string,
     lastDetailsFrame: DetailsFrame,
     gameIndex: number,
     gameMetadata: GameMetadata,
@@ -67,6 +68,12 @@ type Props = {
     backfillStatus?: `idle` | `running` | `completed`,
     inferredHeraldKillCounts?: { blue: number, red: number },
     objectiveTimerBackfillSeed?: ObjectiveTimerBackfillSeed,
+    debugSimulationModeEnabled?: boolean,
+    debugSimulationRunning?: boolean,
+    onDebugSimulationModeChange?: (isEnabled: boolean) => void,
+    onDebugSimulationToggle?: () => void,
+    debugSimulationJumpMinutes?: number[],
+    onDebugSimulationJumpToMinute?: (targetMinute: number) => void,
 }
 
 type TeamKey = `blue` | `red`
@@ -148,7 +155,7 @@ const PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS = new Set<number>(
 const PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055, 2138, 2139, 2140]
 
-export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, objectiveTimerBackfillSeed }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, objectiveTimerBackfillSeed, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -157,7 +164,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const [deathTimerSecondsByParticipantId, setDeathTimerSecondsByParticipantId] = useState<{ [participantId: number]: number }>({})
     const [selectedRuneKeyByParticipantId, setSelectedRuneKeyByParticipantId] = useState<{ [participantId: number]: string }>({})
     const [mirrorExpandedParticipantIds, setMirrorExpandedParticipantIds] = useState<number[]>([])
-    const [objectiveTimerTickMs, setObjectiveTimerTickMs] = useState<number>(Date.now())
     const [baronPowerPlayByTeam, setBaronPowerPlayByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
     const [baronPowerPlayRemainingSecondsByTeam, setBaronPowerPlayRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
     const [elderBuffRemainingSecondsByTeam, setElderBuffRemainingSecondsByTeam] = useState<{ blue: number | null, red: number | null }>({ blue: null, red: null })
@@ -188,7 +194,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         blue: getNormalizedDragonTypes(lastWindowFrame.blueTeam.dragons),
         red: getNormalizedDragonTypes(lastWindowFrame.redTeam.dragons),
     })
-    const lastWindowFrameSyncedAtMsRef = useRef<number>(Date.now())
     const elderBuffEndAtMsByTeamRef = useRef<{ blue: number | null, red: number | null }>({
         blue: null,
         red: null,
@@ -209,6 +214,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
+    const effectiveLastWindowTimestamp = playbackTimestamp || lastWindowFrame.rfc460Timestamp
 
     useEffect(() => {
         return applyScoreboardLayoutBodyClassNames(scoreboardLayoutMode)
@@ -237,17 +243,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [])
 
     useEffect(() => {
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const frameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
         if (!Number.isFinite(frameTimestampMs)) return
         const participantsById = new Map<number, WindowParticipant>(
             [...lastWindowFrame.blueTeam.participants, ...lastWindowFrame.redTeam.participants]
                 .map((participant) => [participant.participantId, participant]),
         )
 
-        const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
-            ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
-            : 0
-        const effectiveFrameTimestampMs = frameTimestampMs + localElapsedSinceLastWindowMs
+        const effectiveFrameTimestampMs = frameTimestampMs
         const nextDeathTimerSecondsByParticipantId: { [participantId: number]: number } = {}
 
         deathTimerEndAtMsByParticipantIdRef.current.forEach((deathTimerEndAtMs, participantId) => {
@@ -273,25 +276,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 : nextDeathTimerSecondsByParticipantId
         )
     }, [
-        objectiveTimerTickMs,
-        lastWindowFrame.rfc460Timestamp,
-        lastWindowFrame.gameState,
+        effectiveLastWindowTimestamp,
         lastWindowFrame.blueTeam.participants,
         lastWindowFrame.redTeam.participants,
     ])
-
-    useEffect(() => {
-        const objectiveTickerIntervalId = setInterval(() => {
-            setObjectiveTimerTickMs(Date.now())
-        }, 1000)
-
-        return () => clearInterval(objectiveTickerIntervalId)
-    }, [])
-
-    useEffect(() => {
-        lastWindowFrameSyncedAtMsRef.current = Date.now()
-        setObjectiveTimerTickMs(Date.now())
-    }, [lastWindowFrame.rfc460Timestamp])
 
     useEffect(() => {
         previousKdaByParticipantIdRef.current.clear()
@@ -335,11 +323,19 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     useEffect(() => {
         if (!objectiveTimerBackfillSeed || hasAppliedObjectiveTimerBackfillRef.current) return
 
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const frameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
         if (!Number.isFinite(frameTimestampMs)) return
 
-        lastBaronKillTimestampMsRef.current = objectiveTimerBackfillSeed.lastBaronKillTimestampMs
-        lastDragonKillTimestampMsRef.current = objectiveTimerBackfillSeed.lastDragonKillTimestampMs
+        const seededLastBaronKillTimestampMs = objectiveTimerBackfillSeed.lastBaronKillTimestampMs
+        const seededLastDragonKillTimestampMs = objectiveTimerBackfillSeed.lastDragonKillTimestampMs
+        lastBaronKillTimestampMsRef.current = (
+            seededLastBaronKillTimestampMs !== null
+            && seededLastBaronKillTimestampMs <= frameTimestampMs
+        ) ? seededLastBaronKillTimestampMs : null
+        lastDragonKillTimestampMsRef.current = (
+            seededLastDragonKillTimestampMs !== null
+            && seededLastDragonKillTimestampMs <= frameTimestampMs
+        ) ? seededLastDragonKillTimestampMs : null
 
         const blueTeamLead = Number(lastWindowFrame.blueTeam.totalGold || 0) - Number(lastWindowFrame.redTeam.totalGold || 0)
         const redTeamLead = -blueTeamLead
@@ -349,6 +345,14 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
             const seedSnapshot = objectiveTimerBackfillSeed.baronPowerPlaySnapshotByTeam[teamKey]
             if (!seedSnapshot) {
+                baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
+                baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
+                return
+            }
+
+            // Backfill seed may describe a later baron than the current replay frame.
+            // In that case, keep this team inactive until the replay reaches start time.
+            if (frameTimestampMs < seedSnapshot.startedAtMs) {
                 baronPowerPlaySnapshotByTeamRef.current[teamKey] = null
                 baronBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
@@ -399,6 +403,13 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                 elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
                 return
             }
+
+            const elderBuffStartAtMs = elderBuffEndAtMs - ELDER_DRAGON_BUFF_DURATION_MS
+            if (frameTimestampMs < elderBuffStartAtMs) {
+                elderBuffParticipantIdsByTeamRef.current[teamKey] = new Set<number>()
+                return
+            }
+
             const remainingSeconds = Math.max(0, Math.ceil((elderBuffEndAtMs - frameTimestampMs) / 1000))
             if (remainingSeconds <= 0) {
                 elderBuffEndAtMsByTeamRef.current[teamKey] = null
@@ -439,7 +450,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     }, [
         objectiveTimerBackfillSeed,
         lastWindowFrame,
-        lastWindowFrame.rfc460Timestamp,
+        effectiveLastWindowTimestamp,
         lastWindowFrame.blueTeam.totalGold,
         lastWindowFrame.redTeam.totalGold,
         lastWindowFrame.blueTeam.barons,
@@ -449,7 +460,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     ])
 
     useEffect(() => {
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const frameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
         if (!Number.isFinite(frameTimestampMs)) return
         if (lastProcessedObjectiveFrameTimestampMsRef.current === frameTimestampMs) return
         lastProcessedObjectiveFrameTimestampMsRef.current = frameTimestampMs
@@ -586,7 +597,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             elderBuffParticipantIdsByTeamRef.current,
         ))
     }, [
-        lastWindowFrame.rfc460Timestamp,
+        effectiveLastWindowTimestamp,
         lastWindowFrame.blueTeam.totalGold,
         lastWindowFrame.redTeam.totalGold,
         lastWindowFrame.blueTeam.barons,
@@ -600,13 +611,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     ])
 
     useEffect(() => {
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const frameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
         if (!Number.isFinite(frameTimestampMs)) return
 
-        const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
-            ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
-            : 0
-        const effectiveFrameTimestampMs = frameTimestampMs + localElapsedSinceLastWindowMs
+        const effectiveFrameTimestampMs = frameTimestampMs
         const blueTeamLead = Number(lastWindowFrame.blueTeam.totalGold || 0) - Number(lastWindowFrame.redTeam.totalGold || 0)
         const redTeamLead = -blueTeamLead
 
@@ -662,9 +670,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             elderBuffParticipantIdsByTeamRef.current,
         ))
     }, [
-        objectiveTimerTickMs,
-        lastWindowFrame.rfc460Timestamp,
-        lastWindowFrame.gameState,
+        effectiveLastWindowTimestamp,
         lastWindowFrame.blueTeam.totalGold,
         lastWindowFrame.redTeam.totalGold,
     ])
@@ -676,9 +682,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
             ...lastWindowFrame.blueTeam.participants,
             ...lastWindowFrame.redTeam.participants,
         ]
-        const frameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
+        const frameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
         const normalizedFrameTimestampMs = Number.isFinite(frameTimestampMs) ? frameTimestampMs : Date.now()
-        const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, lastWindowFrame.rfc460Timestamp)
+        const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, effectiveLastWindowTimestamp)
         let objectiveBuffsChanged = false
 
         participants.forEach((participant) => {
@@ -864,7 +870,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         })
     }, [
         firstWindowFrame.rfc460Timestamp,
-        lastWindowFrame.rfc460Timestamp,
+        effectiveLastWindowTimestamp,
         lastWindowFrame.blueTeam.participants,
         lastWindowFrame.redTeam.participants,
     ])
@@ -1031,16 +1037,11 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         : backfillStatus === `completed`
             ? `Backfill completed: historical items synced.`
             : `Backfill pending: waiting for timeline sync trigger.`
-    const parsedCurrentFrameTimestampMs = Date.parse(lastWindowFrame.rfc460Timestamp)
-    const localElapsedSinceLastWindowMs = lastWindowFrame.gameState === `in_game`
-        ? Math.max(0, objectiveTimerTickMs - lastWindowFrameSyncedAtMsRef.current)
-        : 0
-    const currentFrameTimestampMs = Number.isFinite(parsedCurrentFrameTimestampMs)
-        ? parsedCurrentFrameTimestampMs + localElapsedSinceLastWindowMs
-        : parsedCurrentFrameTimestampMs
+    const parsedCurrentFrameTimestampMs = Date.parse(effectiveLastWindowTimestamp)
+    const currentFrameTimestampMs = parsedCurrentFrameTimestampMs
     const currentFrameTimestamp = Number.isFinite(currentFrameTimestampMs)
         ? new Date(currentFrameTimestampMs).toISOString()
-        : lastWindowFrame.rfc460Timestamp
+        : effectiveLastWindowTimestamp
     const elapsedGameTimeSeconds = getElapsedGameTimeSeconds(firstWindowFrame.rfc460Timestamp, currentFrameTimestamp)
     const baronObjectiveStatusLabel = getBaronObjectiveStatusLabel(
         elapsedGameTimeSeconds,
@@ -1398,15 +1399,17 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
     const isMirrorScoreboardLayout = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
     const isBasicCompactScoreboardLayout = isBasicCompactScoreboardLayoutMode(scoreboardLayoutMode)
     const scoreboardLayoutModeClassName = getScoreboardLayoutModeClassName(scoreboardLayoutMode)
+    const blueTeamIsWinner = outcome?.[0]?.outcome === `win`
+    const redTeamIsWinner = outcome?.[1]?.outcome === `win`
 
     return (
         <div className={`status-live-game-card ${scoreboardLayoutModeClassName}`}>
-            <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} />
+            <GameDetails eventDetails={eventDetails} gameIndex={gameIndex} currentWindowFrame={lastWindowFrame} />
             <div className="status-live-game-card-content">
                 {/* {eventDetails ? (<h3>{eventDetails?.league.name}</h3>) : null} */}
                 <div className="live-game-stats-header">
                     <div className="live-game-stats-header-team-images">
-                        <div className="live-game-card-team">
+                        <div className={`live-game-card-team ${blueTeamIsWinner ? `live-game-card-team-winner` : ``}`}>
                             {blueTeam.code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image" />) : (<img className="live-game-card-team-image" src={blueTeam.image} alt={blueTeam.name} />)}
                             <span>
                                 <h4>
@@ -1452,7 +1455,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                                 </div>
                             ) : null}
                         </h1>
-                        <div className="live-game-card-team">
+                        <div className={`live-game-card-team ${redTeamIsWinner ? `live-game-card-team-winner` : ``}`}>
                             {redTeam.code === "TBD" ? (<TeamTBDSVG className="live-game-card-team-image" />) : (<img className="live-game-card-team-image" src={redTeam.image} alt={redTeam.name} />)}
                             <span>
                                 <h4>
@@ -2168,6 +2171,40 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
                         </option>
                     ))}
                 </select>
+                <span className="footer-notes">
+                    <button
+                        type="button"
+                        className="copy-champion-names"
+                        onClick={() => onDebugSimulationModeChange?.(!debugSimulationModeEnabled)}
+                        aria-pressed={debugSimulationModeEnabled}
+                    >
+                        {debugSimulationModeEnabled ? `디버그 모드 ON` : `디버그 모드 OFF`}
+                    </button>
+                </span>
+                {debugSimulationModeEnabled ? (
+                    <span className="footer-notes">
+                        <button
+                            type="button"
+                            className="copy-champion-names"
+                            onClick={() => onDebugSimulationToggle?.()}
+                        >
+                            {debugSimulationRunning ? `경기 시뮬레이션 중지` : `경기 시뮬레이션`}
+                        </button>
+                    </span>
+                ) : null}
+                {debugSimulationModeEnabled && debugSimulationRunning && debugSimulationJumpMinutes.length > 0
+                    ? debugSimulationJumpMinutes.map((targetMinute) => (
+                        <span className="footer-notes" key={`debug_sim_jump_${targetMinute}`}>
+                            <button
+                                type="button"
+                                className="copy-champion-names"
+                                onClick={() => onDebugSimulationJumpToMinute?.(targetMinute)}
+                            >
+                                {`${targetMinute}분`}
+                            </button>
+                        </span>
+                    ))
+                    : null}
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>
@@ -2187,7 +2224,6 @@ export function Game({ firstWindowFrame, lastWindowFrame, lastDetailsFrame, game
         </div>
     );
 }
-
 function HeaderStats(teamStats: TeamStats, teamColor: string, inferredHeraldKills: number) {
     return (
         <div className={teamColor}>

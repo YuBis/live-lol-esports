@@ -56,6 +56,12 @@ type Props = {
         [championId: string]: string;
     },
     inferredHeraldKillCounts?: { blue: number, red: number },
+    debugSimulationModeEnabled?: boolean,
+    debugSimulationRunning?: boolean,
+    onDebugSimulationModeChange?: (isEnabled: boolean) => void,
+    onDebugSimulationToggle?: () => void,
+    debugSimulationJumpMinutes?: number[],
+    onDebugSimulationJumpToMinute?: (targetMinute: number) => void,
 }
 type DragonIconRenderItem = {
     type: `dragon` | `soul`,
@@ -71,7 +77,7 @@ const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
     mountain: MountainDragonSoulImage,
 }
 
-export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 } }: Props) {
+export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 }, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => getInitialScoreboardLayoutMode())
@@ -905,6 +911,40 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </option>
                     ))}
                 </select>
+                <span className="footer-notes">
+                    <button
+                        type="button"
+                        className="copy-champion-names"
+                        onClick={() => onDebugSimulationModeChange?.(!debugSimulationModeEnabled)}
+                        aria-pressed={debugSimulationModeEnabled}
+                    >
+                        {debugSimulationModeEnabled ? `디버그 모드 ON` : `디버그 모드 OFF`}
+                    </button>
+                </span>
+                {debugSimulationModeEnabled ? (
+                    <span className="footer-notes">
+                        <button
+                            type="button"
+                            className="copy-champion-names"
+                            onClick={() => onDebugSimulationToggle?.()}
+                        >
+                            {debugSimulationRunning ? `경기 시뮬레이션 중지` : `경기 시뮬레이션`}
+                        </button>
+                    </span>
+                ) : null}
+                {debugSimulationModeEnabled && debugSimulationRunning && debugSimulationJumpMinutes.length > 0
+                    ? debugSimulationJumpMinutes.map((targetMinute) => (
+                        <span className="footer-notes" key={`debug_sim_jump_${targetMinute}`}>
+                            <button
+                                type="button"
+                                className="copy-champion-names"
+                                onClick={() => onDebugSimulationJumpToMinute?.(targetMinute)}
+                            >
+                                {`${targetMinute}분`}
+                            </button>
+                        </span>
+                    ))
+                    : null}
                 {getStreamDropdown(eventDetails)}
                 <div className='streamDiv'>
                     <span className='footer-notes'>Stream Enabled:</span>

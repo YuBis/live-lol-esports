@@ -77,6 +77,13 @@ const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const OBJECTIVE_TIMER_BACKFILL_LOOKBACK_MS = 12 * 60 * 1000
 const BARON_POWER_PLAY_DURATION_MS = 180 * 1000
 const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
+const WINDOW_PLAYBACK_IDLE_TICK_INTERVAL_MS = 50
+const WINDOW_PLAYBACK_MIN_ACTIVE_TICK_INTERVAL_MS = 16
+const WINDOW_PLAYBACK_MAX_ACTIVE_TICK_INTERVAL_MS = 1000
+const WINDOW_PLAYBACK_DELAY_MS = 20 * 1000
+const WINDOW_PLAYBACK_BUFFER_RETENTION_MS = 90 * 1000
+const DEBUG_SIMULATION_JUMP_STEP_MINUTES = 5
+const ONE_MINUTE_MS = 60 * 1000
 const TRINKET_FALLBACK_INFERENCE_MIN_GAME_TIME_MS = 30 * 1000
 const MAGICAL_FOOTWEAR_RUNE_ID = 8304
 const SLIGHTLY_MAGICAL_FOOTWEAR_ITEM_ID = 2422
@@ -104,6 +111,10 @@ export function Match({ match }: MatchRouteProps) {
     const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>(`idle`);
     const [inferredHeraldKillCounts, setInferredHeraldKillCounts] = useState<{ blue: number, red: number }>({ blue: 0, red: 0 });
     const [objectiveTimerBackfillSeed, setObjectiveTimerBackfillSeed] = useState<ObjectiveTimerBackfillSeed>();
+    const [playbackTimestamp, setPlaybackTimestamp] = useState<string>(``)
+    const [isDebugSimulationModeEnabled, setIsDebugSimulationModeEnabled] = useState<boolean>(false)
+    const [isDebugSimulationRunning, setIsDebugSimulationRunning] = useState<boolean>(false)
+    const [debugSimulationJumpMinuteOptions, setDebugSimulationJumpMinuteOptions] = useState<number[]>([])
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
@@ -114,6 +125,12 @@ export function Match({ match }: MatchRouteProps) {
     const currentGameIndexRef = useRef<number>(1);
     const lastFrameSuccessRef = useRef<boolean>(false);
     const currentTimestampRef = useRef<string>(``);
+    const latestWindowFrameTimestampRef = useRef<string>(``);
+    const maxObservedWindowFrameTimestampByGameIdRef = useRef<Map<string, string>>(new Map())
+    const bufferedWindowFramesByTimestampRef = useRef<Map<string, WindowFrame>>(new Map());
+    const renderedWindowFrameTimestampRef = useRef<string>(``);
+    const renderedWindowFrameRef = useRef<WindowFrame>();
+    const playbackTimestampRef = useRef<string>(``)
     const lastDetailsTimestampRef = useRef<string>(``);
     const firstDetailsTimestampRef = useRef<string>(``);
     const lastDetailsFrameRef = useRef<DetailsFrame>();
@@ -131,11 +148,55 @@ export function Match({ match }: MatchRouteProps) {
     const firstWindowTimestampRef = useRef<string>(``)
     const firstWindowReceivedRef = useRef<boolean>(false);
     const championNamePatchRef = useRef<string>(``);
+    const isDebugSimulationModeEnabledRef = useRef<boolean>(false)
+    const isDebugSimulationRunningRef = useRef<boolean>(false)
+    const debugSimulationStartedAtMsRef = useRef<number>(0)
+    const debugSimulationGameStartTimestampRef = useRef<string>(``)
+    const debugSimulationGameIdRef = useRef<string>(``)
+    const pollingSessionIdRef = useRef<number>(0)
 
     useEffect(() => {
+        isDebugSimulationModeEnabledRef.current = isDebugSimulationModeEnabled
+        if (!isDebugSimulationModeEnabled) {
+            isDebugSimulationRunningRef.current = false
+            debugSimulationStartedAtMsRef.current = 0
+            debugSimulationGameStartTimestampRef.current = ``
+            debugSimulationGameIdRef.current = ``
+            setDebugSimulationJumpMinuteOptions([])
+            if (isDebugSimulationRunning) {
+                setIsDebugSimulationRunning(false)
+            }
+        }
+    }, [isDebugSimulationModeEnabled, isDebugSimulationRunning])
+
+    useEffect(() => {
+        isDebugSimulationRunningRef.current = isDebugSimulationRunning
+    }, [isDebugSimulationRunning])
+
+    useEffect(() => {
+        pollingSessionIdRef.current += 1
+        const pollingSessionId = pollingSessionIdRef.current
+        const isCurrentPollingSession = () => pollingSessionIdRef.current === pollingSessionId
+
+        const resetRenderedGameState = () => {
+            firstWindowReceivedRef.current = false
+            setFirstWindowFrame(undefined)
+            setLastWindowFrame(undefined)
+            setMetadata(undefined)
+            setCurrentGameOutcome(undefined)
+            setLastDetailsFrame(undefined)
+            setPlaybackTimestamp(``)
+        }
+
         // Reset volatile per-game caches immediately on match route changes.
         matchEventDetailsRef.current = undefined
         currentTimestampRef.current = ``
+        latestWindowFrameTimestampRef.current = ``
+        maxObservedWindowFrameTimestampByGameIdRef.current = new Map()
+        bufferedWindowFramesByTimestampRef.current = new Map()
+        renderedWindowFrameTimestampRef.current = ``
+        renderedWindowFrameRef.current = undefined
+        playbackTimestampRef.current = ``
         lastDetailsTimestampRef.current = ``
         firstDetailsTimestampRef.current = ``
         lastDetailsFrameRef.current = undefined
@@ -154,7 +215,8 @@ export function Match({ match }: MatchRouteProps) {
         setBackfillStatus(`idle`)
         setInferredHeraldKillCounts({ blue: 0, red: 0 })
         setObjectiveTimerBackfillSeed(undefined)
-        setLastDetailsFrame(undefined)
+        resetRenderedGameState()
+        setDebugSimulationJumpMinuteOptions([])
 
         const initialGameIndex = getInitialGameIndex();
         if (initialGameIndex > 0) {
@@ -173,6 +235,12 @@ export function Match({ match }: MatchRouteProps) {
             if (currentGameIndexRef.current !== newGameIndex || hasGameIdChanged || !firstWindowReceivedRef.current) {
                 currentTimestampRef.current = ``
                 if (currentGameIndexRef.current !== newGameIndex || hasGameIdChanged) {
+                    latestWindowFrameTimestampRef.current = ``
+                    maxObservedWindowFrameTimestampByGameIdRef.current = new Map()
+                    bufferedWindowFramesByTimestampRef.current = new Map()
+                    renderedWindowFrameTimestampRef.current = ``
+                    renderedWindowFrameRef.current = undefined
+                    playbackTimestampRef.current = ``
                     lastDetailsTimestampRef.current = ``
                     firstDetailsTimestampRef.current = ``
                     lastDetailsFrameRef.current = undefined
@@ -189,23 +257,53 @@ export function Match({ match }: MatchRouteProps) {
                     setBackfillStatus(`idle`)
                     setObjectiveTimerBackfillSeed(undefined)
                     firstWindowTimestampRef.current = ``
-                    setLastDetailsFrame(undefined)
+                    resetRenderedGameState()
+                    setDebugSimulationJumpMinuteOptions([])
                 }
                 activeGameIdRef.current = gameId
                 getFirstWindow(gameId)
                 setGameIndex(newGameIndex)
                 currentGameIndexRef.current = newGameIndex
             }
-            getLiveWindow(gameId);
-            getLastDetailsFrame(gameId);
+            const debugSimulationStartingTime = getDebugSimulationStartingTime(gameId)
+            if (isDebugSimulationModeEnabledRef.current && isDebugSimulationRunningRef.current && !debugSimulationStartingTime) {
+                return
+            }
+            getLiveWindow(gameId, debugSimulationStartingTime);
+            getLastDetailsFrame(gameId, debugSimulationStartingTime);
         }, POLL_INTERVAL_MS);
+        let windowPlaybackTimeoutID: ReturnType<typeof setTimeout> | undefined
+        let isWindowPlaybackDisposed = false
+
+        const scheduleWindowPlaybackDrain = (delayMs: number) => {
+            if (isWindowPlaybackDisposed) return
+            if (windowPlaybackTimeoutID !== undefined) {
+                clearTimeout(windowPlaybackTimeoutID)
+            }
+            windowPlaybackTimeoutID = setTimeout(() => {
+                const drainResult = drainBufferedWindowFramesForRender()
+                scheduleWindowPlaybackDrain(
+                    drainResult.renderedFrame
+                        ? drainResult.nextDelayMs
+                        : WINDOW_PLAYBACK_IDLE_TICK_INTERVAL_MS,
+                )
+            }, delayMs)
+        }
+
+        scheduleWindowPlaybackDrain(0)
 
         return () => {
+            isWindowPlaybackDisposed = true
             clearInterval(windowIntervalID);
+            if (windowPlaybackTimeoutID !== undefined) {
+                clearTimeout(windowPlaybackTimeoutID)
+            }
+            pollingSessionIdRef.current += 1
         }
 
         function getEventDetails() {
             getEventDetailsResponse(matchId).then(response => {
+                if (!isCurrentPollingSession()) return undefined
                 let eventDetails: EventDetails = response.data.data.event;
                 if (eventDetails === undefined) return undefined;
                 let newGameIndex = getGameIndex(eventDetails)
@@ -242,6 +340,7 @@ export function Match({ match }: MatchRouteProps) {
 
         function getScheduleEvent(eventDetails: EventDetails) {
             getScheduleResponse().then(response => {
+                if (!isCurrentPollingSession()) return
                 let scheduleEvents: ScheduleEvent[] = response.data.data.schedule.events
                 let scheduleEvent = scheduleEvents.find((scheduleEvent: ScheduleEvent) => {
                     return scheduleEvent.match ? (scheduleEvent.match.id === matchId) : false
@@ -262,6 +361,7 @@ export function Match({ match }: MatchRouteProps) {
 
         function getFirstWindow(gameId: string) {
             getWindowResponse(gameId).then(response => {
+                if (!isCurrentPollingSession()) return
                 if (response === undefined) return
                 let frames: WindowFrame[] = response.data.frames;
                 if (frames === undefined) return;
@@ -277,44 +377,74 @@ export function Match({ match }: MatchRouteProps) {
                 updateParticipantRoles(response.data.gameMetadata)
                 setMetadata(response.data.gameMetadata)
                 setFirstWindowFrame(frames[0])
+                enqueueWindowFrames(gameId, frames)
                 getItems(response.data.gameMetadata)
                 getRunes(response.data.gameMetadata)
                 getChampionNameMap(response.data.gameMetadata)
             });
         }
 
-        function getLiveWindow(gameId: string) {
-            const date = isCurrentGameCompleted()
+        function getLiveWindow(gameId: string, forcedStartingTime?: string) {
+            const date = forcedStartingTime || (isCurrentGameCompleted()
                 ? getCompletedGameSnapshotStartingTime(firstWindowTimestampRef.current)
-                : getISODateMultiplyOf10();
+                : getISODateMultiplyOf10());
             getWindowResponse(gameId, date).then(response => {
+                if (!isCurrentPollingSession()) return
                 if (response === undefined) return
                 let frames: WindowFrame[] = response.data.frames;
-                if (frames === undefined) return
+                if (frames === undefined || frames.length === 0) return
                 const lastWindowFrame = frames[frames.length - 1]
-                if (currentTimestampRef.current > lastWindowFrame.rfc460Timestamp) return;
-                currentTimestampRef.current = lastWindowFrame.rfc460Timestamp
+                const normalizedLastWindowTimestamp = normalizeTimestamp(lastWindowFrame.rfc460Timestamp)
+                if (!normalizedLastWindowTimestamp) return
+                if (
+                    latestWindowFrameTimestampRef.current
+                    && getTimestampValue(latestWindowFrameTimestampRef.current) > getTimestampValue(normalizedLastWindowTimestamp)
+                ) {
+                    return
+                }
+                currentTimestampRef.current = normalizedLastWindowTimestamp
                 maybeStartLiveDetailsBackfill(gameId, lastWindowFrame)
 
                 updateParticipantRoles(response.data.gameMetadata)
-                setLastWindowFrame(lastWindowFrame)
+                const shouldRenderCompletedGameInstantly = isCurrentGameCompleted() && !isDebugSimulationRunningRef.current
+                if (shouldRenderCompletedGameInstantly) {
+                    updateObservedWindowTimestampAndJumpOptions(gameId, normalizedLastWindowTimestamp)
+                    bufferedWindowFramesByTimestampRef.current = new Map()
+                    renderedWindowFrameRef.current = lastWindowFrame
+                    renderedWindowFrameTimestampRef.current = normalizedLastWindowTimestamp
+                    if (playbackTimestampRef.current !== normalizedLastWindowTimestamp) {
+                        playbackTimestampRef.current = normalizedLastWindowTimestamp
+                        setPlaybackTimestamp(normalizedLastWindowTimestamp)
+                    }
+                    setLastWindowFrame(lastWindowFrame)
+                } else {
+                    enqueueWindowFrames(gameId, frames)
+                }
                 setMetadata(response.data.gameMetadata)
 
                 const matchEventDetails = matchEventDetailsRef.current
                 if (matchEventDetails === undefined) return
                 const homeTeam = matchEventDetails.match.teams[0]
                 const awayTeam = matchEventDetails.match.teams[1]
-                const cleanSweep = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (matchEventDetails.match.teams[0].result.gameWins === 0 || matchEventDetails.match.teams[1].result.gameWins === 0)
+                const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
+                const normalizedCurrentGameState = String(currentGame?.state || ``).toLowerCase()
+                const isCurrentGameStateCompleted = normalizedCurrentGameState === `completed`
+                const isCurrentGameFinishedByWindow = lastWindowFrame.gameState === `finished`
+                const isCurrentGameFinalized = isCurrentGameStateCompleted || isCurrentGameFinishedByWindow
+                const cleanSweep = isCurrentGameStateCompleted && (matchEventDetails.match.teams[0].result.gameWins === 0 || matchEventDetails.match.teams[1].result.gameWins === 0)
 
-                const blueTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndexRef.current - 1].teams[0].id === homeTeam.id ? homeTeam : awayTeam
-                const redTeam = matchEventDetails && matchEventDetails.match.games[currentGameIndexRef.current - 1].teams[1].id === homeTeam.id ? homeTeam : awayTeam
+                const blueTeam = matchEventDetails && currentGame.teams[0].id === homeTeam.id ? homeTeam : awayTeam
+                const redTeam = matchEventDetails && currentGame.teams[1].id === homeTeam.id ? homeTeam : awayTeam
                 const blueTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && blueTeam.result.gameWins > redTeam.result.gameWins
                 const redTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && redTeam.result.gameWins > blueTeam.result.gameWins
 
                 const blueTeamWonOnInhibitors = lastWindowFrame.blueTeam.inhibitors > 0 && lastWindowFrame?.redTeam.inhibitors === 0
                 const redTeamWonOnInhibitors = lastWindowFrame?.redTeam.inhibitors > 0 && lastWindowFrame?.blueTeam.inhibitors === 0
-                const blueTeamWon = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (blueTeam.result.outcome === `win` || (cleanSweep && blueTeam.result.gameWins > 0) || blueTeamWonOnInhibitors || (blueTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
-                const redTeamWon = matchEventDetails.match.games[currentGameIndexRef.current - 1].state === `completed` && (redTeam.result.outcome === `win` || (cleanSweep && redTeam.result.gameWins > 0) || redTeamWonOnInhibitors || (redTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
+                const winnerSideFromFrame = inferWinnerSideFromWindowFrame(lastWindowFrame)
+                const blueTeamWonByFrame = winnerSideFromFrame === `blue`
+                const redTeamWonByFrame = winnerSideFromFrame === `red`
+                const blueTeamWon = isCurrentGameFinalized && (blueTeam.result.outcome === `win` || (cleanSweep && blueTeam.result.gameWins > 0) || blueTeamWonOnInhibitors || blueTeamWonByFrame || (blueTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
+                const redTeamWon = isCurrentGameFinalized && (redTeam.result.outcome === `win` || (cleanSweep && redTeam.result.gameWins > 0) || redTeamWonOnInhibitors || redTeamWonByFrame || (redTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
 
                 const outcome: Array<Outcome> = [
                     {
@@ -328,11 +458,129 @@ export function Match({ match }: MatchRouteProps) {
             });
         }
 
-        function getLastDetailsFrame(gameId: string) {
-            const date = isCurrentGameCompleted()
+        function enqueueWindowFrames(gameId: string, frames: WindowFrame[]) {
+            if (activeGameIdRef.current !== gameId) return
+            const bufferedWindowFramesByTimestamp = bufferedWindowFramesByTimestampRef.current
+            let newestTimestamp = latestWindowFrameTimestampRef.current
+
+            frames.forEach((frame) => {
+                const normalizedTimestamp = normalizeTimestamp(frame.rfc460Timestamp)
+                if (!normalizedTimestamp) return
+
+                const normalizedFrame = normalizedTimestamp === frame.rfc460Timestamp
+                    ? frame
+                    : { ...frame, rfc460Timestamp: normalizedTimestamp }
+                bufferedWindowFramesByTimestamp.set(normalizedTimestamp, normalizedFrame)
+
+                if (getTimestampValue(normalizedTimestamp) > getTimestampValue(newestTimestamp)) {
+                    newestTimestamp = normalizedTimestamp
+                }
+            })
+
+            updateObservedWindowTimestampAndJumpOptions(gameId, newestTimestamp)
+            pruneBufferedWindowFrames(getTimestampValue(newestTimestamp))
+        }
+
+        function updateObservedWindowTimestampAndJumpOptions(gameId: string, newestTimestamp: string) {
+            latestWindowFrameTimestampRef.current = newestTimestamp
+            const previouslyObservedMaxTimestamp = maxObservedWindowFrameTimestampByGameIdRef.current.get(gameId) || ``
+            const nextObservedMaxTimestamp = getTimestampValue(newestTimestamp) > getTimestampValue(previouslyObservedMaxTimestamp)
+                ? newestTimestamp
+                : previouslyObservedMaxTimestamp
+            if (nextObservedMaxTimestamp) {
+                maxObservedWindowFrameTimestampByGameIdRef.current.set(gameId, nextObservedMaxTimestamp)
+            }
+
+            const nextDebugSimulationJumpMinuteOptions = getDebugSimulationJumpMinuteOptions(
+                firstWindowTimestampRef.current,
+                nextObservedMaxTimestamp || newestTimestamp,
+            )
+            setDebugSimulationJumpMinuteOptions((previousOptions) => (
+                areNumberArraysEqual(previousOptions, nextDebugSimulationJumpMinuteOptions)
+                    ? previousOptions
+                    : nextDebugSimulationJumpMinuteOptions
+            ))
+        }
+
+        function pruneBufferedWindowFrames(latestWindowTimestampValue: number) {
+            if (latestWindowTimestampValue <= 0) return
+            const renderedWindowFrameTimestampValue = getTimestampValue(renderedWindowFrameTimestampRef.current)
+            const staleThresholdTimestampValue = latestWindowTimestampValue - (WINDOW_PLAYBACK_DELAY_MS + WINDOW_PLAYBACK_BUFFER_RETENTION_MS)
+
+            bufferedWindowFramesByTimestampRef.current.forEach((_, timestamp) => {
+                const timestampValue = getTimestampValue(timestamp)
+                if (timestampValue < renderedWindowFrameTimestampValue && timestampValue < staleThresholdTimestampValue) {
+                    bufferedWindowFramesByTimestampRef.current.delete(timestamp)
+                }
+            })
+        }
+
+        function drainBufferedWindowFramesForRender() {
+            if (bufferedWindowFramesByTimestampRef.current.size === 0) {
+                return {
+                    renderedFrame: false,
+                    nextDelayMs: WINDOW_PLAYBACK_IDLE_TICK_INTERVAL_MS,
+                }
+            }
+
+            const sortedWindowFrameEntries = Array.from(bufferedWindowFramesByTimestampRef.current.entries()).sort((leftEntry, rightEntry) => (
+                getTimestampValue(leftEntry[0]) - getTimestampValue(rightEntry[0])
+            ))
+            const renderedWindowFrameTimestampValue = getTimestampValue(renderedWindowFrameTimestampRef.current)
+            const renderTargetTimestampValue = Date.now() - WINDOW_PLAYBACK_DELAY_MS
+
+            let nextWindowFrameToProcess: WindowFrame | undefined
+            let nextWindowFrameTimestampToProcess: string | undefined
+            sortedWindowFrameEntries.forEach(([timestamp, frame]) => {
+                if (nextWindowFrameToProcess) return
+
+                const timestampValue = getTimestampValue(timestamp)
+                if (timestampValue <= renderedWindowFrameTimestampValue) return
+                if (timestampValue > renderTargetTimestampValue) return
+
+                nextWindowFrameToProcess = frame
+                nextWindowFrameTimestampToProcess = timestamp
+            })
+
+            if (!nextWindowFrameToProcess || !nextWindowFrameTimestampToProcess) {
+                return {
+                    renderedFrame: false,
+                    nextDelayMs: WINDOW_PLAYBACK_IDLE_TICK_INTERVAL_MS,
+                }
+            }
+
+            renderedWindowFrameTimestampRef.current = nextWindowFrameTimestampToProcess
+            if (nextWindowFrameTimestampToProcess !== playbackTimestampRef.current) {
+                playbackTimestampRef.current = nextWindowFrameTimestampToProcess
+                setPlaybackTimestamp(nextWindowFrameTimestampToProcess)
+            }
+
+            const shouldRenderWindowFrame = hasRenderableWindowFrameDiff(renderedWindowFrameRef.current, nextWindowFrameToProcess)
+            if (shouldRenderWindowFrame) {
+                renderedWindowFrameRef.current = nextWindowFrameToProcess
+                setLastWindowFrame(nextWindowFrameToProcess)
+            }
+
+            const latestRenderedTimestampValue = getTimestampValue(renderedWindowFrameTimestampRef.current)
+            const oldestBufferedTimestampToKeep = latestRenderedTimestampValue - WINDOW_PLAYBACK_BUFFER_RETENTION_MS
+            bufferedWindowFramesByTimestampRef.current.forEach((_, timestamp) => {
+                if (getTimestampValue(timestamp) < oldestBufferedTimestampToKeep) {
+                    bufferedWindowFramesByTimestampRef.current.delete(timestamp)
+                }
+            })
+
+            return {
+                renderedFrame: true,
+                nextDelayMs: getPlaybackActiveDelayMs(renderedWindowFrameTimestampValue, latestRenderedTimestampValue),
+            }
+        }
+
+        function getLastDetailsFrame(gameId: string, forcedStartingTime?: string) {
+            const date = forcedStartingTime || (isCurrentGameCompleted()
                 ? getCompletedGameSnapshotStartingTime(firstWindowTimestampRef.current)
-                : getISODateMultiplyOf10();
+                : getISODateMultiplyOf10());
             getGameDetailsResponse(gameId, date, lastFrameSuccessRef.current).then(response => {
+                if (!isCurrentPollingSession()) return
                 lastFrameSuccessRef.current = false
                 if (response === undefined) return
                 let frames: DetailsFrame[] = response.data.frames;
@@ -372,6 +620,34 @@ export function Match({ match }: MatchRouteProps) {
                 lastDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 setLastDetailsFrame(stabilizedFrame)
             });
+        }
+
+        function getDebugSimulationStartingTime(gameId: string) {
+            if (!isDebugSimulationModeEnabledRef.current || !isDebugSimulationRunningRef.current) return undefined
+
+            if (debugSimulationGameIdRef.current !== gameId) {
+                debugSimulationGameIdRef.current = gameId
+                debugSimulationGameStartTimestampRef.current = normalizeTimestamp(firstWindowTimestampRef.current)
+                debugSimulationStartedAtMsRef.current = Date.now()
+            }
+
+            if (!debugSimulationGameStartTimestampRef.current) {
+                const normalizedFirstWindowTimestamp = normalizeTimestamp(firstWindowTimestampRef.current)
+                if (!normalizedFirstWindowTimestamp) return undefined
+                debugSimulationGameStartTimestampRef.current = normalizedFirstWindowTimestamp
+                debugSimulationStartedAtMsRef.current = Date.now()
+            }
+
+            const simulationStartTimestampValue = getTimestampValue(debugSimulationGameStartTimestampRef.current)
+            if (simulationStartTimestampValue === 0) return undefined
+
+            const elapsedMs = Math.max(0, Date.now() - debugSimulationStartedAtMsRef.current)
+            const simulatedCurrentTimestampValue = simulationStartTimestampValue + elapsedMs
+            const alignedSimulatedTimestampValue = alignTimestampToLiveStatsStep(simulatedCurrentTimestampValue)
+            const queryTimestampValue = alignedSimulatedTimestampValue > 0
+                ? alignedSimulatedTimestampValue
+                : simulationStartTimestampValue
+            return new Date(queryTimestampValue).toISOString()
         }
 
         function isCurrentGameCompleted() {
@@ -432,6 +708,7 @@ export function Match({ match }: MatchRouteProps) {
         }
 
         async function backfillObservedItemsFromGameStart(gameId: string, startTimestampValue: number, endTimestampValue: number) {
+            if (!isCurrentPollingSession()) return
             const alignedStart = alignTimestampToLiveStatsStep(startTimestampValue)
             const alignedEnd = alignTimestampToLiveStatsStep(endTimestampValue)
             if (alignedStart === 0 || alignedEnd === 0 || alignedEnd < alignedStart) {
@@ -445,12 +722,19 @@ export function Match({ match }: MatchRouteProps) {
             let aborted = false
             try {
                 await backfillObjectiveTimersFromWindowHistory(gameId, alignedStart, alignedEnd)
+                if (!isCurrentPollingSession()) {
+                    aborted = true
+                }
                 if (activeGameIdRef.current !== gameId) {
                     aborted = true
                 }
                 if (aborted) return
 
                 for (let cursor = alignedStart; cursor <= alignedEnd; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
+                    if (!isCurrentPollingSession()) {
+                        aborted = true
+                        break
+                    }
                     if (activeGameIdRef.current !== gameId) {
                         aborted = true
                         break
@@ -459,6 +743,10 @@ export function Match({ match }: MatchRouteProps) {
                     const queryTimestamp = new Date(cursor).toISOString()
                     const response = await getGameDetailsSnapshotResponse(gameId, queryTimestamp)
                     if (!response) continue
+                    if (!isCurrentPollingSession()) {
+                        aborted = true
+                        break
+                    }
                     if (activeGameIdRef.current !== gameId) {
                         aborted = true
                         break
@@ -532,13 +820,14 @@ export function Match({ match }: MatchRouteProps) {
                     })
                 }
             } finally {
-                if (!aborted && activeGameIdRef.current === gameId) {
+                if (!aborted && isCurrentPollingSession() && activeGameIdRef.current === gameId) {
                     updateBackfillStatus(gameId, `completed`)
                 }
             }
         }
 
         async function backfillObjectiveTimersFromWindowHistory(gameId: string, alignedStartTimestampValue: number, alignedEndTimestampValue: number) {
+            if (!isCurrentPollingSession()) return
             if (activeGameIdRef.current !== gameId) return
 
             const effectiveHistoryStartTimestampValue = Math.max(
@@ -548,11 +837,13 @@ export function Match({ match }: MatchRouteProps) {
             const framesByTimestamp = new Map<string, WindowFrame>()
 
             for (let cursor = effectiveHistoryStartTimestampValue; cursor <= alignedEndTimestampValue; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
+                if (!isCurrentPollingSession()) return
                 if (activeGameIdRef.current !== gameId) return
 
                 const queryTimestamp = new Date(cursor).toISOString()
                 const response = await getWindowResponse(gameId, queryTimestamp)
                 if (!response) continue
+                if (!isCurrentPollingSession()) return
                 if (activeGameIdRef.current !== gameId) return
 
                 const incomingFrames: WindowFrame[] = response.data?.frames
@@ -570,12 +861,14 @@ export function Match({ match }: MatchRouteProps) {
 
             const seed = buildObjectiveTimerBackfillSeedFromWindowFrames(frames, alignedEndTimestampValue)
             if (!seed) return
+            if (!isCurrentPollingSession()) return
             if (activeGameIdRef.current !== gameId) return
 
             setObjectiveTimerBackfillSeed(seed)
         }
 
         function updateBackfillStatus(gameId: string, status: `running` | `completed`) {
+            if (!isCurrentPollingSession()) return
             backfillStatusByGameIdRef.current.set(gameId, status)
             if (activeGameIdRef.current === gameId) {
                 setBackfillStatus(status)
@@ -585,6 +878,7 @@ export function Match({ match }: MatchRouteProps) {
         function getResults(eventDetails: EventDetails) {
             if (eventDetails === undefined) return;
             getStandingsResponse(eventDetails.tournament.id).then(response => {
+                if (!isCurrentPollingSession()) return
                 let standings: Standing[] = response.data.data.standings
                 let stage = standings[0].stages.find((stage) => {
                     let stageSection = stage.sections.find((section) => {
@@ -611,18 +905,22 @@ export function Match({ match }: MatchRouteProps) {
         function getItems(metadata: GameMetadata) {
             const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
             getDataDragonResponse(ITEMS_JSON_URL, formattedPatchVersion).then(response => {
+                if (!isCurrentPollingSession()) return
                 setItems(response.data.data)
             })
         }
         async function getRunes(metadata: GameMetadata) {
+            if (!isCurrentPollingSession()) return
             const formattedPatchVersion = getFormattedPatchVersion(metadata.patchVersion)
             const patchMajorMinorVersion = getPatchMajorMinorVersion(metadata.patchVersion)
             const candidateVersions = await getDataDragonRuneVersionCandidates(formattedPatchVersion, patchMajorMinorVersion)
+            if (!isCurrentPollingSession()) return
 
             const runeDataUrlCandidates = getRuneDataUrlCandidates(candidateVersions)
             for (const runeDataUrlCandidate of runeDataUrlCandidates) {
                 try {
                     const response = await getDataDragonResponse(runeDataUrlCandidate.jsonUrl, runeDataUrlCandidate.version)
+                    if (!isCurrentPollingSession()) return
                     const incomingRunes = response.data
                     if (!Array.isArray(incomingRunes) || incomingRunes.length === 0) continue
                     setRunes(incomingRunes)
@@ -634,6 +932,7 @@ export function Match({ match }: MatchRouteProps) {
             }
 
             const fallbackRunes = runesFallbackData as unknown as Rune[]
+            if (!isCurrentPollingSession()) return
             setRunes(fallbackRunes)
             magicalFootwearTimingRef.current = getMagicalFootwearTimingFromRunes(fallbackRunes)
         }
@@ -643,6 +942,7 @@ export function Match({ match }: MatchRouteProps) {
             if (championNamePatchRef.current === formattedPatchVersion) return
 
             getDataDragonResponse(CHAMPIONS_JSON_URL, formattedPatchVersion).then(response => {
+                if (!isCurrentPollingSession()) return
                 const championResponse: DataDragonChampionResponse = response.data
                 const newChampionNameMap: ChampionNameMap = {}
 
@@ -658,6 +958,76 @@ export function Match({ match }: MatchRouteProps) {
         }
 
     }, [matchId]);
+
+    function handleDebugSimulationModeChange(isEnabled: boolean) {
+        setIsDebugSimulationModeEnabled(isEnabled)
+        if (!isEnabled) {
+            setIsDebugSimulationRunning(false)
+        }
+    }
+
+    function resetSimulationPlaybackAndDerivedState() {
+        currentTimestampRef.current = ``
+        latestWindowFrameTimestampRef.current = ``
+        bufferedWindowFramesByTimestampRef.current = new Map()
+        renderedWindowFrameTimestampRef.current = ``
+        renderedWindowFrameRef.current = undefined
+        playbackTimestampRef.current = ``
+        lastFrameSuccessRef.current = false
+        lastDetailsTimestampRef.current = ``
+        firstDetailsTimestampRef.current = ``
+        lastDetailsFrameRef.current = undefined
+        observedDetailsItemsRef.current = new Map()
+        participantRoleByParticipantIdRef.current = new Map()
+        lastKnownBootByParticipantIdRef.current = new Map()
+        lastKnownTrinketByParticipantIdRef.current = new Map()
+        lastRawTrinketByParticipantIdRef.current = new Map()
+        pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
+        hasObservedRawTrinketByParticipantIdRef.current = new Map()
+        inferredHeraldByTeamRef.current = { blue: false, red: false }
+        backfillStatusByGameIdRef.current = new Map()
+
+        setInferredHeraldKillCounts({ blue: 0, red: 0 })
+        setBackfillStatus(`idle`)
+        setObjectiveTimerBackfillSeed(undefined)
+        setLastDetailsFrame(undefined)
+        setPlaybackTimestamp(``)
+    }
+
+    function handleDebugSimulationButtonClick() {
+        if (!isDebugSimulationModeEnabled) return
+        if (isDebugSimulationRunning) {
+            setIsDebugSimulationRunning(false)
+            return
+        }
+
+        isDebugSimulationRunningRef.current = true
+        debugSimulationGameIdRef.current = activeGameIdRef.current
+        debugSimulationGameStartTimestampRef.current = normalizeTimestamp(firstWindowTimestampRef.current)
+        debugSimulationStartedAtMsRef.current = Date.now()
+        resetSimulationPlaybackAndDerivedState()
+        setIsDebugSimulationRunning(true)
+    }
+
+    function handleDebugSimulationJumpToMinute(targetMinute: number) {
+        if (!isDebugSimulationModeEnabled || !isDebugSimulationRunning) return
+        if (!Number.isFinite(targetMinute) || targetMinute <= 0) return
+
+        const targetIsInRange = debugSimulationJumpMinuteOptions.includes(targetMinute)
+        if (!targetIsInRange) return
+
+        const normalizedGameStartTimestamp = normalizeTimestamp(firstWindowTimestampRef.current)
+        const activeGameId = activeGameIdRef.current
+        if (!normalizedGameStartTimestamp || !activeGameId) return
+
+        const targetElapsedMs = targetMinute * ONE_MINUTE_MS
+
+        isDebugSimulationRunningRef.current = true
+        debugSimulationGameIdRef.current = activeGameId
+        debugSimulationGameStartTimestampRef.current = normalizedGameStartTimestamp
+        debugSimulationStartedAtMsRef.current = Date.now() - targetElapsedMs
+        resetSimulationPlaybackAndDerivedState()
+    }
 
     function capitalizeFirstLetter(string: string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
@@ -911,14 +1281,14 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} playbackTimestamp={playbackTimestamp} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, firstWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} inferredHeraldKillCounts={inferredHeraldKillCounts} />
+                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} inferredHeraldKillCounts={inferredHeraldKillCounts} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
             </div>
         );
     } else if (eventDetails !== undefined) {
@@ -2747,10 +3117,89 @@ function getAverageWindowParticipantLevel(lastWindowFrame: WindowFrame) {
     return totalLevels / participants.length
 }
 
+function inferWinnerSideFromWindowFrame(lastWindowFrame: WindowFrame): `blue` | `red` | undefined {
+    const blueInhibitors = Number(lastWindowFrame.blueTeam.inhibitors || 0)
+    const redInhibitors = Number(lastWindowFrame.redTeam.inhibitors || 0)
+    if (blueInhibitors > 0 && redInhibitors === 0) return `blue`
+    if (redInhibitors > 0 && blueInhibitors === 0) return `red`
+
+    const blueGold = Number(lastWindowFrame.blueTeam.totalGold || 0)
+    const redGold = Number(lastWindowFrame.redTeam.totalGold || 0)
+    if (blueGold !== redGold) return blueGold > redGold ? `blue` : `red`
+
+    const blueKills = getTeamKillCountFromWindowParticipants(lastWindowFrame.blueTeam.participants)
+    const redKills = getTeamKillCountFromWindowParticipants(lastWindowFrame.redTeam.participants)
+    if (blueKills !== redKills) return blueKills > redKills ? `blue` : `red`
+
+    return undefined
+}
+
+function getTeamKillCountFromWindowParticipants(participants: Array<{ kills: number }> | undefined) {
+    if (!Array.isArray(participants)) return 0
+    return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
+}
+
 function getTimestampValue(timestamp: string | Date | undefined) {
     if (!timestamp) return 0
     const value = new Date(timestamp).getTime()
     return Number.isFinite(value) ? value : 0
+}
+
+function getPlaybackActiveDelayMs(previousTimestampValue: number, nextTimestampValue: number) {
+    if (previousTimestampValue <= 0 || nextTimestampValue <= 0) return WINDOW_PLAYBACK_MIN_ACTIVE_TICK_INTERVAL_MS
+    const deltaMs = Math.max(0, nextTimestampValue - previousTimestampValue)
+    if (deltaMs <= 0) return WINDOW_PLAYBACK_MIN_ACTIVE_TICK_INTERVAL_MS
+    return Math.max(
+        WINDOW_PLAYBACK_MIN_ACTIVE_TICK_INTERVAL_MS,
+        Math.min(WINDOW_PLAYBACK_MAX_ACTIVE_TICK_INTERVAL_MS, deltaMs),
+    )
+}
+
+function hasRenderableWindowFrameDiff(previousFrame: WindowFrame | undefined, nextFrame: WindowFrame) {
+    if (!previousFrame) return true
+    if (previousFrame.gameState !== nextFrame.gameState) return true
+    return hasRenderableTeamStatsDiff(previousFrame.blueTeam, nextFrame.blueTeam)
+        || hasRenderableTeamStatsDiff(previousFrame.redTeam, nextFrame.redTeam)
+}
+
+function hasRenderableTeamStatsDiff(previousTeamStats: WindowFrame[`blueTeam`], nextTeamStats: WindowFrame[`blueTeam`]) {
+    if (Number(previousTeamStats.totalGold || 0) !== Number(nextTeamStats.totalGold || 0)) return true
+    if (Number(previousTeamStats.inhibitors || 0) !== Number(nextTeamStats.inhibitors || 0)) return true
+    if (Number(previousTeamStats.towers || 0) !== Number(nextTeamStats.towers || 0)) return true
+    if (Number(previousTeamStats.barons || 0) !== Number(nextTeamStats.barons || 0)) return true
+    if (Number(previousTeamStats.totalKills || 0) !== Number(nextTeamStats.totalKills || 0)) return true
+
+    const previousDragons = previousTeamStats.dragons || []
+    const nextDragons = nextTeamStats.dragons || []
+    if (previousDragons.length !== nextDragons.length) return true
+    for (let dragonIndex = 0; dragonIndex < previousDragons.length; dragonIndex++) {
+        if (String(previousDragons[dragonIndex] || ``) !== String(nextDragons[dragonIndex] || ``)) return true
+    }
+
+    return hasRenderableWindowParticipantDiff(previousTeamStats.participants, nextTeamStats.participants)
+}
+
+function hasRenderableWindowParticipantDiff(previousParticipants: WindowParticipant[] | undefined, nextParticipants: WindowParticipant[] | undefined) {
+    const previousParticipantsSafe = previousParticipants || []
+    const nextParticipantsSafe = nextParticipants || []
+    if (previousParticipantsSafe.length !== nextParticipantsSafe.length) return true
+
+    for (let participantIndex = 0; participantIndex < previousParticipantsSafe.length; participantIndex++) {
+        const previousParticipant = previousParticipantsSafe[participantIndex]
+        const nextParticipant = nextParticipantsSafe[participantIndex]
+        if (!previousParticipant || !nextParticipant) return true
+        if (Number(previousParticipant.participantId || 0) !== Number(nextParticipant.participantId || 0)) return true
+        if (Number(previousParticipant.totalGold || 0) !== Number(nextParticipant.totalGold || 0)) return true
+        if (Number(previousParticipant.level || 0) !== Number(nextParticipant.level || 0)) return true
+        if (Number(previousParticipant.kills || 0) !== Number(nextParticipant.kills || 0)) return true
+        if (Number(previousParticipant.deaths || 0) !== Number(nextParticipant.deaths || 0)) return true
+        if (Number(previousParticipant.assists || 0) !== Number(nextParticipant.assists || 0)) return true
+        if (Number(previousParticipant.creepScore || 0) !== Number(nextParticipant.creepScore || 0)) return true
+        if (Number(previousParticipant.currentHealth || 0) !== Number(nextParticipant.currentHealth || 0)) return true
+        if (Number(previousParticipant.maxHealth || 0) !== Number(nextParticipant.maxHealth || 0)) return true
+    }
+
+    return false
 }
 
 function getElapsedGameTimeMs(startTimestamp: string | Date | undefined, currentTimestamp: string | Date | undefined) {
@@ -2773,6 +3222,33 @@ function normalizeTimestamp(timestamp: string | Date | undefined) {
 function alignTimestampToLiveStatsStep(timestampValue: number) {
     if (!Number.isFinite(timestampValue) || timestampValue <= 0) return 0
     return timestampValue - (timestampValue % LIVE_STATS_STARTING_TIME_STEP_MS)
+}
+
+function getDebugSimulationJumpMinuteOptions(startTimestamp: string, endTimestamp: string) {
+    const startTimestampValue = getTimestampValue(startTimestamp)
+    const endTimestampValue = getTimestampValue(endTimestamp)
+    if (startTimestampValue <= 0 || endTimestampValue <= startTimestampValue) return []
+
+    // Keep teleport targets strictly before game end (no exact-finish jump).
+    const maxJumpMinute = Math.floor(
+        ((endTimestampValue - startTimestampValue - 1) / ONE_MINUTE_MS) / DEBUG_SIMULATION_JUMP_STEP_MINUTES
+    ) * DEBUG_SIMULATION_JUMP_STEP_MINUTES
+    if (maxJumpMinute < DEBUG_SIMULATION_JUMP_STEP_MINUTES) return []
+
+    const minuteOptions: number[] = []
+    for (let targetMinute = DEBUG_SIMULATION_JUMP_STEP_MINUTES; targetMinute <= maxJumpMinute; targetMinute += DEBUG_SIMULATION_JUMP_STEP_MINUTES) {
+        minuteOptions.push(targetMinute)
+    }
+    return minuteOptions
+}
+
+function areNumberArraysEqual(left: number[], right: number[]) {
+    if (left === right) return true
+    if (left.length !== right.length) return false
+    for (let index = 0; index < left.length; index++) {
+        if (left[index] !== right[index]) return false
+    }
+    return true
 }
 
 function getCompletedGameSnapshotStartingTime(firstWindowTimestamp: string) {

@@ -32,6 +32,7 @@ type Props = {
 }
 
 type StatusWatcher = {
+    rfc460Timestamp: string,
     elapsedGameTimeSeconds: number,
     totalKills: {
         blue: number,
@@ -72,6 +73,12 @@ type ToastEvent = {
     victims?: string[];
 }
 
+type ParticipantDeltaEntry = {
+    participantId: number;
+    championIcon: string;
+    delta: number;
+}
+
 export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata, championsUrlWithPatchVersion, blueTeam, redTeam }: Props) {
     let trueBlueTeam = blueTeam
     let trueRedTeam = redTeam
@@ -82,6 +89,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
     }
 
     const statusRef = useRef<StatusWatcher>({
+        rfc460Timestamp: lastWindowFrame.rfc460Timestamp,
         elapsedGameTimeSeconds: elapsedGameTimeSeconds,
         totalKills: {
             blue: getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants),
@@ -111,19 +119,31 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
     useEffect(() => {
         const soundData = localStorage.getItem("sound");
         const isMuted = soundData !== "unmute";
-        const status = statusRef.current
-
-        const currentTotalKills = {
-            blue: getTeamKillCountFromParticipants(lastWindowFrame.blueTeam.participants),
-            red: getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants),
+        let status = statusRef.current
+        const latestMergedFrame = lastWindowFrame
+        const previousStatusTimestampValue = getTimestampValue(status.rfc460Timestamp)
+        const latestMergedTimestampValue = getTimestampValue(latestMergedFrame.rfc460Timestamp)
+        if (status.gameIndex !== gameIndex || latestMergedTimestampValue < previousStatusTimestampValue) {
+            statusRef.current = buildStatusWatcher(latestMergedFrame, gameIndex, elapsedGameTimeSeconds)
+            return
         }
-        const totalKillsBefore = status.totalKills.blue + status.totalKills.red
-        const totalKillsNow = currentTotalKills.blue + currentTotalKills.red
+
+        const framesToProcess = latestMergedTimestampValue > previousStatusTimestampValue ? [latestMergedFrame] : []
+
+        if (framesToProcess.length === 0) {
+            return
+        }
+
+        const latestIncomingFrame = framesToProcess[framesToProcess.length - 1]
+        const latestIncomingTotalKills = {
+            blue: getTeamKillCountFromParticipants(latestIncomingFrame.blueTeam.participants),
+            red: getTeamKillCountFromParticipants(latestIncomingFrame.redTeam.participants),
+        }
 
         if (firstBloodPlayedRef.current.gameIndex !== gameIndex) {
             firstBloodPlayedRef.current = {
                 gameIndex,
-                played: totalKillsNow > 0,
+                played: (latestIncomingTotalKills.blue + latestIncomingTotalKills.red) > 0,
             }
         }
         if (welcomeRiftPlayedRef.current.gameIndex !== gameIndex) {
@@ -133,166 +153,169 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
             }
         }
 
-        const toastQueue: ToastEvent[] = []
-
-        if (status.gameIndex === gameIndex) {
-            if (status.inhibitors.blue !== lastWindowFrame.blueTeam.inhibitors) {
-                toastQueue.push({ blueTeam: true, sound: inib_red.default, message: "\uC5B5\uC81C\uAE30 \uD30C\uAD34", image: trueBlueTeam.image })
-            }
-
-            if (status.inhibitors.red !== lastWindowFrame.redTeam.inhibitors) {
-                toastQueue.push({ blueTeam: false, sound: inib_blue.default, message: "\uC5B5\uC81C\uAE30 \uD30C\uAD34", image: trueRedTeam.image })
-            }
-
-            if (status.barons.blue !== lastWindowFrame.blueTeam.barons) {
-                toastQueue.push({ blueTeam: true, sound: baron_blue.default, message: "\uBC14\uB860 \uCC98\uCE58", image: trueBlueTeam.image })
-            }
-
-            if (status.barons.red !== lastWindowFrame.redTeam.barons) {
-                toastQueue.push({ blueTeam: false, sound: baron_red.default, message: "\uBC14\uB860 \uCC98\uCE58", image: trueRedTeam.image })
-            }
-
-            if (status.dragons.blue !== lastWindowFrame.blueTeam.dragons.length) {
-                toastQueue.push({ blueTeam: true, sound: dragon_blue.default, message: "\uB4DC\uB798\uACE4 \uCC98\uCE58", image: trueBlueTeam.image })
-            }
-
-            if (status.dragons.red !== lastWindowFrame.redTeam.dragons.length) {
-                toastQueue.push({ blueTeam: false, sound: dragon_red.default, message: "\uB4DC\uB798\uACE4 \uCC98\uCE58", image: trueRedTeam.image })
-            }
-
-            if (status.towers.blue !== lastWindowFrame.blueTeam.towers) {
-                toastQueue.push({ blueTeam: true, sound: tower_red.default, message: "\uD0C0\uC6CC \uD30C\uAD34", image: trueBlueTeam.image })
-            }
-
-            if (status.towers.red !== lastWindowFrame.redTeam.towers) {
-                toastQueue.push({ blueTeam: false, sound: tower_blue.default, message: "\uD0C0\uC6CC \uD30C\uAD34", image: trueRedTeam.image })
-            }
-
-            const blueKillToastEvent = buildKillToastEvent(
-                true,
-                status.participants.blue,
-                lastWindowFrame.blueTeam.participants,
-                gameMetadata.blueTeamMetadata.participantMetadata,
-                status.participants.red,
-                lastWindowFrame.redTeam.participants,
-                gameMetadata.redTeamMetadata.participantMetadata,
-                championsUrlWithPatchVersion,
-            )
-            if (blueKillToastEvent) {
-                toastQueue.push(blueKillToastEvent)
-            }
-
-            const redKillToastEvent = buildKillToastEvent(
-                false,
-                status.participants.red,
-                lastWindowFrame.redTeam.participants,
-                gameMetadata.redTeamMetadata.participantMetadata,
-                status.participants.blue,
-                lastWindowFrame.blueTeam.participants,
-                gameMetadata.blueTeamMetadata.participantMetadata,
-                championsUrlWithPatchVersion,
-            )
-            if (redKillToastEvent) {
-                toastQueue.push(redKillToastEvent)
-            }
-
-            const blueDeathIncreaseEvents = getDeathIncreaseToastEvents(
-                status.participants.blue,
-                lastWindowFrame.blueTeam.participants,
-                true,
-                gameMetadata.blueTeamMetadata.participantMetadata,
-                championsUrlWithPatchVersion,
-            )
-            const redDeathIncreaseEvents = getDeathIncreaseToastEvents(
-                status.participants.red,
-                lastWindowFrame.redTeam.participants,
-                false,
-                gameMetadata.redTeamMetadata.participantMetadata,
-                championsUrlWithPatchVersion,
-            )
-            const blueDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.blue, lastWindowFrame.blueTeam.participants)
-            const redDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.red, lastWindowFrame.redTeam.participants)
-            const blueKillIncreaseCount = Math.max(0, currentTotalKills.blue - status.totalKills.blue)
-            const redKillIncreaseCount = Math.max(0, currentTotalKills.red - status.totalKills.red)
-            const totalDeathIncreaseCount = blueDeathIncreaseCount + redDeathIncreaseCount
-            const totalKillIncreaseCount = blueKillIncreaseCount + redKillIncreaseCount
-            const inferredBlueExecutionCount = Math.max(0, blueDeathIncreaseCount - redKillIncreaseCount)
-            const inferredRedExecutionCount = Math.max(0, redDeathIncreaseCount - blueKillIncreaseCount)
-            const shouldShowExecutionToast = totalDeathIncreaseCount === 1 && totalKillIncreaseCount === 0
-
-            if (shouldShowExecutionToast) {
-                toastQueue.push(...blueDeathIncreaseEvents.slice(0, inferredBlueExecutionCount))
-                toastQueue.push(...redDeathIncreaseEvents.slice(0, inferredRedExecutionCount))
-            }
-        }
-
-        const blueTeamDeathsIncreased = hasAnyDeathIncrease(status.participants.blue, lastWindowFrame.blueTeam.participants)
-        const redTeamDeathsIncreased = hasAnyDeathIncrease(status.participants.red, lastWindowFrame.redTeam.participants)
-        const blueTeamAllDead = areAllParticipantsDead(lastWindowFrame.blueTeam.participants)
-        const redTeamAllDead = areAllParticipantsDead(lastWindowFrame.redTeam.participants)
-
-        const blueAceTriggered = redTeamDeathsIncreased && redTeamAllDead
-        const redAceTriggered = blueTeamDeathsIncreased && blueTeamAllDead
-
-        if (blueAceTriggered) {
-            const blueKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && toastEvent.blueTeam)
-            if (blueKillToastEvent) {
-                blueKillToastEvent.sound = blue_ace.default
-            }
-        }
-
-        if (redAceTriggered) {
-            const redKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && !toastEvent.blueTeam)
-            if (redKillToastEvent) {
-                redKillToastEvent.sound = red_ace.default
-            }
-        }
-
-        const shouldPlayFirstBlood =
-            status.gameIndex === gameIndex
-            && !firstBloodPlayedRef.current.played
-            && totalKillsBefore === 0
-            && totalKillsNow > 0
-        if (shouldPlayFirstBlood) {
-            const firstKillToastEvent = toastQueue.find((toastEvent) => (
-                toastEvent.eventType === "kill" && toastEvent.sound === kill.default
-            ))
-            if (firstKillToastEvent) {
-                firstKillToastEvent.sound = first_blood.default
-            }
-            firstBloodPlayedRef.current.played = true
-        }
-
-        const shouldPlayWelcomeRift =
-            status.gameIndex === gameIndex
-            && !welcomeRiftPlayedRef.current.played
-            && status.elapsedGameTimeSeconds === 0
-            && elapsedGameTimeSeconds >= 1
-        if (shouldPlayWelcomeRift) {
-            welcomeRiftPlayedRef.current.played = true
-        }
-
         let soundAlreadyPlaying = isMuted;
-        if (!soundAlreadyPlaying && shouldPlayWelcomeRift) {
-            playSound(welcome_rift.default)
-            soundAlreadyPlaying = true
-        }
-        toastQueue.forEach((toastEvent) => {
-            createToast(toastEvent, soundAlreadyPlaying);
-            soundAlreadyPlaying = true;
-        });
+        framesToProcess.forEach((frame, frameIndex) => {
+            const toastQueue: ToastEvent[] = []
+            const currentTotalKills = {
+                blue: getTeamKillCountFromParticipants(frame.blueTeam.participants),
+                red: getTeamKillCountFromParticipants(frame.redTeam.participants),
+            }
+            const totalKillsBefore = status.totalKills.blue + status.totalKills.red
+            const totalKillsNow = currentTotalKills.blue + currentTotalKills.red
 
-        statusRef.current = {
-            elapsedGameTimeSeconds: elapsedGameTimeSeconds,
-            totalKills: currentTotalKills,
-            dragons: { blue: lastWindowFrame.blueTeam.dragons.length, red: lastWindowFrame.redTeam.dragons.length },
-            gameIndex: gameIndex,
-            inhibitors: { blue: lastWindowFrame.blueTeam.inhibitors, red: lastWindowFrame.redTeam.inhibitors },
-            towers: { blue: lastWindowFrame.blueTeam.towers, red: lastWindowFrame.redTeam.towers },
-            barons: { blue: lastWindowFrame.blueTeam.barons, red: lastWindowFrame.redTeam.barons },
-            participants: { blue: lastWindowFrame.blueTeam.participants, red: lastWindowFrame.redTeam.participants },
-        }
+            if (status.gameIndex === gameIndex) {
+                if (status.inhibitors.blue !== frame.blueTeam.inhibitors) {
+                    toastQueue.push({ blueTeam: true, sound: inib_red.default, message: "\uC5B5\uC81C\uAE30 \uD30C\uAD34", image: trueBlueTeam.image })
+                }
 
+                if (status.inhibitors.red !== frame.redTeam.inhibitors) {
+                    toastQueue.push({ blueTeam: false, sound: inib_blue.default, message: "\uC5B5\uC81C\uAE30 \uD30C\uAD34", image: trueRedTeam.image })
+                }
+
+                if (status.barons.blue !== frame.blueTeam.barons) {
+                    toastQueue.push({ blueTeam: true, sound: baron_blue.default, message: "\uBC14\uB860 \uCC98\uCE58", image: trueBlueTeam.image })
+                }
+
+                if (status.barons.red !== frame.redTeam.barons) {
+                    toastQueue.push({ blueTeam: false, sound: baron_red.default, message: "\uBC14\uB860 \uCC98\uCE58", image: trueRedTeam.image })
+                }
+
+                if (status.dragons.blue !== frame.blueTeam.dragons.length) {
+                    toastQueue.push({ blueTeam: true, sound: dragon_blue.default, message: "\uB4DC\uB798\uACE4 \uCC98\uCE58", image: trueBlueTeam.image })
+                }
+
+                if (status.dragons.red !== frame.redTeam.dragons.length) {
+                    toastQueue.push({ blueTeam: false, sound: dragon_red.default, message: "\uB4DC\uB798\uACE4 \uCC98\uCE58", image: trueRedTeam.image })
+                }
+
+                if (status.towers.blue !== frame.blueTeam.towers) {
+                    toastQueue.push({ blueTeam: true, sound: tower_red.default, message: "\uD0C0\uC6CC \uD30C\uAD34", image: trueBlueTeam.image })
+                }
+
+                if (status.towers.red !== frame.redTeam.towers) {
+                    toastQueue.push({ blueTeam: false, sound: tower_blue.default, message: "\uD0C0\uC6CC \uD30C\uAD34", image: trueRedTeam.image })
+                }
+
+                const blueKillToastEvents = buildKillToastEvents(
+                    true,
+                    status.participants.blue,
+                    frame.blueTeam.participants,
+                    gameMetadata.blueTeamMetadata.participantMetadata,
+                    status.participants.red,
+                    frame.redTeam.participants,
+                    gameMetadata.redTeamMetadata.participantMetadata,
+                    championsUrlWithPatchVersion,
+                )
+                if (blueKillToastEvents.length > 0) {
+                    toastQueue.push(...blueKillToastEvents)
+                }
+
+                const redKillToastEvents = buildKillToastEvents(
+                    false,
+                    status.participants.red,
+                    frame.redTeam.participants,
+                    gameMetadata.redTeamMetadata.participantMetadata,
+                    status.participants.blue,
+                    frame.blueTeam.participants,
+                    gameMetadata.blueTeamMetadata.participantMetadata,
+                    championsUrlWithPatchVersion,
+                )
+                if (redKillToastEvents.length > 0) {
+                    toastQueue.push(...redKillToastEvents)
+                }
+
+                const blueDeathIncreaseEvents = getDeathIncreaseToastEvents(
+                    status.participants.blue,
+                    frame.blueTeam.participants,
+                    true,
+                    gameMetadata.blueTeamMetadata.participantMetadata,
+                    championsUrlWithPatchVersion,
+                )
+                const redDeathIncreaseEvents = getDeathIncreaseToastEvents(
+                    status.participants.red,
+                    frame.redTeam.participants,
+                    false,
+                    gameMetadata.redTeamMetadata.participantMetadata,
+                    championsUrlWithPatchVersion,
+                )
+                const blueDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.blue, frame.blueTeam.participants)
+                const redDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.red, frame.redTeam.participants)
+                const blueKillIncreaseCount = Math.max(0, currentTotalKills.blue - status.totalKills.blue)
+                const redKillIncreaseCount = Math.max(0, currentTotalKills.red - status.totalKills.red)
+                const totalDeathIncreaseCount = blueDeathIncreaseCount + redDeathIncreaseCount
+                const totalKillIncreaseCount = blueKillIncreaseCount + redKillIncreaseCount
+                const inferredBlueExecutionCount = Math.max(0, blueDeathIncreaseCount - redKillIncreaseCount)
+                const inferredRedExecutionCount = Math.max(0, redDeathIncreaseCount - blueKillIncreaseCount)
+                const shouldShowExecutionToast = totalDeathIncreaseCount === 1 && totalKillIncreaseCount === 0
+
+                if (shouldShowExecutionToast) {
+                    toastQueue.push(...blueDeathIncreaseEvents.slice(0, inferredBlueExecutionCount))
+                    toastQueue.push(...redDeathIncreaseEvents.slice(0, inferredRedExecutionCount))
+                }
+            }
+
+            const blueTeamDeathsIncreased = hasAnyDeathIncrease(status.participants.blue, frame.blueTeam.participants)
+            const redTeamDeathsIncreased = hasAnyDeathIncrease(status.participants.red, frame.redTeam.participants)
+            const blueTeamAllDead = areAllParticipantsDead(frame.blueTeam.participants)
+            const redTeamAllDead = areAllParticipantsDead(frame.redTeam.participants)
+
+            const blueAceTriggered = redTeamDeathsIncreased && redTeamAllDead
+            const redAceTriggered = blueTeamDeathsIncreased && blueTeamAllDead
+
+            if (blueAceTriggered) {
+                const blueKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && toastEvent.blueTeam)
+                if (blueKillToastEvent) {
+                    blueKillToastEvent.sound = blue_ace.default
+                }
+            }
+
+            if (redAceTriggered) {
+                const redKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && !toastEvent.blueTeam)
+                if (redKillToastEvent) {
+                    redKillToastEvent.sound = red_ace.default
+                }
+            }
+
+            const shouldPlayFirstBlood =
+                status.gameIndex === gameIndex
+                && !firstBloodPlayedRef.current.played
+                && totalKillsBefore === 0
+                && totalKillsNow > 0
+            if (shouldPlayFirstBlood) {
+                const firstKillToastEvent = toastQueue.find((toastEvent) => (
+                    toastEvent.eventType === "kill" && toastEvent.sound === kill.default
+                ))
+                if (firstKillToastEvent) {
+                    firstKillToastEvent.sound = first_blood.default
+                }
+                firstBloodPlayedRef.current.played = true
+            }
+
+            const frameElapsedGameTimeSeconds = frameIndex === framesToProcess.length - 1
+                ? elapsedGameTimeSeconds
+                : status.elapsedGameTimeSeconds
+            const shouldPlayWelcomeRift =
+                status.gameIndex === gameIndex
+                && !welcomeRiftPlayedRef.current.played
+                && status.elapsedGameTimeSeconds === 0
+                && frameElapsedGameTimeSeconds >= 1
+            if (shouldPlayWelcomeRift) {
+                welcomeRiftPlayedRef.current.played = true
+            }
+
+            if (!soundAlreadyPlaying && shouldPlayWelcomeRift) {
+                playSound(welcome_rift.default)
+                soundAlreadyPlaying = true
+            }
+            toastQueue.forEach((toastEvent) => {
+                createToast(toastEvent, soundAlreadyPlaying);
+                soundAlreadyPlaying = true;
+            });
+
+            status = buildStatusWatcher(frame, gameIndex, frameElapsedGameTimeSeconds, currentTotalKills)
+        })
+
+        statusRef.current = status
     }, [lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata.blueTeamMetadata.participantMetadata, gameMetadata.redTeamMetadata.participantMetadata, championsUrlWithPatchVersion, trueBlueTeam.image, trueRedTeam.image]);
 
     return (
@@ -360,7 +383,7 @@ function isKillToastEvent(toastEvent: ToastEvent): toastEvent is ToastEvent & Re
         && Array.isArray(toastEvent.victims)
 }
 
-function buildKillToastEvent(
+function buildKillToastEvents(
     blueTeam: boolean,
     previousTeamParticipants: WindowParticipant[],
     nextTeamParticipants: WindowParticipant[],
@@ -369,22 +392,22 @@ function buildKillToastEvent(
     nextOpponentParticipants: WindowParticipant[],
     opponentParticipantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
     championsUrlWithPatchVersion: string,
-): ToastEvent | null {
-    const killers = getChampionIconsByDelta(
+): ToastEvent[] {
+    const killerEntries = getChampionDeltaEntries(
         previousTeamParticipants,
         nextTeamParticipants,
         teamParticipantMetadata,
         championsUrlWithPatchVersion,
         "kills",
     )
-    const assistants = getChampionIconsByDelta(
+    const assistantEntries = getChampionDeltaEntries(
         previousTeamParticipants,
         nextTeamParticipants,
         teamParticipantMetadata,
         championsUrlWithPatchVersion,
         "assists",
     )
-    const victims = getChampionIconsByDelta(
+    const victimEntries = getChampionDeltaEntries(
         previousOpponentParticipants,
         nextOpponentParticipants,
         opponentParticipantMetadata,
@@ -392,30 +415,36 @@ function buildKillToastEvent(
         "deaths",
     )
 
-    if (killers.length === 0 || victims.length === 0) {
-        return null
+    if (killerEntries.length === 0 || victimEntries.length === 0) {
+        return []
     }
 
-    return {
-        blueTeam,
-        sound: kill.default,
-        eventType: "kill",
-        assistants,
-        killers,
-        victims,
-        diff: killers.length + victims.length,
-    }
+    const killers = killerEntries.map((entry) => entry.championIcon)
+    const assistants = getOrderedAssistantIcons(killerEntries, assistantEntries)
+    const victims = victimEntries.map((entry) => entry.championIcon)
+
+    return [
+        {
+            blueTeam,
+            sound: kill.default,
+            eventType: "kill",
+            assistants,
+            killers,
+            victims,
+            diff: killers.length + victims.length,
+        },
+    ]
 }
 
-function getChampionIconsByDelta(
+function getChampionDeltaEntries(
     previousParticipants: WindowParticipant[],
     nextParticipants: WindowParticipant[],
     participantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
     championsUrlWithPatchVersion: string,
     deltaKey: "kills" | "assists" | "deaths",
-): string[] {
+): ParticipantDeltaEntry[] {
     const participantCount = Math.min(previousParticipants.length, nextParticipants.length)
-    const championIcons: string[] = []
+    const deltaEntries: ParticipantDeltaEntry[] = []
 
     for (let i = 0; i < participantCount; i++) {
         const delta = Math.max(
@@ -432,12 +461,115 @@ function getChampionIconsByDelta(
             continue
         }
 
-        for (let count = 0; count < delta; count++) {
-            championIcons.push(championIcon)
+        deltaEntries.push({
+            participantId,
+            championIcon,
+            delta,
+        })
+    }
+
+    return deltaEntries
+}
+
+function getOrderedAssistantIcons(
+    killerEntries: ParticipantDeltaEntry[],
+    assistantEntries: ParticipantDeltaEntry[],
+): string[] {
+    if (assistantEntries.length === 0) {
+        return []
+    }
+
+    const assistantParticipantIdsInOrder: number[] = []
+    const assistantRemainingByParticipantId = new Map<number, number>()
+    const assistantIconByParticipantId = new Map<number, string>()
+
+    assistantEntries.forEach((entry) => {
+        assistantParticipantIdsInOrder.push(entry.participantId)
+        assistantRemainingByParticipantId.set(entry.participantId, entry.delta)
+        assistantIconByParticipantId.set(entry.participantId, entry.championIcon)
+    })
+
+    const killerSequence: number[] = []
+    killerEntries.forEach((entry) => {
+        for (let count = 0; count < entry.delta; count++) {
+            killerSequence.push(entry.participantId)
+        }
+    })
+
+    const orderedUniqueAssistantParticipantIds: number[] = []
+    const pushUniqueAssistantParticipantId = (participantId: number) => {
+        if (!orderedUniqueAssistantParticipantIds.includes(participantId)) {
+            orderedUniqueAssistantParticipantIds.push(participantId)
         }
     }
 
-    return championIcons
+    killerSequence.forEach((killerParticipantId) => {
+        const selectedAssistantParticipantId = selectAssistantParticipantIdForKiller(
+            killerParticipantId,
+            assistantParticipantIdsInOrder,
+            assistantRemainingByParticipantId,
+        )
+        if (selectedAssistantParticipantId === null) {
+            return
+        }
+
+        const remainingCount = assistantRemainingByParticipantId.get(selectedAssistantParticipantId) || 0
+        if (remainingCount <= 0) {
+            return
+        }
+
+        assistantRemainingByParticipantId.set(selectedAssistantParticipantId, remainingCount - 1)
+        pushUniqueAssistantParticipantId(selectedAssistantParticipantId)
+    })
+
+    assistantParticipantIdsInOrder.forEach((participantId) => {
+        const remainingCount = assistantRemainingByParticipantId.get(participantId) || 0
+        if (remainingCount > 0) {
+            pushUniqueAssistantParticipantId(participantId)
+        }
+    })
+
+    return orderedUniqueAssistantParticipantIds
+        .map((participantId) => assistantIconByParticipantId.get(participantId) || "")
+        .filter((icon) => icon.length > 0)
+}
+
+function selectAssistantParticipantIdForKiller(
+    killerParticipantId: number,
+    assistantParticipantIdsInOrder: number[],
+    assistantRemainingByParticipantId: Map<number, number>,
+): number | null {
+    let selectedParticipantId: number | null = null
+    let maxRemainingCount = -1
+
+    for (const participantId of assistantParticipantIdsInOrder) {
+        if (participantId === killerParticipantId) {
+            continue
+        }
+
+        const remainingCount = assistantRemainingByParticipantId.get(participantId) || 0
+        if (remainingCount <= 0) {
+            continue
+        }
+
+        if (remainingCount > maxRemainingCount) {
+            selectedParticipantId = participantId
+            maxRemainingCount = remainingCount
+        }
+    }
+
+    if (selectedParticipantId !== null) {
+        return selectedParticipantId
+    }
+
+    for (const participantId of assistantParticipantIdsInOrder) {
+        const remainingCount = assistantRemainingByParticipantId.get(participantId) || 0
+        if (remainingCount > 0) {
+            return participantId
+        }
+    }
+
+    return null
 }
 
 function getChampionIconForParticipant(
@@ -508,7 +640,37 @@ function areAllParticipantsDead(participants: WindowParticipant[]) {
     return participants.every((participant) => Number(participant.currentHealth) <= 0)
 }
 
+function buildStatusWatcher(
+    windowFrame: WindowFrame,
+    gameIndex: number,
+    elapsedGameTimeSeconds: number,
+    totalKills?: { blue: number, red: number },
+): StatusWatcher {
+    const resolvedTotalKills = totalKills || {
+        blue: getTeamKillCountFromParticipants(windowFrame.blueTeam.participants),
+        red: getTeamKillCountFromParticipants(windowFrame.redTeam.participants),
+    }
+
+    return {
+        rfc460Timestamp: windowFrame.rfc460Timestamp,
+        elapsedGameTimeSeconds,
+        totalKills: resolvedTotalKills,
+        dragons: { blue: windowFrame.blueTeam.dragons.length, red: windowFrame.redTeam.dragons.length },
+        gameIndex,
+        inhibitors: { blue: windowFrame.blueTeam.inhibitors, red: windowFrame.redTeam.inhibitors },
+        towers: { blue: windowFrame.blueTeam.towers, red: windowFrame.redTeam.towers },
+        barons: { blue: windowFrame.blueTeam.barons, red: windowFrame.redTeam.barons },
+        participants: { blue: windowFrame.blueTeam.participants, red: windowFrame.redTeam.participants },
+    }
+}
+
 function getTeamKillCountFromParticipants(participants: WindowParticipant[] | undefined) {
     if (!Array.isArray(participants)) return 0
     return participants.reduce((sum, participant) => sum + Number(participant.kills || 0), 0)
+}
+
+function getTimestampValue(timestamp: string | Date | undefined) {
+    if (!timestamp) return 0
+    const value = new Date(timestamp).getTime()
+    return Number.isFinite(value) ? value : 0
 }

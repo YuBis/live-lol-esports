@@ -8,7 +8,8 @@ import { CustomTeam, EventDetails, ExtendedGame, Team, WindowFrame } from '../ty
 
 type Props = {
     eventDetails: EventDetails,
-    gameIndex: number
+    gameIndex: number,
+    currentWindowFrame?: WindowFrame,
 }
 
 type WinnerLabelByGameId = Record<string, string>
@@ -17,7 +18,7 @@ const LIVE_STATS_STARTING_TIME_STEP_MS = 10 * 1000
 const COMPLETED_GAME_TAIL_LOOKAHEAD_MS = 4 * 60 * 60 * 1000
 const COMPLETED_GAME_TAIL_SAFE_NOW_OFFSET_MS = 60 * 1000
 
-export function GameDetails({ eventDetails, gameIndex }: Props) {
+export function GameDetails({ eventDetails, gameIndex, currentWindowFrame }: Props) {
     const [winnerLabelByGameId, setWinnerLabelByGameId] = useState<WinnerLabelByGameId>({})
     const requestTokenRef = useRef<number>(0)
     const teamsById = useMemo(() => {
@@ -70,17 +71,49 @@ export function GameDetails({ eventDetails, gameIndex }: Props) {
         (eventDetails.match.games.length > 1) ? (
             <div className='game-selector'>
                 {eventDetails.match.games.map((game) => {
+                    const resolvedGameState = getResolvedGameStateForDisplay(game, gameIndex, currentWindowFrame)
                     const winnerLabel = winnerLabelByGameId[game.id]
+                        || getWinnerLabelFromCurrentWindowFrame(game, gameIndex, currentWindowFrame, teamsById)
                         || getFallbackWinnerLabelForCompletedGame(game, eventDetails, teamsById)
-                    const displayLabel = formatGameStateLabel(game.state, winnerLabel)
+                    const displayLabel = formatGameStateLabel(resolvedGameState, winnerLabel)
 
-                    return <Link className={`game-selector-item ${game.state} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
+                    return <Link className={`game-selector-item ${resolvedGameState} ${gameIndex === game.number ? `selected` : ``}`} to={`/live/${eventDetails.id}/game-index/${game.number}`} key={`game-selector-${game.id}`}>
                         <span className={`#/live/${game.state}`}>Game {game.number} - {displayLabel}</span>
                     </Link>
                 })}
 
             </div>) : null
     )
+}
+
+function getResolvedGameStateForDisplay(
+    game: ExtendedGame,
+    selectedGameNumber: number,
+    currentWindowFrame?: WindowFrame,
+) {
+    const normalizedState = String(game.state || ``).toLowerCase()
+    const isSelectedGame = game.number === selectedGameNumber
+    const isWindowFinished = currentWindowFrame?.gameState === `finished`
+    if (isSelectedGame && normalizedState === `inprogress` && isWindowFinished) return `completed`
+    return normalizedState || game.state
+}
+
+function getWinnerLabelFromCurrentWindowFrame(
+    game: ExtendedGame,
+    selectedGameNumber: number,
+    currentWindowFrame: WindowFrame | undefined,
+    teamsById: Map<string, Team>,
+) {
+    if (game.number !== selectedGameNumber) return undefined
+    if (!currentWindowFrame || currentWindowFrame.gameState !== `finished`) return undefined
+
+    const winnerSide = inferWinnerSide(currentWindowFrame)
+    if (!winnerSide) return undefined
+
+    const winnerTeamId = game.teams.find((team) => team.side === winnerSide)?.id
+    if (!winnerTeamId) return undefined
+
+    return getTeamLabelById(teamsById, winnerTeamId)
 }
 
 function formatGameStateLabel(state: string, winnerLabel?: string): string {
