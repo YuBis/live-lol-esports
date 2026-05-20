@@ -64,6 +64,10 @@ type InferredHeraldByTeam = {
     blue: boolean,
     red: boolean,
 }
+type InferredHeraldKillTimestampByTeam = {
+    blue: string | null,
+    red: string | null,
+}
 type MagicalFootwearTiming = {
     unlockAfterMs: number,
     takedownReductionMs: number,
@@ -110,8 +114,10 @@ export function Match({ match }: MatchRouteProps) {
     const [videoParameter, setVideoParameter] = useState<string>();
     const [backfillStatus, setBackfillStatus] = useState<BackfillStatus>(`idle`);
     const [inferredHeraldKillCounts, setInferredHeraldKillCounts] = useState<{ blue: number, red: number }>({ blue: 0, red: 0 });
+    const [inferredHeraldKillTimestampByTeam, setInferredHeraldKillTimestampByTeam] = useState<InferredHeraldKillTimestampByTeam>({ blue: null, red: null });
     const [objectiveTimerBackfillSeed, setObjectiveTimerBackfillSeed] = useState<ObjectiveTimerBackfillSeed>();
     const [playbackTimestamp, setPlaybackTimestamp] = useState<string>(``)
+    const [windowFrameTimeline, setWindowFrameTimeline] = useState<WindowFrame[]>([])
     const [isDebugSimulationModeEnabled, setIsDebugSimulationModeEnabled] = useState<boolean>(false)
     const [isDebugSimulationRunning, setIsDebugSimulationRunning] = useState<boolean>(false)
     const [debugSimulationJumpMinuteOptions, setDebugSimulationJumpMinuteOptions] = useState<number[]>([])
@@ -128,6 +134,7 @@ export function Match({ match }: MatchRouteProps) {
     const latestWindowFrameTimestampRef = useRef<string>(``);
     const maxObservedWindowFrameTimestampByGameIdRef = useRef<Map<string, string>>(new Map())
     const bufferedWindowFramesByTimestampRef = useRef<Map<string, WindowFrame>>(new Map());
+    const windowFrameTimelineByTimestampRef = useRef<Map<string, WindowFrame>>(new Map());
     const renderedWindowFrameTimestampRef = useRef<string>(``);
     const renderedWindowFrameRef = useRef<WindowFrame>();
     const playbackTimestampRef = useRef<string>(``)
@@ -143,6 +150,7 @@ export function Match({ match }: MatchRouteProps) {
     const hasObservedRawTrinketByParticipantIdRef = useRef<HasObservedRawTrinketByParticipantId>(new Map())
     const magicalFootwearTimingRef = useRef<MagicalFootwearTiming>(DEFAULT_MAGICAL_FOOTWEAR_TIMING)
     const inferredHeraldByTeamRef = useRef<InferredHeraldByTeam>({ blue: false, red: false })
+    const inferredHeraldKillTimestampByTeamRef = useRef<InferredHeraldKillTimestampByTeam>({ blue: null, red: null })
     const backfillStatusByGameIdRef = useRef<Map<string, `running` | `completed`>>(new Map())
     const activeGameIdRef = useRef<string>(``)
     const firstWindowTimestampRef = useRef<string>(``)
@@ -187,6 +195,10 @@ export function Match({ match }: MatchRouteProps) {
             setLastDetailsFrame(undefined)
             setPlaybackTimestamp(``)
         }
+        const resetWindowFrameTimeline = () => {
+            windowFrameTimelineByTimestampRef.current = new Map()
+            setWindowFrameTimeline([])
+        }
 
         // Reset volatile per-game caches immediately on match route changes.
         matchEventDetailsRef.current = undefined
@@ -194,6 +206,7 @@ export function Match({ match }: MatchRouteProps) {
         latestWindowFrameTimestampRef.current = ``
         maxObservedWindowFrameTimestampByGameIdRef.current = new Map()
         bufferedWindowFramesByTimestampRef.current = new Map()
+        windowFrameTimelineByTimestampRef.current = new Map()
         renderedWindowFrameTimestampRef.current = ``
         renderedWindowFrameRef.current = undefined
         playbackTimestampRef.current = ``
@@ -208,13 +221,16 @@ export function Match({ match }: MatchRouteProps) {
         pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
         hasObservedRawTrinketByParticipantIdRef.current = new Map()
         inferredHeraldByTeamRef.current = { blue: false, red: false }
+        inferredHeraldKillTimestampByTeamRef.current = { blue: null, red: null }
         backfillStatusByGameIdRef.current = new Map()
         activeGameIdRef.current = ``
         firstWindowTimestampRef.current = ``
         firstWindowReceivedRef.current = false
         setBackfillStatus(`idle`)
         setInferredHeraldKillCounts({ blue: 0, red: 0 })
+        setInferredHeraldKillTimestampByTeam({ blue: null, red: null })
         setObjectiveTimerBackfillSeed(undefined)
+        setWindowFrameTimeline([])
         resetRenderedGameState()
         setDebugSimulationJumpMinuteOptions([])
 
@@ -238,6 +254,7 @@ export function Match({ match }: MatchRouteProps) {
                     latestWindowFrameTimestampRef.current = ``
                     maxObservedWindowFrameTimestampByGameIdRef.current = new Map()
                     bufferedWindowFramesByTimestampRef.current = new Map()
+                    resetWindowFrameTimeline()
                     renderedWindowFrameTimestampRef.current = ``
                     renderedWindowFrameRef.current = undefined
                     playbackTimestampRef.current = ``
@@ -252,7 +269,9 @@ export function Match({ match }: MatchRouteProps) {
                     pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
                     hasObservedRawTrinketByParticipantIdRef.current = new Map()
                     inferredHeraldByTeamRef.current = { blue: false, red: false }
+                    inferredHeraldKillTimestampByTeamRef.current = { blue: null, red: null }
                     setInferredHeraldKillCounts({ blue: 0, red: 0 })
+                    setInferredHeraldKillTimestampByTeam({ blue: null, red: null })
                     backfillStatusByGameIdRef.current = new Map()
                     setBackfillStatus(`idle`)
                     setObjectiveTimerBackfillSeed(undefined)
@@ -377,6 +396,7 @@ export function Match({ match }: MatchRouteProps) {
                 updateParticipantRoles(response.data.gameMetadata)
                 setMetadata(response.data.gameMetadata)
                 setFirstWindowFrame(frames[0])
+                recordWindowFrameTimeline(gameId, frames)
                 enqueueWindowFrames(gameId, frames)
                 getItems(response.data.gameMetadata)
                 getRunes(response.data.gameMetadata)
@@ -404,6 +424,7 @@ export function Match({ match }: MatchRouteProps) {
                 }
                 currentTimestampRef.current = normalizedLastWindowTimestamp
                 maybeStartLiveDetailsBackfill(gameId, lastWindowFrame)
+                recordWindowFrameTimeline(gameId, frames)
 
                 updateParticipantRoles(response.data.gameMetadata)
                 const shouldRenderCompletedGameInstantly = isCurrentGameCompleted() && !isDebugSimulationRunningRef.current
@@ -479,6 +500,39 @@ export function Match({ match }: MatchRouteProps) {
 
             updateObservedWindowTimestampAndJumpOptions(gameId, newestTimestamp)
             pruneBufferedWindowFrames(getTimestampValue(newestTimestamp))
+        }
+
+        function recordWindowFrameTimeline(gameId: string, frames: WindowFrame[]) {
+            if (activeGameIdRef.current !== gameId) return
+            if (!frames || frames.length === 0) return
+
+            const windowFrameTimelineByTimestamp = windowFrameTimelineByTimestampRef.current
+            let hasTimelineChange = false
+
+            frames.forEach((frame) => {
+                const normalizedTimestamp = normalizeTimestamp(frame.rfc460Timestamp)
+                if (!normalizedTimestamp) return
+
+                const normalizedFrame = normalizedTimestamp === frame.rfc460Timestamp
+                    ? frame
+                    : { ...frame, rfc460Timestamp: normalizedTimestamp }
+                const previousFrame = windowFrameTimelineByTimestamp.get(normalizedTimestamp)
+                const hasMeaningfulDiff = !previousFrame
+                    || Number(previousFrame.blueTeam.totalGold || 0) !== Number(normalizedFrame.blueTeam.totalGold || 0)
+                    || Number(previousFrame.redTeam.totalGold || 0) !== Number(normalizedFrame.redTeam.totalGold || 0)
+                    || previousFrame.gameState !== normalizedFrame.gameState
+                if (!hasMeaningfulDiff) return
+
+                windowFrameTimelineByTimestamp.set(normalizedTimestamp, normalizedFrame)
+                hasTimelineChange = true
+            })
+
+            if (!hasTimelineChange) return
+
+            const sortedTimelineFrames = Array.from(windowFrameTimelineByTimestamp.entries())
+                .sort((leftEntry, rightEntry) => getTimestampValue(leftEntry[0]) - getTimestampValue(rightEntry[0]))
+                .map(([, frame]) => frame)
+            setWindowFrameTimeline(sortedTimelineFrames)
         }
 
         function updateObservedWindowTimestampAndJumpOptions(gameId: string, newestTimestamp: string) {
@@ -596,6 +650,10 @@ export function Match({ match }: MatchRouteProps) {
                 if (!firstDetailsTimestampRef.current) {
                     firstDetailsTimestampRef.current = normalizeTimestamp(incomingLastFrame.rfc460Timestamp)
                 }
+                const previousInferredHeraldByTeam: InferredHeraldByTeam = {
+                    blue: inferredHeraldByTeamRef.current.blue,
+                    red: inferredHeraldByTeamRef.current.red,
+                }
                 const stabilizedFrame = stabilizeDetailsFrame(
                     incomingLastFrame,
                     lastDetailsFrameRef.current,
@@ -610,6 +668,11 @@ export function Match({ match }: MatchRouteProps) {
                     pendingHeraldTrinketDropCountByParticipantIdRef.current,
                     hasObservedRawTrinketByParticipantIdRef.current,
                     magicalFootwearTimingRef.current,
+                )
+                maybeRecordInferredHeraldKillTimestampOnTransition(
+                    gameId,
+                    incomingLastFrame.rfc460Timestamp,
+                    previousInferredHeraldByTeam,
                 )
                 setInferredHeraldKillCounts({
                     blue: inferredHeraldByTeamRef.current.blue ? 1 : 0,
@@ -668,6 +731,38 @@ export function Match({ match }: MatchRouteProps) {
             participantRoleByParticipantIdRef.current = participantRoleByParticipantId
         }
 
+        function maybeRecordInferredHeraldKillTimestampOnTransition(
+            gameId: string,
+            timestamp: string | Date,
+            previousInferredHeraldByTeam: InferredHeraldByTeam,
+        ) {
+            ;([`blue`, `red`] as Array<keyof InferredHeraldByTeam>).forEach((teamKey) => {
+                const isTransitionToInferredHeraldKill =
+                    !previousInferredHeraldByTeam[teamKey]
+                    && inferredHeraldByTeamRef.current[teamKey]
+                if (!isTransitionToInferredHeraldKill) return
+                maybeRecordInferredHeraldKillTimestamp(gameId, teamKey, timestamp)
+            })
+        }
+
+        function maybeRecordInferredHeraldKillTimestamp(
+            gameId: string,
+            teamKey: keyof InferredHeraldByTeam,
+            timestamp: string | Date,
+        ) {
+            if (activeGameIdRef.current !== gameId) return
+            const normalizedTimestamp = normalizeTimestamp(timestamp)
+            if (!normalizedTimestamp) return
+
+            const currentTimestamp = inferredHeraldKillTimestampByTeamRef.current[teamKey]
+            if (currentTimestamp) return
+            inferredHeraldKillTimestampByTeamRef.current[teamKey] = normalizedTimestamp
+            setInferredHeraldKillTimestampByTeam({
+                blue: inferredHeraldKillTimestampByTeamRef.current.blue,
+                red: inferredHeraldKillTimestampByTeamRef.current.red,
+            })
+        }
+
         function maybeStartLiveDetailsBackfill(gameId: string, lastWindowFrame: WindowFrame) {
             if (!activeGameIdRef.current) {
                 activeGameIdRef.current = gameId
@@ -721,7 +816,7 @@ export function Match({ match }: MatchRouteProps) {
             const pendingRawTrinketDropCountByParticipantId = new Map<number, number>()
             let aborted = false
             try {
-                await backfillObjectiveTimersFromWindowHistory(gameId, alignedStart, alignedEnd)
+                const historicalWindowFrames = await backfillWindowTimelineFromHistory(gameId, alignedStart, alignedEnd)
                 if (!isCurrentPollingSession()) {
                     aborted = true
                 }
@@ -729,6 +824,22 @@ export function Match({ match }: MatchRouteProps) {
                     aborted = true
                 }
                 if (aborted) return
+
+                const objectiveSeedFromHistoricalWindowFrames = historicalWindowFrames.length > 0
+                    ? buildObjectiveTimerBackfillSeedFromWindowFrames(historicalWindowFrames, alignedEnd)
+                    : undefined
+                if (objectiveSeedFromHistoricalWindowFrames) {
+                    setObjectiveTimerBackfillSeed(objectiveSeedFromHistoricalWindowFrames)
+                } else {
+                    await backfillObjectiveTimersFromWindowHistory(gameId, alignedStart, alignedEnd)
+                    if (!isCurrentPollingSession()) {
+                        aborted = true
+                    }
+                    if (activeGameIdRef.current !== gameId) {
+                        aborted = true
+                    }
+                    if (aborted) return
+                }
 
                 for (let cursor = alignedStart; cursor <= alignedEnd; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
                     if (!isCurrentPollingSession()) {
@@ -798,6 +909,7 @@ export function Match({ match }: MatchRouteProps) {
                                     const oppositeTeamColor = inferredTeamColor === `blue` ? `red` : `blue`
                                     if (!inferredHeraldByTeamRef.current[inferredTeamColor] && !inferredHeraldByTeamRef.current[oppositeTeamColor]) {
                                         inferredHeraldByTeamRef.current[inferredTeamColor] = true
+                                        maybeRecordInferredHeraldKillTimestamp(gameId, inferredTeamColor, frame.rfc460Timestamp)
                                         if (activeGameIdRef.current === gameId) {
                                             setInferredHeraldKillCounts({
                                                 blue: inferredHeraldByTeamRef.current.blue ? 1 : 0,
@@ -824,6 +936,46 @@ export function Match({ match }: MatchRouteProps) {
                     updateBackfillStatus(gameId, `completed`)
                 }
             }
+        }
+
+        async function backfillWindowTimelineFromHistory(gameId: string, alignedStartTimestampValue: number, alignedEndTimestampValue: number) {
+            if (!isCurrentPollingSession()) return []
+            if (activeGameIdRef.current !== gameId) return []
+
+            const framesByTimestamp = new Map<string, WindowFrame>()
+
+            for (let cursor = alignedStartTimestampValue; cursor <= alignedEndTimestampValue; cursor += LIVE_DETAILS_BACKFILL_QUERY_INTERVAL_MS) {
+                if (!isCurrentPollingSession()) return []
+                if (activeGameIdRef.current !== gameId) return []
+
+                const queryTimestamp = new Date(cursor).toISOString()
+                const response = await getWindowResponse(gameId, queryTimestamp)
+                if (!response) continue
+                if (!isCurrentPollingSession()) return []
+                if (activeGameIdRef.current !== gameId) return []
+
+                const incomingFrames: WindowFrame[] = response.data?.frames
+                if (!incomingFrames || incomingFrames.length === 0) continue
+
+                incomingFrames.forEach((frame) => {
+                    const normalizedTimestamp = normalizeTimestamp(frame.rfc460Timestamp)
+                    if (!normalizedTimestamp) return
+                    const normalizedFrame = normalizedTimestamp === frame.rfc460Timestamp
+                        ? frame
+                        : { ...frame, rfc460Timestamp: normalizedTimestamp }
+                    framesByTimestamp.set(normalizedTimestamp, normalizedFrame)
+                })
+            }
+
+            const frames = Array.from(framesByTimestamp.entries())
+                .sort((leftEntry, rightEntry) => getTimestampValue(leftEntry[0]) - getTimestampValue(rightEntry[0]))
+                .map(([, frame]) => frame)
+            if (frames.length === 0) return []
+            if (!isCurrentPollingSession()) return []
+            if (activeGameIdRef.current !== gameId) return []
+
+            recordWindowFrameTimeline(gameId, frames)
+            return frames
         }
 
         async function backfillObjectiveTimersFromWindowHistory(gameId: string, alignedStartTimestampValue: number, alignedEndTimestampValue: number) {
@@ -970,6 +1122,7 @@ export function Match({ match }: MatchRouteProps) {
         currentTimestampRef.current = ``
         latestWindowFrameTimestampRef.current = ``
         bufferedWindowFramesByTimestampRef.current = new Map()
+        windowFrameTimelineByTimestampRef.current = new Map()
         renderedWindowFrameTimestampRef.current = ``
         renderedWindowFrameRef.current = undefined
         playbackTimestampRef.current = ``
@@ -985,11 +1138,14 @@ export function Match({ match }: MatchRouteProps) {
         pendingHeraldTrinketDropCountByParticipantIdRef.current = new Map()
         hasObservedRawTrinketByParticipantIdRef.current = new Map()
         inferredHeraldByTeamRef.current = { blue: false, red: false }
+        inferredHeraldKillTimestampByTeamRef.current = { blue: null, red: null }
         backfillStatusByGameIdRef.current = new Map()
 
         setInferredHeraldKillCounts({ blue: 0, red: 0 })
+        setInferredHeraldKillTimestampByTeam({ blue: null, red: null })
         setBackfillStatus(`idle`)
         setObjectiveTimerBackfillSeed(undefined)
+        setWindowFrameTimeline([])
         setLastDetailsFrame(undefined)
         setPlaybackTimestamp(``)
     }
@@ -1281,7 +1437,7 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} playbackTimestamp={playbackTimestamp} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} playbackTimestamp={playbackTimestamp} windowFrameTimeline={windowFrameTimeline} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} inferredHeraldKillTimestampByTeam={inferredHeraldKillTimestampByTeam} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {

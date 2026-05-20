@@ -626,6 +626,7 @@ Gold bar
 
 .gold-lead-indicator {
     background: var(--gray-line);
+    border: 1px solid transparent;
     border-radius: 999px;
     font-size: 0.88rem;
     font-weight: 700;
@@ -638,6 +639,27 @@ Gold bar
     align-items: center;
     justify-content: center;
     position: relative;
+    min-height: 2rem;
+}
+.gold-lead-toggle {
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+    z-index: 3;
+}
+
+.gold-lead-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+.gold-lead-toggle:focus-visible {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+
+.gold-lead-toggle-active {
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .gold-lead-symbol {
@@ -695,6 +717,146 @@ Gold bar
     background: var(--red);
 }
 
+.gold-difference-graph {
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.55rem 0.35rem;
+    border-radius: 0.5rem;
+    background: linear-gradient(180deg, rgba(22, 31, 51, 0.94) 0%, rgba(13, 18, 34, 0.92) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gold-difference-graph-svg {
+    display: block;
+    width: min(100%, 720px);
+    margin: 0 auto;
+    height: auto;
+    aspect-ratio: 4 / 1;
+}
+
+.status-live-game-card-mirror-mode .gold-difference-graph,
+.status-live-game-card:not(.status-live-game-card-mirror-mode):not(.status-live-game-card-basic-compact-mode):not(.status-live-game-card-mirror-compact-mode) .gold-difference-graph {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.status-live-game-card-mirror-mode .gold-difference-graph-svg,
+.status-live-game-card:not(.status-live-game-card-mirror-mode):not(.status-live-game-card-basic-compact-mode):not(.status-live-game-card-mirror-compact-mode) .gold-difference-graph-svg {
+    width: 100%;
+    max-width: none;
+}
+
+.status-live-game-card-mirror-mode .gold-difference-graph-svg,
+.status-live-game-card-mirror-compact-mode .gold-difference-graph-svg {
+    aspect-ratio: 20 / 3;
+}
+
+.gold-difference-graph-background {
+    fill: rgba(12, 16, 28, 0.15);
+}
+
+.gold-difference-graph-grid-line {
+    stroke: rgba(255, 255, 255, 0.14);
+    stroke-width: 1;
+}
+
+.gold-difference-graph-zero-line {
+    stroke: rgba(255, 255, 255, 0.36);
+    stroke-width: 1;
+}
+
+.gold-difference-graph-tick-label,
+.gold-difference-graph-y-label {
+    fill: rgba(238, 244, 255, 0.8);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.gold-difference-graph-area-blue {
+    opacity: 0.95;
+}
+
+.gold-difference-graph-area-red {
+    opacity: 0.95;
+}
+
+.gold-difference-graph-line {
+    fill: none;
+    stroke-width: 1.7;
+}
+
+.gold-difference-graph-line-blue {
+    stroke: rgba(74, 169, 255, 0.98);
+}
+
+.gold-difference-graph-line-red {
+    stroke: rgba(255, 108, 108, 0.98);
+}
+
+.gold-difference-graph-point-blue {
+    fill: #7ab9ff;
+}
+
+.gold-difference-graph-point-red {
+    fill: #ff7f7f;
+}
+
+.gold-difference-graph-event-icon {
+    color: rgba(246, 251, 255, 0.92);
+}
+
+.gold-difference-graph-event-icon path,
+.gold-difference-graph-event-icon g {
+    fill: currentColor;
+}
+
+.gold-difference-graph-event-icon-blue {
+    color: var(--blue-twitter);
+}
+
+.gold-difference-graph-event-icon-red {
+    color: var(--red);
+}
+
+.gold-difference-graph-event-icon-image {
+    opacity: 0.95;
+}
+
+.gold-difference-graph-event-icon-image-blue {
+    filter: brightness(0) saturate(100%) invert(57%) sepia(53%) saturate(1842%) hue-rotate(171deg) brightness(100%) contrast(101%);
+}
+
+.gold-difference-graph-event-icon-image-red {
+    filter: brightness(0) saturate(100%) invert(54%) sepia(85%) saturate(4518%) hue-rotate(331deg) brightness(98%) contrast(101%);
+}
+
+.gold-difference-graph-event-count {
+    fill: rgba(246, 251, 255, 0.95);
+    font-size: 7px;
+    font-weight: 800;
+    paint-order: stroke;
+    stroke: rgba(8, 10, 17, 0.88);
+    stroke-width: 1;
+}
+
+.gold-difference-graph-event-count-blue {
+    fill: var(--blue-twitter);
+}
+
+.gold-difference-graph-event-count-red {
+    fill: var(--red);
+}
+
+.gold-difference-graph-empty {
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.82rem;
+    color: rgba(238, 244, 255, 0.82);
+}
+
 @media(max-width: 720px) {
     .team-gold-value {
         font-size: 1rem;
@@ -704,6 +866,10 @@ Gold bar
         font-size: 0.8rem;
         min-width: 5.5rem;
         padding: 0.2rem 0.55rem;
+    }
+
+    .gold-difference-graph-svg {
+        width: 100%;
     }
 }
 
@@ -1222,6 +1388,16 @@ Status dragons
     min-height: 2.8rem;
 }
 
+.status-live-game-card-basic-compact-mode .gold-difference-graph {
+    width: calc(100% - 11rem);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.status-live-game-card-basic-compact-mode .gold-difference-graph-svg {
+    width: 100%;
+}
+
 .status-live-game-card-basic-compact-mode .status-live-game-card-table-basic-compact {
     --stat-col-gap: 2px;
     --champion-col-width: var(--basic-compact-champion-col-width);
@@ -1420,6 +1596,16 @@ Status dragons
     font-variant-numeric: tabular-nums;
     border-radius: 3px;
     background: var(--gray-line);
+}
+
+.status-live-game-card-basic-compact-mode .basic-compact-cs-cell.player-cs-lead-cell .basic-compact-cs-value {
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 248, 204, 0.36) 0%,
+        rgba(255, 233, 148, 0.29) 62%,
+        rgba(255, 215, 97, 0.42) 100%
+    );
+    box-shadow: inset 0 0 0 1px rgba(255, 223, 128, 0.22);
 }
 
 .status-live-game-card-basic-compact-mode .basic-compact-summary-top {
@@ -1665,7 +1851,8 @@ Status dragons
 
 .status-live-game-card-mirror-compact-mode .gold-lead-indicator {
     min-width: 5rem;
-    padding: 0.16rem 0.55rem;
+    min-height: 1.9rem;
+    padding: 0.34rem 0.7rem;
     font-size: 0.74rem;
 }
 
@@ -1683,6 +1870,15 @@ Status dragons
     height: 5px;
 }
 
+.status-live-game-card-mirror-compact-mode .gold-difference-graph {
+    margin-top: 0.2rem;
+    padding: 0.42rem 0.45rem 0.2rem;
+}
+
+.status-live-game-card-mirror-compact-mode .gold-difference-graph-svg {
+    width: 100%;
+}
+
 .status-live-game-card-mirror-compact-mode .live-game-stats-header-dragons {
     height: 1.35rem;
     min-height: 1.35rem;
@@ -1691,6 +1887,7 @@ Status dragons
     margin-bottom: 0.15rem;
     position: relative;
     top: -0.8rem;
+    pointer-events: none;
 }
 
 .status-live-game-card-mirror-compact-mode .live-game-stats-header-dragons > .blue-team,
@@ -2248,6 +2445,16 @@ svg.player-champion {
 
 .status-live-game-card-table:not(.status-live-game-card-table-mirror) .player-stats-row td:nth-child(4) .player-stats {
     width: 100%;
+}
+
+.status-live-game-card-table:not(.status-live-game-card-table-mirror) .player-stats-row td.player-cs-lead-cell .player-stats {
+    background: radial-gradient(
+        circle at center,
+        rgba(255, 248, 204, 0.34) 0%,
+        rgba(255, 233, 148, 0.26) 62%,
+        rgba(255, 215, 97, 0.38) 100%
+    );
+    box-shadow: inset 0 0 0 1px rgba(255, 223, 128, 0.22);
 }
 
 .player-stats,

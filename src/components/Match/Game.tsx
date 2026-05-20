@@ -3,7 +3,7 @@ import '../Schedule/styles/scheduleStyle.css'
 
 import { GameDetails } from "./GameDetails"
 import { MiniHealthBar } from "./MiniHealthBar";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from 'react-toastify';
 import { DetailsFrame, EventDetails, GameMetadata, Item, ObjectiveTimerBackfillSeed, Outcome, Participant, Record, Result, TeamStats, WindowFrame, WindowParticipant, ExtendedVod, Rune, SlottedRune } from "../types/baseTypes";
 
@@ -53,6 +53,7 @@ type Props = {
     firstWindowFrame: WindowFrame,
     lastWindowFrame: WindowFrame,
     playbackTimestamp?: string,
+    windowFrameTimeline?: WindowFrame[],
     lastDetailsFrame: DetailsFrame,
     gameIndex: number,
     gameMetadata: GameMetadata,
@@ -67,6 +68,7 @@ type Props = {
     },
     backfillStatus?: `idle` | `running` | `completed`,
     inferredHeraldKillCounts?: { blue: number, red: number },
+    inferredHeraldKillTimestampByTeam?: { blue: string | null, red: string | null },
     objectiveTimerBackfillSeed?: ObjectiveTimerBackfillSeed,
     debugSimulationModeEnabled?: boolean,
     debugSimulationRunning?: boolean,
@@ -102,6 +104,50 @@ type DragonIconRenderItem = {
     type: `dragon` | `soul`,
     dragonType: string,
 }
+type GoldLeadTimelinePoint = {
+    elapsedSeconds: number,
+    lead: number,
+}
+type GoldLeadGraphPoint = {
+    x: number,
+    y: number,
+    elapsedSeconds: number,
+    lead: number,
+}
+type GoldLeadGraphTick = {
+    seconds: number,
+    x: number,
+    label: string,
+}
+type GoldGraphEventType = `dragon` | `herald` | `baron` | `tower`
+type GoldLeadGraphEventMarker = {
+    x: number,
+    elapsedSeconds: number,
+    team: TeamKey,
+    type: GoldGraphEventType,
+    count: number,
+}
+type GoldLeadGraphData = {
+    points: GoldLeadGraphPoint[],
+    ticks: GoldLeadGraphTick[],
+    eventMarkers: GoldLeadGraphEventMarker[],
+    linePath: string,
+    positiveAreaPath: string,
+    negativeAreaPath: string,
+    zeroY: number,
+    topLabel: string,
+    bottomLabel: string,
+}
+type GoldGraphDimensions = {
+    width: number,
+    height: number,
+    paddingTop: number,
+    paddingRight: number,
+    paddingBottom: number,
+    paddingLeft: number,
+    eventMarkerY: number,
+    eventMarkerSize: number,
+}
 
 enum GameState {
     in_game = "in game",
@@ -125,6 +171,28 @@ const FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW = false
 const ITEM_PURCHASE_HIGHLIGHT_DURATION_MS = 2000
 const LEVEL_UP_FLASH_DURATION_MS = 2000
 const LEVEL_UP_FLASH_TARGET_LEVELS = [6, 11, 16]
+const GOLD_GRAPH_SAMPLING_INTERVAL_MS = 12 * 1000
+const GOLD_GRAPH_MIN_SIDE_RATIO = 0.2
+const GOLD_GRAPH_DEFAULT_DIMENSIONS: GoldGraphDimensions = {
+    width: 720,
+    height: 180,
+    paddingTop: 14,
+    paddingRight: 16,
+    paddingBottom: 34,
+    paddingLeft: 44,
+    eventMarkerY: 171,
+    eventMarkerSize: 11,
+}
+const GOLD_GRAPH_MIRROR_DIMENSIONS: GoldGraphDimensions = {
+    width: 720,
+    height: 108,
+    paddingTop: 8,
+    paddingRight: 16,
+    paddingBottom: 20,
+    paddingLeft: 44,
+    eventMarkerY: 101,
+    eventMarkerSize: 9,
+}
 const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
     ocean: OceanDragonSoulImage,
     hextech: HextechDragonSoulImage,
@@ -155,7 +223,7 @@ const PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS = new Set<number>(
 const PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055, 2138, 2139, 2140]
 
-export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, objectiveTimerBackfillSeed, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, windowFrameTimeline, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, inferredHeraldKillTimestampByTeam = { blue: null, red: null }, objectiveTimerBackfillSeed, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -170,6 +238,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
     const [objectiveBuffsByParticipantId, setObjectiveBuffsByParticipantId] = useState<ObjectiveBuffsByParticipantId>({})
     const [highlightedPurchasedItemsByParticipantId, setHighlightedPurchasedItemsByParticipantId] = useState<HighlightedPurchasedItemsByParticipantId>({})
     const [levelFlashByParticipantId, setLevelFlashByParticipantId] = useState<{ [participantId: number]: boolean }>({})
+    const [isGoldGraphVisible, setIsGoldGraphVisible] = useState<boolean>(false)
     const previousKdaByParticipantIdRef = useRef<Map<number, { kills: number, deaths: number, assists: number }>>(new Map())
     const previousLevelByParticipantIdRef = useRef<Map<number, number>>(new Map())
     const previousVitalsByParticipantIdRef = useRef<Map<number, { deaths: number, currentHealth: number }>>(new Map())
@@ -215,6 +284,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
     const effectiveLastWindowTimestamp = playbackTimestamp || lastWindowFrame.rfc460Timestamp
+    const isSimulationInProgress = debugSimulationModeEnabled && debugSimulationRunning
 
     useEffect(() => {
         return applyScoreboardLayoutBodyClassNames(scoreboardLayoutMode)
@@ -1031,6 +1101,38 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
     const redTeamKillDisplayValue = getTeamKillCountFromParticipants(lastWindowFrame.redTeam.participants)
     const goldLeadSymbolAlignmentClass = goldLead > 0 ? `gold-lead-symbol-left` : goldLead < 0 ? `gold-lead-symbol-right` : ``
     const goldLeadColorClass = goldLead > 0 ? `gold-advantage-blue` : goldLead < 0 ? `gold-advantage-red` : `gold-advantage-neutral`
+    const isMirrorLayoutForGraph = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
+    const goldGraphDimensions = isMirrorLayoutForGraph
+        ? GOLD_GRAPH_MIRROR_DIMENSIONS
+        : GOLD_GRAPH_DEFAULT_DIMENSIONS
+    const goldLeadTimelineFrames = useMemo(() => {
+        const sourceFrames = (windowFrameTimeline && windowFrameTimeline.length > 0)
+            ? windowFrameTimeline
+            : [firstWindowFrame, lastWindowFrame]
+        const graphCutoffTimestamp = isSimulationInProgress
+            ? (playbackTimestamp || firstWindowFrame.rfc460Timestamp)
+            : effectiveLastWindowTimestamp
+        const currentPlaybackTimestampMs = Date.parse(graphCutoffTimestamp)
+        if (!Number.isFinite(currentPlaybackTimestampMs)) return sourceFrames
+
+        const visibleFrames = sourceFrames.filter((frame) => {
+            const frameTimestampMs = Date.parse(frame.rfc460Timestamp)
+            if (!Number.isFinite(frameTimestampMs)) return false
+            return frameTimestampMs <= currentPlaybackTimestampMs
+        })
+
+        if (visibleFrames.length > 0) return visibleFrames
+        return [sourceFrames[0]]
+    }, [windowFrameTimeline, firstWindowFrame, lastWindowFrame, effectiveLastWindowTimestamp, isSimulationInProgress, playbackTimestamp])
+    const goldLeadGraphData = useMemo(() => (
+        buildGoldLeadGraphData(
+            goldLeadTimelineFrames,
+            firstWindowFrame.rfc460Timestamp,
+            inferredHeraldKillCounts,
+            inferredHeraldKillTimestampByTeam,
+            goldGraphDimensions,
+        )
+    ), [goldLeadTimelineFrames, firstWindowFrame.rfc460Timestamp, inferredHeraldKillCounts, inferredHeraldKillTimestampByTeam, goldGraphDimensions])
     const backfillStatusClassName = backfillStatus === `running` ? `running` : backfillStatus === `completed` ? `completed` : `idle`
     const backfillStatusLabel = backfillStatus === `running`
         ? `Backfill in progress: syncing historical items...`
@@ -1399,8 +1501,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
     const isMirrorScoreboardLayout = isMirrorScoreboardLayoutMode(scoreboardLayoutMode)
     const isBasicCompactScoreboardLayout = isBasicCompactScoreboardLayoutMode(scoreboardLayoutMode)
     const scoreboardLayoutModeClassName = getScoreboardLayoutModeClassName(scoreboardLayoutMode)
-    const blueTeamIsWinner = outcome?.[0]?.outcome === `win`
-    const redTeamIsWinner = outcome?.[1]?.outcome === `win`
+    const shouldDisplayWinnerOutcome = !isSimulationInProgress || (Boolean(playbackTimestamp) && lastWindowFrame.gameState === `finished`)
+    const blueTeamIsWinner = shouldDisplayWinnerOutcome && outcome?.[0]?.outcome === `win`
+    const redTeamIsWinner = shouldDisplayWinnerOutcome && outcome?.[1]?.outcome === `win`
 
     return (
         <div className={`status-live-game-card ${scoreboardLayoutModeClassName}`}>
@@ -1417,7 +1520,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                 </h4>
                             </span>
                             <span className='outcome'>
-                                {outcome ? (<p className={outcome[0].outcome}>
+                                {shouldDisplayWinnerOutcome && outcome ? (<p className={outcome[0].outcome}>
                                     {outcome[0].outcome}
                                 </p>) : null}
                             </span>
@@ -1463,7 +1566,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                 </h4>
                             </span>
                             <span className='outcome'>
-                                {outcome ? (<p className={outcome[1].outcome}>
+                                {shouldDisplayWinnerOutcome && outcome ? (<p className={outcome[1].outcome}>
                                     {outcome[1].outcome}
                                 </p>) : null}
                             </span>
@@ -1498,12 +1601,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                 </span>
                                 <span className={`team-gold-value team-gold-value-blue ${goldLead > 0 ? `gold-advantage-blue` : ``}`}>{formattedBlueTeamGold}</span>
                             </span>
-                            <span className={`gold-lead-indicator ${goldLeadColorClass}`}>
+                            <button
+                                type="button"
+                                className={`gold-lead-indicator gold-lead-toggle ${goldLeadColorClass} ${isGoldGraphVisible ? `gold-lead-toggle-active` : ``}`}
+                                onClick={() => setIsGoldGraphVisible((previousState) => !previousState)}
+                                aria-pressed={isGoldGraphVisible}
+                                aria-label={isGoldGraphVisible ? `Hide gold graph` : `Show gold graph`}
+                            >
                                 {goldLeadSymbol ? (
                                     <span className={`gold-lead-symbol ${goldLeadSymbolAlignmentClass} ${goldLeadColorClass}`}>{goldLeadSymbol}</span>
                                 ) : null}
                                 <span className={`gold-lead-value ${goldLeadColorClass}`}>{formattedGoldLead}</span>
-                            </span>
+                            </button>
                             <span className="team-gold-side-group team-gold-side-group-red">
                                 <span className={`team-gold-value team-gold-value-red ${goldLead < 0 ? `gold-advantage-red` : ``}`}>{formattedRedTeamGold}</span>
                                 <span
@@ -1546,6 +1655,158 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                             ))}
                         </div>
                     </div>
+                    {isGoldGraphVisible ? (
+                        <div className="gold-difference-graph" role="img" aria-label="Gold graph">
+                            {goldLeadGraphData.points.length > 1 ? (
+                                <svg
+                                    className="gold-difference-graph-svg"
+                                    viewBox={`0 0 ${goldGraphDimensions.width} ${goldGraphDimensions.height}`}
+                                    preserveAspectRatio="none"
+                                >
+                                    <defs>
+                                        <linearGradient id={`gold-diff-blue-fill-${gameIndex}`} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="rgba(74, 169, 255, 0.38)" />
+                                            <stop offset="100%" stopColor="rgba(74, 169, 255, 0.08)" />
+                                        </linearGradient>
+                                        <linearGradient id={`gold-diff-red-fill-${gameIndex}`} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="rgba(255, 108, 108, 0.08)" />
+                                            <stop offset="100%" stopColor="rgba(255, 108, 108, 0.36)" />
+                                        </linearGradient>
+                                        <clipPath id={`gold-diff-line-blue-clip-${gameIndex}`}>
+                                            <rect
+                                                x={goldGraphDimensions.paddingLeft}
+                                                y={goldGraphDimensions.paddingTop}
+                                                width={goldGraphDimensions.width - goldGraphDimensions.paddingLeft - goldGraphDimensions.paddingRight}
+                                                height={Math.max(0, goldLeadGraphData.zeroY - goldGraphDimensions.paddingTop)}
+                                            />
+                                        </clipPath>
+                                        <clipPath id={`gold-diff-line-red-clip-${gameIndex}`}>
+                                            <rect
+                                                x={goldGraphDimensions.paddingLeft}
+                                                y={goldLeadGraphData.zeroY}
+                                                width={goldGraphDimensions.width - goldGraphDimensions.paddingLeft - goldGraphDimensions.paddingRight}
+                                                height={Math.max(0, (goldGraphDimensions.height - goldGraphDimensions.paddingBottom) - goldLeadGraphData.zeroY)}
+                                            />
+                                        </clipPath>
+                                    </defs>
+                                    <rect className="gold-difference-graph-background" x="0" y="0" width={goldGraphDimensions.width} height={goldGraphDimensions.height} />
+                                    {goldLeadGraphData.ticks.map((tick) => (
+                                        <g key={`gold_graph_tick_${tick.label}_${tick.seconds}`}>
+                                            <line
+                                                className="gold-difference-graph-grid-line"
+                                                x1={tick.x}
+                                                y1={goldGraphDimensions.paddingTop}
+                                                x2={tick.x}
+                                                y2={goldGraphDimensions.height - goldGraphDimensions.paddingBottom}
+                                            />
+                                            <text className="gold-difference-graph-tick-label" x={tick.x} y={goldGraphDimensions.height - 18} textAnchor="middle">
+                                                {tick.label}
+                                            </text>
+                                        </g>
+                                    ))}
+                                    <line
+                                        className="gold-difference-graph-zero-line"
+                                        x1={goldGraphDimensions.paddingLeft}
+                                        y1={goldLeadGraphData.zeroY}
+                                        x2={goldGraphDimensions.width - goldGraphDimensions.paddingRight}
+                                        y2={goldLeadGraphData.zeroY}
+                                    />
+                                    <text className="gold-difference-graph-y-label" x={10} y={goldGraphDimensions.paddingTop + 4}>
+                                        {goldLeadGraphData.topLabel}
+                                    </text>
+                                    <text className="gold-difference-graph-y-label" x={12} y={goldLeadGraphData.zeroY + 4}>
+                                        0
+                                    </text>
+                                    <text className="gold-difference-graph-y-label" x={10} y={goldGraphDimensions.height - goldGraphDimensions.paddingBottom + 4}>
+                                        {goldLeadGraphData.bottomLabel}
+                                    </text>
+                                    <path
+                                        className="gold-difference-graph-area-blue"
+                                        d={goldLeadGraphData.positiveAreaPath}
+                                        fill={`url(#gold-diff-blue-fill-${gameIndex})`}
+                                    />
+                                    <path
+                                        className="gold-difference-graph-area-red"
+                                        d={goldLeadGraphData.negativeAreaPath}
+                                        fill={`url(#gold-diff-red-fill-${gameIndex})`}
+                                    />
+                                    <path
+                                        className="gold-difference-graph-line gold-difference-graph-line-blue"
+                                        d={goldLeadGraphData.linePath}
+                                        clipPath={`url(#gold-diff-line-blue-clip-${gameIndex})`}
+                                    />
+                                    <path
+                                        className="gold-difference-graph-line gold-difference-graph-line-red"
+                                        d={goldLeadGraphData.linePath}
+                                        clipPath={`url(#gold-diff-line-red-clip-${gameIndex})`}
+                                    />
+                                    {goldLeadGraphData.points.map((point) => (
+                                        <circle
+                                            key={`gold_graph_point_${point.elapsedSeconds}_${point.lead}_${point.x}`}
+                                            className={point.lead >= 0 ? `gold-difference-graph-point-blue` : `gold-difference-graph-point-red`}
+                                            cx={point.x}
+                                            cy={point.y}
+                                            r={1.25}
+                                        />
+                                    ))}
+                                    {goldLeadGraphData.eventMarkers.map((eventMarker, eventMarkerIndex) => (
+                                        <g key={`gold_graph_event_${eventMarker.type}_${eventMarker.team}_${eventMarker.elapsedSeconds}_${eventMarkerIndex}`}>
+                                            {eventMarker.type === `dragon` ? (
+                                                <DragonObjectiveSVG
+                                                    className={`gold-difference-graph-event-icon gold-difference-graph-event-icon-${eventMarker.team}`}
+                                                    x={eventMarker.x - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    y={goldGraphDimensions.eventMarkerY - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    width={goldGraphDimensions.eventMarkerSize}
+                                                    height={goldGraphDimensions.eventMarkerSize}
+                                                />
+                                            ) : null}
+                                            {eventMarker.type === `baron` ? (
+                                                <BaronSVG
+                                                    className={`gold-difference-graph-event-icon gold-difference-graph-event-icon-${eventMarker.team}`}
+                                                    x={eventMarker.x - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    y={goldGraphDimensions.eventMarkerY - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    width={goldGraphDimensions.eventMarkerSize}
+                                                    height={goldGraphDimensions.eventMarkerSize}
+                                                />
+                                            ) : null}
+                                            {eventMarker.type === `tower` ? (
+                                                <TowerSVG
+                                                    className={`gold-difference-graph-event-icon gold-difference-graph-event-icon-${eventMarker.team}`}
+                                                    x={eventMarker.x - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    y={goldGraphDimensions.eventMarkerY - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    width={goldGraphDimensions.eventMarkerSize}
+                                                    height={goldGraphDimensions.eventMarkerSize}
+                                                />
+                                            ) : null}
+                                            {eventMarker.type === `herald` ? (
+                                                <image
+                                                    href={HeraldIcon}
+                                                    className={`gold-difference-graph-event-icon-image gold-difference-graph-event-icon-image-${eventMarker.team}`}
+                                                    x={eventMarker.x - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    y={goldGraphDimensions.eventMarkerY - (goldGraphDimensions.eventMarkerSize / 2)}
+                                                    width={goldGraphDimensions.eventMarkerSize}
+                                                    height={goldGraphDimensions.eventMarkerSize}
+                                                />
+                                            ) : null}
+                                            {eventMarker.count > 1 ? (
+                                                <text
+                                                    className={`gold-difference-graph-event-count gold-difference-graph-event-count-${eventMarker.team}`}
+                                                    x={eventMarker.x + 5.2}
+                                                    y={goldGraphDimensions.eventMarkerY - 4.8}
+                                                >
+                                                    {eventMarker.count}
+                                                </text>
+                                            ) : null}
+                                        </g>
+                                    ))}
+                                </svg>
+                            ) : (
+                                <div className="gold-difference-graph-empty">
+                                    Collecting graph data...
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
                 {!isMirrorScoreboardLayout ? (
                 isBasicCompactScoreboardLayout ? (
@@ -1571,6 +1832,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                         <tbody>
                             {blueRows.map((row) => {
                                 const goldDifference = getGoldDifference(row.player, lastWindowFrame)
+                                const hasCsLead = hasCsLeadAgainstLaneOpponent(row.player, lastWindowFrame)
                                 return [(
                                     <tr className="player-stats-row basic-compact-player-row" key={`basic_blue_${gameIndex}_${row.player.participantId}`}>
                                         <th className="basic-compact-name-cell">
@@ -1599,7 +1861,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                                 </div>
                                             </div>
                                         </th>
-                                        <td className="basic-compact-cs-cell">
+                                        <td className={`basic-compact-cs-cell ${hasCsLead ? `player-cs-lead-cell` : ``}`}>
                                             <div className="basic-compact-cs-stack">
                                                 <div className="basic-compact-cs-label">CS</div>
                                                 <div className="player-stats player-stats-cs basic-compact-cs-value">{row.player.creepScore}</div>
@@ -1674,6 +1936,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                         <tbody>
                             {redRows.map((row) => {
                                 const goldDifference = getGoldDifference(row.player, lastWindowFrame)
+                                const hasCsLead = hasCsLeadAgainstLaneOpponent(row.player, lastWindowFrame)
                                 return [(
                                     <tr className="player-stats-row basic-compact-player-row" key={`basic_red_${gameIndex}_${row.player.participantId}`}>
                                         <th className="basic-compact-name-cell">
@@ -1702,7 +1965,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                                 </div>
                                             </div>
                                         </th>
-                                        <td className="basic-compact-cs-cell">
+                                        <td className={`basic-compact-cs-cell ${hasCsLead ? `player-cs-lead-cell` : ``}`}>
                                             <div className="basic-compact-cs-stack">
                                                 <div className="basic-compact-cs-label">CS</div>
                                                 <div className="player-stats player-stats-cs basic-compact-cs-value">{row.player.creepScore}</div>
@@ -1790,6 +2053,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                         <tbody>
                             {lastWindowFrame.blueTeam.participants.map((player: WindowParticipant, index) => {
                                 let goldDifference = getGoldDifference(player, lastWindowFrame);
+                                const hasCsLead = hasCsLeadAgainstLaneOpponent(player, lastWindowFrame)
                                 let championDetails = lastDetailsFrame.participants[index]
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
@@ -1832,7 +2096,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                                 forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                             />
                                         </td>
-                                        <td>
+                                        <td className={hasCsLead ? `player-cs-lead-cell` : ``}>
                                             <div className=" player-stats">{player.creepScore}</div>
                                         </td>
                                         <td>
@@ -1906,6 +2170,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                         <tbody>
                             {lastWindowFrame.redTeam.participants.map((player: WindowParticipant, index) => {
                                 let goldDifference = getGoldDifference(player, lastWindowFrame);
+                                const hasCsLead = hasCsLeadAgainstLaneOpponent(player, lastWindowFrame)
                                 let championDetails = lastDetailsFrame.participants[index + 5]
                                 const killFlashClassName = kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``
                                 const deathFlashClassName = kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``
@@ -1948,7 +2213,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, las
                                                 forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
                                             />
                                         </td>
-                                        <td>
+                                        <td className={hasCsLead ? `player-cs-lead-cell` : ``}>
                                             <div className=" player-stats">{player.creepScore}</div>
                                         </td>
                                         <td>
@@ -2774,6 +3039,286 @@ function renderObjectiveBuffBackdropIcons(objectiveBuffState?: ObjectiveBuffStat
     )
 }
 
+function buildGoldLeadGraphData(
+    windowFrames: WindowFrame[],
+    firstWindowTimestamp: string,
+    inferredHeraldKillCounts: { blue: number, red: number },
+    inferredHeraldKillTimestampByTeam: { blue: string | null, red: string | null },
+    dimensions: GoldGraphDimensions,
+): GoldLeadGraphData {
+    const timelinePoints = buildGoldLeadTimelinePoints(windowFrames, firstWindowTimestamp)
+    const chartTop = dimensions.paddingTop
+    const chartBottom = dimensions.height - dimensions.paddingBottom
+    const chartInnerHeight = chartBottom - chartTop
+    const defaultZeroY = chartTop + (chartInnerHeight / 2)
+    if (timelinePoints.length === 0) {
+        return {
+            points: [],
+            ticks: [{ seconds: 0, x: dimensions.paddingLeft, label: `0` }],
+            eventMarkers: [],
+            linePath: ``,
+            positiveAreaPath: ``,
+            negativeAreaPath: ``,
+            zeroY: defaultZeroY,
+            topLabel: `0`,
+            bottomLabel: `0`,
+        }
+    }
+
+    const maxElapsedSeconds = Math.max(1, timelinePoints[timelinePoints.length - 1].elapsedSeconds)
+    const maxBlueLead = Math.max(0, ...timelinePoints.map((point) => point.lead))
+    const maxRedLeadAbs = Math.max(0, ...timelinePoints.map((point) => Math.abs(Math.min(point.lead, 0))))
+    const totalLeadMagnitude = maxBlueLead + maxRedLeadAbs
+    const rawPositiveHeightRatio = totalLeadMagnitude > 0
+        ? maxBlueLead / totalLeadMagnitude
+        : 0.5
+    const positiveHeightRatio = Math.min(
+        1 - GOLD_GRAPH_MIN_SIDE_RATIO,
+        Math.max(GOLD_GRAPH_MIN_SIDE_RATIO, rawPositiveHeightRatio),
+    )
+    const positiveLeadHeight = chartInnerHeight * positiveHeightRatio
+    const negativeLeadHeight = chartInnerHeight - positiveLeadHeight
+    const zeroY = chartTop + positiveLeadHeight
+    const chartWidth = dimensions.width - dimensions.paddingLeft - dimensions.paddingRight
+    const positiveLeadPixelScale = maxBlueLead > 0
+        ? positiveLeadHeight / maxBlueLead
+        : Number.POSITIVE_INFINITY
+    const negativeLeadPixelScale = maxRedLeadAbs > 0
+        ? negativeLeadHeight / maxRedLeadAbs
+        : Number.POSITIVE_INFINITY
+    let goldToPixelScale = Math.min(positiveLeadPixelScale, negativeLeadPixelScale)
+    if (!Number.isFinite(goldToPixelScale)) {
+        if (Number.isFinite(positiveLeadPixelScale)) {
+            goldToPixelScale = positiveLeadPixelScale
+        } else if (Number.isFinite(negativeLeadPixelScale)) {
+            goldToPixelScale = negativeLeadPixelScale
+        } else {
+            goldToPixelScale = 0
+        }
+    }
+
+    const points = timelinePoints.map((point): GoldLeadGraphPoint => {
+        const x = dimensions.paddingLeft + (point.elapsedSeconds / maxElapsedSeconds) * chartWidth
+        const unsignedDistanceFromZero = Math.abs(point.lead) * goldToPixelScale
+        const y = point.lead >= 0
+            ? Math.max(chartTop, zeroY - unsignedDistanceFromZero)
+            : Math.min(chartBottom, zeroY + unsignedDistanceFromZero)
+        return {
+            x,
+            y,
+            elapsedSeconds: point.elapsedSeconds,
+            lead: point.lead,
+        }
+    })
+
+    return {
+        points,
+        ticks: buildGoldGraphTicks(maxElapsedSeconds, dimensions),
+        eventMarkers: buildGoldGraphEventMarkers(
+            windowFrames,
+            firstWindowTimestamp,
+            maxElapsedSeconds,
+            inferredHeraldKillCounts,
+            inferredHeraldKillTimestampByTeam,
+            dimensions,
+        ),
+        linePath: buildGoldGraphLinePath(points),
+        positiveAreaPath: buildGoldGraphAreaPath(points, `positive`, zeroY),
+        negativeAreaPath: buildGoldGraphAreaPath(points, `negative`, zeroY),
+        zeroY,
+        topLabel: formatGoldGraphAxisLabel(maxBlueLead),
+        bottomLabel: formatGoldGraphAxisLabel(maxRedLeadAbs),
+    }
+}
+
+function buildGoldLeadTimelinePoints(windowFrames: WindowFrame[], firstWindowTimestamp: string) {
+    if (!Array.isArray(windowFrames) || windowFrames.length === 0) return []
+
+    const normalizedFrames = windowFrames
+        .map((frame) => ({ frame, timestampMs: Date.parse(frame.rfc460Timestamp) }))
+        .filter((frameEntry) => Number.isFinite(frameEntry.timestampMs))
+        .sort((leftEntry, rightEntry) => leftEntry.timestampMs - rightEntry.timestampMs)
+
+    if (normalizedFrames.length === 0) return []
+
+    const sampledFrameEntries: { frame: WindowFrame, timestampMs: number }[] = []
+    let lastSampleTimestampMs = Number.NEGATIVE_INFINITY
+    normalizedFrames.forEach((frameEntry, index) => {
+        const isFirstSample = sampledFrameEntries.length === 0
+        const previousSample = sampledFrameEntries[sampledFrameEntries.length - 1]
+        if (previousSample && previousSample.timestampMs === frameEntry.timestampMs) return
+        const isEnoughTimeElapsed = frameEntry.timestampMs - lastSampleTimestampMs >= GOLD_GRAPH_SAMPLING_INTERVAL_MS
+        const isLastFrame = index === normalizedFrames.length - 1
+        if (!isFirstSample && !isEnoughTimeElapsed && !isLastFrame) return
+
+        sampledFrameEntries.push(frameEntry)
+        lastSampleTimestampMs = frameEntry.timestampMs
+    })
+
+    const firstWindowTimestampMs = Date.parse(firstWindowTimestamp)
+    const fallbackStartTimestampMs = sampledFrameEntries[0].timestampMs
+    const gameStartTimestampMs = Number.isFinite(firstWindowTimestampMs)
+        ? firstWindowTimestampMs
+        : fallbackStartTimestampMs
+
+    return sampledFrameEntries.map((frameEntry): GoldLeadTimelinePoint => {
+        const lead = Number(frameEntry.frame.blueTeam.totalGold || 0) - Number(frameEntry.frame.redTeam.totalGold || 0)
+        return {
+            elapsedSeconds: Math.max(0, Math.floor((frameEntry.timestampMs - gameStartTimestampMs) / 1000)),
+            lead,
+        }
+    })
+}
+
+function buildGoldGraphTicks(maxElapsedSeconds: number, dimensions: GoldGraphDimensions): GoldLeadGraphTick[] {
+    if (maxElapsedSeconds <= 0) {
+        return [{ seconds: 0, x: dimensions.paddingLeft, label: `0` }]
+    }
+
+    const chartWidth = dimensions.width - dimensions.paddingLeft - dimensions.paddingRight
+    const tickCount = 6
+    const ticks: GoldLeadGraphTick[] = []
+    const seenMinuteLabels = new Set<string>()
+
+    for (let tickIndex = 0; tickIndex < tickCount; tickIndex += 1) {
+        const tickRatio = tickIndex / (tickCount - 1)
+        const seconds = Math.round(maxElapsedSeconds * tickRatio)
+        const x = dimensions.paddingLeft + tickRatio * chartWidth
+        const minuteLabel = String(Math.round(seconds / 60))
+        const shouldAlwaysKeep = tickIndex === 0 || tickIndex === tickCount - 1
+        if (!shouldAlwaysKeep && seenMinuteLabels.has(minuteLabel)) continue
+
+        seenMinuteLabels.add(minuteLabel)
+        ticks.push({
+            seconds,
+            x,
+            label: minuteLabel,
+        })
+    }
+
+    return ticks
+}
+
+function buildGoldGraphLinePath(points: GoldLeadGraphPoint[]) {
+    if (points.length === 0) return ``
+    return points.map((point, index) => (
+        `${index === 0 ? `M` : `L`} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
+    )).join(` `)
+}
+
+function buildGoldGraphEventMarkers(
+    windowFrames: WindowFrame[],
+    firstWindowTimestamp: string,
+    maxElapsedSeconds: number,
+    inferredHeraldKillCounts: { blue: number, red: number },
+    inferredHeraldKillTimestampByTeam: { blue: string | null, red: string | null },
+    dimensions: GoldGraphDimensions,
+): GoldLeadGraphEventMarker[] {
+    if (!Array.isArray(windowFrames) || windowFrames.length === 0) return []
+
+    const normalizedFrames = windowFrames
+        .map((frame) => ({ frame, timestampMs: Date.parse(frame.rfc460Timestamp) }))
+        .filter((frameEntry) => Number.isFinite(frameEntry.timestampMs))
+        .sort((leftEntry, rightEntry) => leftEntry.timestampMs - rightEntry.timestampMs)
+    if (normalizedFrames.length < 2) return []
+
+    const firstWindowTimestampMs = Date.parse(firstWindowTimestamp)
+    const fallbackStartTimestampMs = normalizedFrames[0].timestampMs
+    const gameStartTimestampMs = Number.isFinite(firstWindowTimestampMs)
+        ? firstWindowTimestampMs
+        : fallbackStartTimestampMs
+    const chartWidth = dimensions.width - dimensions.paddingLeft - dimensions.paddingRight
+    const pushEventMarkers: GoldLeadGraphEventMarker[] = []
+
+    const createEventMarker = (teamKey: TeamKey, eventType: GoldGraphEventType, eventCount: number, eventTimestampMs: number) => {
+        if (!Number.isFinite(eventTimestampMs)) return
+        const elapsedSeconds = Math.max(0, Math.floor((eventTimestampMs - gameStartTimestampMs) / 1000))
+        const normalizedElapsedSeconds = Math.min(Math.max(0, elapsedSeconds), maxElapsedSeconds)
+        const x = dimensions.paddingLeft + (normalizedElapsedSeconds / Math.max(1, maxElapsedSeconds)) * chartWidth
+        pushEventMarkers.push({
+            x,
+            elapsedSeconds: normalizedElapsedSeconds,
+            team: teamKey,
+            type: eventType,
+            count: Math.max(1, eventCount),
+        })
+    }
+
+    for (let frameIndex = 1; frameIndex < normalizedFrames.length; frameIndex += 1) {
+        const previousFrame = normalizedFrames[frameIndex - 1].frame
+        const nextFrameEntry = normalizedFrames[frameIndex]
+        const nextFrame = nextFrameEntry.frame
+        const eventTimestampMs = nextFrameEntry.timestampMs
+
+        ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+            const previousTeam = teamKey === `blue` ? previousFrame.blueTeam : previousFrame.redTeam
+            const nextTeam = teamKey === `blue` ? nextFrame.blueTeam : nextFrame.redTeam
+
+            const towerDiff = Math.max(0, Number(nextTeam.towers || 0) - Number(previousTeam.towers || 0))
+            if (towerDiff > 0) createEventMarker(teamKey, `tower`, towerDiff, eventTimestampMs)
+
+            const baronDiff = Math.max(0, Number(nextTeam.barons || 0) - Number(previousTeam.barons || 0))
+            if (baronDiff > 0) createEventMarker(teamKey, `baron`, baronDiff, eventTimestampMs)
+
+            const previousDragonCount = Array.isArray(previousTeam.dragons) ? previousTeam.dragons.length : 0
+            const nextDragonCount = Array.isArray(nextTeam.dragons) ? nextTeam.dragons.length : 0
+            const dragonDiff = Math.max(0, nextDragonCount - previousDragonCount)
+            if (dragonDiff > 0) createEventMarker(teamKey, `dragon`, dragonDiff, eventTimestampMs)
+        })
+    }
+
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        if (!(Number(inferredHeraldKillCounts[teamKey] || 0) > 0)) return
+        const explicitTimestamp = inferredHeraldKillTimestampByTeam[teamKey]
+        const explicitTimestampMs = explicitTimestamp ? Date.parse(explicitTimestamp) : NaN
+        const fallbackTimestampMs = gameStartTimestampMs + (14 * 60 * 1000)
+        createEventMarker(
+            teamKey,
+            `herald`,
+            Number(inferredHeraldKillCounts[teamKey] || 1),
+            Number.isFinite(explicitTimestampMs) ? explicitTimestampMs : fallbackTimestampMs,
+        )
+    })
+
+    return pushEventMarkers.sort((leftMarker, rightMarker) => leftMarker.elapsedSeconds - rightMarker.elapsedSeconds)
+}
+
+function buildGoldGraphAreaPath(points: GoldLeadGraphPoint[], areaType: `positive` | `negative`, zeroY: number) {
+    if (points.length === 0) return ``
+
+    const clippedPoints = points.map((point) => {
+        if (areaType === `positive`) {
+            return {
+                x: point.x,
+                y: point.lead > 0 ? point.y : zeroY,
+            }
+        }
+        return {
+            x: point.x,
+            y: point.lead < 0 ? point.y : zeroY,
+        }
+    })
+
+    const firstPoint = clippedPoints[0]
+    const lastPoint = clippedPoints[clippedPoints.length - 1]
+    let path = `M ${firstPoint.x.toFixed(2)} ${zeroY.toFixed(2)}`
+    clippedPoints.forEach((point) => {
+        path += ` L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
+    })
+    path += ` L ${lastPoint.x.toFixed(2)} ${zeroY.toFixed(2)} Z`
+    return path
+}
+
+function formatGoldGraphAxisLabel(goldDifference: number) {
+    const safeGoldDifference = Math.max(0, Number(goldDifference) || 0)
+    if (safeGoldDifference >= 1000) {
+        const normalizedK = Math.round((safeGoldDifference / 1000) * 10) / 10
+        const displayValue = Number.isInteger(normalizedK) ? normalizedK.toFixed(0) : normalizedK.toFixed(1)
+        return `${displayValue}K`
+    }
+    return `${Math.round(safeGoldDifference)}`
+}
+
 function getInGameTime(startTime: string, currentTime: string) {
     let startDate = new Date(startTime)
     let currentDate = new Date(currentTime)
@@ -2800,6 +3345,23 @@ function getGoldDifference(player: WindowParticipant, frame: WindowFrame) {
         const goldResult = player.totalGold - bluePlayer.totalGold;
         return goldResult;
     }
+}
+
+function hasCsLeadAgainstLaneOpponent(player: WindowParticipant, frame: WindowFrame) {
+    const playerParticipantId = Number(player.participantId || 0)
+    if (!Number.isFinite(playerParticipantId) || playerParticipantId <= 0) return false
+
+    const isBlueSidePlayer = playerParticipantId <= 5
+    const laneOpponentParticipantId = isBlueSidePlayer
+        ? playerParticipantId + 5
+        : playerParticipantId - 5
+    const opponentParticipants = isBlueSidePlayer
+        ? frame.redTeam.participants
+        : frame.blueTeam.participants
+    const laneOpponent = opponentParticipants.find((participant) => Number(participant.participantId) === laneOpponentParticipantId)
+    if (!laneOpponent) return false
+
+    return Number(player.creepScore || 0) > Number(laneOpponent.creepScore || 0)
 }
 
 function getFormattedGoldDifference(goldDifference: number) {
