@@ -20,6 +20,7 @@ const baron_blue = require("../../assets/audios/blue_baron_slain.ogg");
 const baron_red = require("../../assets/audios/red_baron_slain.ogg");
 const inib_blue = require("../../assets/audios/blue_inhibitor_destroyed.ogg");
 const inib_red = require("../../assets/audios/red_inhibitor_destroyed.ogg");
+const DEBUG_PREVIEW_TOAST_IDS = [`debug_preview_blue_objective`, `debug_preview_red_objective`, `debug_preview_execution`, `debug_preview_kill_feed_blue`, `debug_preview_kill_feed_red`]
 
 type Props = {
     lastWindowFrame: WindowFrame,
@@ -29,6 +30,8 @@ type Props = {
     championsUrlWithPatchVersion: string,
     blueTeam: Team,
     redTeam: Team,
+    debugShowAllDataEnabled?: boolean,
+    isBasicCompactLayout?: boolean,
 }
 
 type StatusWatcher = {
@@ -79,7 +82,7 @@ type ParticipantDeltaEntry = {
     delta: number;
 }
 
-export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata, championsUrlWithPatchVersion, blueTeam, redTeam }: Props) {
+export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata, championsUrlWithPatchVersion, blueTeam, redTeam, debugShowAllDataEnabled = false, isBasicCompactLayout = false }: Props) {
     let trueBlueTeam = blueTeam
     let trueRedTeam = redTeam
     let swapTeams = blueTeam.id !== gameMetadata.blueTeamMetadata.esportsTeamId
@@ -242,11 +245,9 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                 const redDeathIncreaseCount = getTeamDeathIncreaseCount(status.participants.red, frame.redTeam.participants)
                 const blueKillIncreaseCount = Math.max(0, currentTotalKills.blue - status.totalKills.blue)
                 const redKillIncreaseCount = Math.max(0, currentTotalKills.red - status.totalKills.red)
-                const totalDeathIncreaseCount = blueDeathIncreaseCount + redDeathIncreaseCount
-                const totalKillIncreaseCount = blueKillIncreaseCount + redKillIncreaseCount
                 const inferredBlueExecutionCount = Math.max(0, blueDeathIncreaseCount - redKillIncreaseCount)
                 const inferredRedExecutionCount = Math.max(0, redDeathIncreaseCount - blueKillIncreaseCount)
-                const shouldShowExecutionToast = totalDeathIncreaseCount === 1 && totalKillIncreaseCount === 0
+                const shouldShowExecutionToast = inferredBlueExecutionCount > 0 || inferredRedExecutionCount > 0
 
                 if (shouldShowExecutionToast) {
                     toastQueue.push(...blueDeathIncreaseEvents.slice(0, inferredBlueExecutionCount))
@@ -308,37 +309,169 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                 soundAlreadyPlaying = true
             }
             toastQueue.forEach((toastEvent) => {
-                createToast(toastEvent, soundAlreadyPlaying);
-                soundAlreadyPlaying = true;
+                const didShowToast = createToast(toastEvent, soundAlreadyPlaying, debugShowAllDataEnabled, undefined, isBasicCompactLayout);
+                if (didShowToast) {
+                    soundAlreadyPlaying = true;
+                }
             });
 
             status = buildStatusWatcher(frame, gameIndex, frameElapsedGameTimeSeconds, currentTotalKills)
         })
 
         statusRef.current = status
-    }, [lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata.blueTeamMetadata.participantMetadata, gameMetadata.redTeamMetadata.participantMetadata, championsUrlWithPatchVersion, trueBlueTeam.image, trueRedTeam.image]);
+    }, [lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata.blueTeamMetadata.participantMetadata, gameMetadata.redTeamMetadata.participantMetadata, championsUrlWithPatchVersion, trueBlueTeam.image, trueRedTeam.image, debugShowAllDataEnabled, isBasicCompactLayout]);
+
+    useEffect(() => {
+        if (!debugShowAllDataEnabled) {
+            toast.dismiss()
+            DEBUG_PREVIEW_TOAST_IDS.forEach((toastId) => toast.dismiss(toastId))
+            return
+        }
+
+        const bluePreviewChampionIcon = getChampionIconForParticipant(
+            1,
+            gameMetadata.blueTeamMetadata.participantMetadata,
+            championsUrlWithPatchVersion,
+        )
+        const redPreviewChampionIcon = getChampionIconForParticipant(
+            6,
+            gameMetadata.redTeamMetadata.participantMetadata,
+            championsUrlWithPatchVersion,
+        )
+        const bluePreviewAssistantIcons = [2, 3, 4, 5].map((participantId) => (
+            getChampionIconForParticipant(
+                participantId,
+                gameMetadata.blueTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+        )).filter(Boolean)
+        const redPreviewAssistantIcons = [7, 8, 9, 10].map((participantId) => (
+            getChampionIconForParticipant(
+                participantId,
+                gameMetadata.redTeamMetadata.participantMetadata,
+                championsUrlWithPatchVersion,
+            )
+        )).filter(Boolean)
+        const previewToastEvents: Array<{ toastId: string, event: ToastEvent }> = [
+            {
+                toastId: DEBUG_PREVIEW_TOAST_IDS[0],
+                event: {
+                    blueTeam: true,
+                    sound: dragon_blue.default,
+                    message: `\uB4DC\uB798\uACE4 \uCC98\uCE58`,
+                    image: trueBlueTeam.image,
+                    diff: 0,
+                },
+            },
+            {
+                toastId: DEBUG_PREVIEW_TOAST_IDS[1],
+                event: {
+                    blueTeam: false,
+                    sound: baron_red.default,
+                    message: `\uBC14\uB860 \uCC98\uCE58`,
+                    image: trueRedTeam.image,
+                    diff: 0,
+                },
+            },
+            {
+                toastId: DEBUG_PREVIEW_TOAST_IDS[2],
+                event: {
+                    blueTeam: true,
+                    sound: executed.default,
+                    message: `\uCC98\uD615\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`,
+                    image: bluePreviewChampionIcon || redPreviewChampionIcon,
+                    diff: 0,
+                },
+            },
+            {
+                toastId: DEBUG_PREVIEW_TOAST_IDS[3],
+                event: {
+                    blueTeam: true,
+                    sound: kill.default,
+                    eventType: `kill`,
+                    killers: [bluePreviewChampionIcon].filter(Boolean),
+                    assistants: bluePreviewAssistantIcons,
+                    victims: [redPreviewChampionIcon].filter(Boolean),
+                },
+            },
+            {
+                toastId: DEBUG_PREVIEW_TOAST_IDS[4],
+                event: {
+                    blueTeam: false,
+                    sound: kill.default,
+                    eventType: `kill`,
+                    killers: [redPreviewChampionIcon].filter(Boolean),
+                    assistants: redPreviewAssistantIcons,
+                    victims: [bluePreviewChampionIcon].filter(Boolean),
+                },
+            },
+        ]
+
+        let soundAlreadyPlaying = false
+        previewToastEvents.forEach(({ toastId, event }) => {
+            const didShowToast = createToast(event, soundAlreadyPlaying, true, toastId, isBasicCompactLayout)
+            if (didShowToast) {
+                soundAlreadyPlaying = true
+            }
+        })
+    }, [
+        debugShowAllDataEnabled,
+        championsUrlWithPatchVersion,
+        gameMetadata.blueTeamMetadata.participantMetadata,
+        gameMetadata.redTeamMetadata.participantMetadata,
+        trueBlueTeam.image,
+        trueRedTeam.image,
+        isBasicCompactLayout,
+    ])
+
+    const toastLayerClassName = `live-api-watcher-toast-layer${isBasicCompactLayout ? ` live-api-watcher-toast-layer-basic-compact` : ``}`
 
     return (
-        <div className="live-api-watcher-toast-layer" aria-hidden="true">
+        <div className={toastLayerClassName} aria-hidden="true">
             <ToastContainer limit={10} />
         </div>
     );
 }
 
-function createToast(toastEvent: ToastEvent, soundIsPlaying: boolean) {
-    if (!soundIsPlaying) {
-        playSound(toastEvent.sound)
-    }
-
+function createToast(
+    toastEvent: ToastEvent,
+    soundIsPlaying: boolean,
+    persistToast = false,
+    forcedToastId?: string,
+    isBasicCompactLayout = false,
+) {
     const isKillToast = isKillToastEvent(toastEvent)
     const toastOptions: any = {
         pauseOnHover: false,
         pauseOnFocusLoss: false,
-        position: toastEvent.blueTeam ? toast.POSITION.TOP_LEFT : toast.POSITION.TOP_RIGHT,
+        position: isBasicCompactLayout
+            ? toast.POSITION.TOP_CENTER
+            : (toastEvent.blueTeam ? toast.POSITION.TOP_LEFT : toast.POSITION.TOP_RIGHT),
     }
 
-    if (!isKillToast) {
+    if (isBasicCompactLayout && isKillToast) {
+        toastOptions.className = `toast-basic-compact-kill-row`
+    }
+
+    if (persistToast) {
+        toastOptions.autoClose = false
+        toastOptions.closeButton = true
+        toastOptions.closeOnClick = false
+        toastOptions.draggable = false
+    }
+
+    if (forcedToastId) {
+        toastOptions.toastId = forcedToastId
+    } else if (!isKillToast) {
         toastOptions.toastId = `${toastEvent.blueTeam}_${toastEvent.image || ""}_${toastEvent.message || ""}_${toastEvent.diff}`
+    }
+
+    if (toastOptions.toastId && toast.isActive(toastOptions.toastId)) {
+        return false
+    }
+
+    if (!soundIsPlaying) {
+        playSound(toastEvent.sound)
     }
 
     const content = isKillToast ? (
@@ -374,6 +507,7 @@ function createToast(toastEvent: ToastEvent, soundIsPlaying: boolean) {
     } else {
         toast.error(content, toastOptions)
     }
+    return true
 }
 
 function isKillToastEvent(toastEvent: ToastEvent): toastEvent is ToastEvent & Required<Pick<ToastEvent, "assistants" | "killers" | "victims">> {
@@ -626,8 +760,8 @@ function getDeathIncreaseToastEvents(
             toastEvents.push({
                 blueTeam,
                 sound: executed.default,
-                message: "처형되었습니다",
-                image: `${championsUrlWithPatchVersion}${participantMetadata[i].championId}.png`,
+                message: `\uCC98\uD615\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`,
+                image: getChampionIconForParticipant(nextParticipants[i].participantId, participantMetadata, championsUrlWithPatchVersion),
                 diff: deathIndex,
             })
         }
@@ -674,3 +808,8 @@ function getTimestampValue(timestamp: string | Date | undefined) {
     const value = new Date(timestamp).getTime()
     return Number.isFinite(value) ? value : 0
 }
+
+
+
+
+

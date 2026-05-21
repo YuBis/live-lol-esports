@@ -84,7 +84,6 @@ const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
 const WINDOW_PLAYBACK_IDLE_TICK_INTERVAL_MS = 50
 const WINDOW_PLAYBACK_MIN_ACTIVE_TICK_INTERVAL_MS = 16
 const WINDOW_PLAYBACK_MAX_ACTIVE_TICK_INTERVAL_MS = 1000
-const WINDOW_PLAYBACK_DELAY_MS = 20 * 1000
 const WINDOW_PLAYBACK_BUFFER_RETENTION_MS = 90 * 1000
 const DEBUG_SIMULATION_JUMP_STEP_MINUTES = 5
 const ONE_MINUTE_MS = 60 * 1000
@@ -120,6 +119,7 @@ export function Match({ match }: MatchRouteProps) {
     const [windowFrameTimeline, setWindowFrameTimeline] = useState<WindowFrame[]>([])
     const [isDebugSimulationModeEnabled, setIsDebugSimulationModeEnabled] = useState<boolean>(false)
     const [isDebugSimulationRunning, setIsDebugSimulationRunning] = useState<boolean>(false)
+    const [isDebugShowAllDataEnabled, setIsDebugShowAllDataEnabled] = useState<boolean>(false)
     const [debugSimulationJumpMinuteOptions, setDebugSimulationJumpMinuteOptions] = useState<number[]>([])
     const chatData = localStorage.getItem("chat");
     const chatEnabled = chatData ? chatData === `unmute` : false
@@ -171,6 +171,7 @@ export function Match({ match }: MatchRouteProps) {
             debugSimulationGameStartTimestampRef.current = ``
             debugSimulationGameIdRef.current = ``
             setDebugSimulationJumpMinuteOptions([])
+            setIsDebugShowAllDataEnabled(false)
             if (isDebugSimulationRunning) {
                 setIsDebugSimulationRunning(false)
             }
@@ -240,7 +241,7 @@ export function Match({ match }: MatchRouteProps) {
         }
         getEventDetails();
 
-        const POLL_INTERVAL_MS = 500;
+        const POLL_INTERVAL_MS = 2000;
         const windowIntervalID = setInterval(() => {
             const matchEventDetails = matchEventDetailsRef.current
             if (!matchEventDetails) return
@@ -443,39 +444,6 @@ export function Match({ match }: MatchRouteProps) {
                 }
                 setMetadata(response.data.gameMetadata)
 
-                const matchEventDetails = matchEventDetailsRef.current
-                if (matchEventDetails === undefined) return
-                const homeTeam = matchEventDetails.match.teams[0]
-                const awayTeam = matchEventDetails.match.teams[1]
-                const currentGame = matchEventDetails.match.games[currentGameIndexRef.current - 1]
-                const normalizedCurrentGameState = String(currentGame?.state || ``).toLowerCase()
-                const isCurrentGameStateCompleted = normalizedCurrentGameState === `completed`
-                const isCurrentGameFinishedByWindow = lastWindowFrame.gameState === `finished`
-                const isCurrentGameFinalized = isCurrentGameStateCompleted || isCurrentGameFinishedByWindow
-                const cleanSweep = isCurrentGameStateCompleted && (matchEventDetails.match.teams[0].result.gameWins === 0 || matchEventDetails.match.teams[1].result.gameWins === 0)
-
-                const blueTeam = matchEventDetails && currentGame.teams[0].id === homeTeam.id ? homeTeam : awayTeam
-                const redTeam = matchEventDetails && currentGame.teams[1].id === homeTeam.id ? homeTeam : awayTeam
-                const blueTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && blueTeam.result.gameWins > redTeam.result.gameWins
-                const redTeamWonMatch = matchEventDetails.match.games.every(game => game.state === `completed` || game.state === `unneeded`) && redTeam.result.gameWins > blueTeam.result.gameWins
-
-                const blueTeamWonOnInhibitors = lastWindowFrame.blueTeam.inhibitors > 0 && lastWindowFrame?.redTeam.inhibitors === 0
-                const redTeamWonOnInhibitors = lastWindowFrame?.redTeam.inhibitors > 0 && lastWindowFrame?.blueTeam.inhibitors === 0
-                const winnerSideFromFrame = inferWinnerSideFromWindowFrame(lastWindowFrame)
-                const blueTeamWonByFrame = winnerSideFromFrame === `blue`
-                const redTeamWonByFrame = winnerSideFromFrame === `red`
-                const blueTeamWon = isCurrentGameFinalized && (blueTeam.result.outcome === `win` || (cleanSweep && blueTeam.result.gameWins > 0) || blueTeamWonOnInhibitors || blueTeamWonByFrame || (blueTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
-                const redTeamWon = isCurrentGameFinalized && (redTeam.result.outcome === `win` || (cleanSweep && redTeam.result.gameWins > 0) || redTeamWonOnInhibitors || redTeamWonByFrame || (redTeamWonMatch && (currentGameIndexRef.current - 1) === matchEventDetails.match.games.filter(game => game.state === "completed").length))
-
-                const outcome: Array<Outcome> = [
-                    {
-                        outcome: blueTeamWon ? `win` : redTeamWon ? `loss` : undefined,
-                    },
-                    {
-                        outcome: redTeamWon ? `win` : blueTeamWon ? `loss` : undefined
-                    }
-                ]
-                setCurrentGameOutcome(outcome)
             });
         }
 
@@ -559,7 +527,7 @@ export function Match({ match }: MatchRouteProps) {
         function pruneBufferedWindowFrames(latestWindowTimestampValue: number) {
             if (latestWindowTimestampValue <= 0) return
             const renderedWindowFrameTimestampValue = getTimestampValue(renderedWindowFrameTimestampRef.current)
-            const staleThresholdTimestampValue = latestWindowTimestampValue - (WINDOW_PLAYBACK_DELAY_MS + WINDOW_PLAYBACK_BUFFER_RETENTION_MS)
+            const staleThresholdTimestampValue = latestWindowTimestampValue - WINDOW_PLAYBACK_BUFFER_RETENTION_MS
 
             bufferedWindowFramesByTimestampRef.current.forEach((_, timestamp) => {
                 const timestampValue = getTimestampValue(timestamp)
@@ -581,7 +549,7 @@ export function Match({ match }: MatchRouteProps) {
                 getTimestampValue(leftEntry[0]) - getTimestampValue(rightEntry[0])
             ))
             const renderedWindowFrameTimestampValue = getTimestampValue(renderedWindowFrameTimestampRef.current)
-            const renderTargetTimestampValue = Date.now() - WINDOW_PLAYBACK_DELAY_MS
+            const renderTargetTimestampValue = Date.now()
 
             let nextWindowFrameToProcess: WindowFrame | undefined
             let nextWindowFrameTimestampToProcess: string | undefined
@@ -1111,11 +1079,22 @@ export function Match({ match }: MatchRouteProps) {
 
     }, [matchId]);
 
+    useEffect(() => {
+        if (!eventDetails || !lastWindowFrame || !gameIndex) return
+        setCurrentGameOutcome(getCurrentGameOutcomeFromRenderedWindowFrame(eventDetails, gameIndex, lastWindowFrame))
+    }, [eventDetails, gameIndex, lastWindowFrame])
+
     function handleDebugSimulationModeChange(isEnabled: boolean) {
         setIsDebugSimulationModeEnabled(isEnabled)
         if (!isEnabled) {
             setIsDebugSimulationRunning(false)
+            setIsDebugShowAllDataEnabled(false)
         }
+    }
+
+    function handleDebugShowAllDataChange(isEnabled: boolean) {
+        if (!isDebugSimulationModeEnabled) return
+        setIsDebugShowAllDataEnabled(isEnabled)
     }
 
     function resetSimulationPlaybackAndDerivedState() {
@@ -1437,14 +1416,14 @@ export function Match({ match }: MatchRouteProps) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, lastWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} playbackTimestamp={playbackTimestamp} windowFrameTimeline={windowFrameTimeline} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} inferredHeraldKillTimestampByTeam={inferredHeraldKillTimestampByTeam} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
+                <Game eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} lastDetailsFrame={lastDetailsFrame} lastWindowFrame={lastWindowFrame} playbackTimestamp={playbackTimestamp} windowFrameTimeline={windowFrameTimeline} outcome={currentGameOutcome} records={records} results={results} items={items} runes={runes} championNameMap={championNameMap} backfillStatus={backfillStatus} inferredHeraldKillCounts={inferredHeraldKillCounts} inferredHeraldKillTimestampByTeam={inferredHeraldKillTimestampByTeam} objectiveTimerBackfillSeed={objectiveTimerBackfillSeed} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} debugShowAllDataEnabled={isDebugShowAllDataEnabled} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugShowAllDataChange={handleDebugShowAllDataChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
             </div>
         );
     } else if (firstWindowFrame !== undefined && metadata !== undefined && eventDetails !== undefined && scheduleEvent !== undefined && gameIndex !== undefined) {
         return (
             <div className='match-container'>
                 <MatchDetails eventDetails={eventDetails} gameMetadata={metadata} matchState={formatMatchState(eventDetails, firstWindowFrame, scheduleEvent)} records={records} results={results} scheduleEvent={scheduleEvent} />
-                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} inferredHeraldKillCounts={inferredHeraldKillCounts} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
+                <DisabledGame eventDetails={eventDetails} gameIndex={gameIndex} gameMetadata={metadata} firstWindowFrame={firstWindowFrame} records={records} championNameMap={championNameMap} inferredHeraldKillCounts={inferredHeraldKillCounts} debugSimulationModeEnabled={isDebugSimulationModeEnabled} debugSimulationRunning={isDebugSimulationRunning} debugShowAllDataEnabled={isDebugShowAllDataEnabled} onDebugSimulationModeChange={handleDebugSimulationModeChange} onDebugShowAllDataChange={handleDebugShowAllDataChange} onDebugSimulationToggle={handleDebugSimulationButtonClick} debugSimulationJumpMinutes={debugSimulationJumpMinuteOptions} onDebugSimulationJumpToMinute={handleDebugSimulationJumpToMinute} />
             </div>
         );
     } else if (eventDetails !== undefined) {
@@ -1600,6 +1579,75 @@ function formatMatchState(eventDetails: EventDetails, lastWindowFrame: WindowFra
     if (eventDetails.match.games.length === 1) return gameStates[lastWindowFrame.gameState]
     let gamesFinished = eventDetails.match.games.filter(game => game.state === `completed` || game.state === `unneeded`)
     return gameStates[gamesFinished.length >= eventDetails.match.games.length ? `completed` : scheduleEvent.state]
+}
+
+function getCurrentGameOutcomeFromRenderedWindowFrame(
+    eventDetails: EventDetails,
+    gameIndex: number,
+    lastWindowFrame: WindowFrame,
+): Array<Outcome> {
+    const currentGame = eventDetails.match.games[gameIndex - 1]
+    if (!currentGame) {
+        return [{ outcome: undefined }, { outcome: undefined }]
+    }
+
+    const homeTeam = eventDetails.match.teams[0]
+    const awayTeam = eventDetails.match.teams[1]
+    const normalizedCurrentGameState = String(currentGame.state || ``).toLowerCase()
+    const isCurrentGameStateCompleted = normalizedCurrentGameState === `completed`
+    const isCurrentGameFinishedByWindow = lastWindowFrame.gameState === `finished`
+    const isCurrentGameFinalized = isCurrentGameStateCompleted || isCurrentGameFinishedByWindow
+    const cleanSweep =
+        isCurrentGameStateCompleted
+        && (
+            eventDetails.match.teams[0].result.gameWins === 0
+            || eventDetails.match.teams[1].result.gameWins === 0
+        )
+
+    const blueTeam = currentGame.teams[0].id === homeTeam.id ? homeTeam : awayTeam
+    const redTeam = currentGame.teams[1].id === homeTeam.id ? homeTeam : awayTeam
+    const blueTeamWonMatch =
+        eventDetails.match.games.every((game) => game.state === `completed` || game.state === `unneeded`)
+        && blueTeam.result.gameWins > redTeam.result.gameWins
+    const redTeamWonMatch =
+        eventDetails.match.games.every((game) => game.state === `completed` || game.state === `unneeded`)
+        && redTeam.result.gameWins > blueTeam.result.gameWins
+    const completedGameCount = eventDetails.match.games.filter((game) => game.state === `completed`).length
+    const isCurrentGameCompletedByIndex = (gameIndex - 1) === completedGameCount
+
+    const blueTeamWonOnInhibitors = lastWindowFrame.blueTeam.inhibitors > 0 && lastWindowFrame.redTeam.inhibitors === 0
+    const redTeamWonOnInhibitors = lastWindowFrame.redTeam.inhibitors > 0 && lastWindowFrame.blueTeam.inhibitors === 0
+    const winnerSideFromFrame = inferWinnerSideFromWindowFrame(lastWindowFrame)
+    const blueTeamWonByFrame = winnerSideFromFrame === `blue`
+    const redTeamWonByFrame = winnerSideFromFrame === `red`
+
+    const blueTeamWon =
+        isCurrentGameFinalized
+        && (
+            blueTeam.result.outcome === `win`
+            || (cleanSweep && blueTeam.result.gameWins > 0)
+            || blueTeamWonOnInhibitors
+            || blueTeamWonByFrame
+            || (blueTeamWonMatch && isCurrentGameCompletedByIndex)
+        )
+    const redTeamWon =
+        isCurrentGameFinalized
+        && (
+            redTeam.result.outcome === `win`
+            || (cleanSweep && redTeam.result.gameWins > 0)
+            || redTeamWonOnInhibitors
+            || redTeamWonByFrame
+            || (redTeamWonMatch && isCurrentGameCompletedByIndex)
+        )
+
+    return [
+        {
+            outcome: blueTeamWon ? `win` : redTeamWon ? `loss` : undefined,
+        },
+        {
+            outcome: redTeamWon ? `win` : blueTeamWon ? `loss` : undefined,
+        },
+    ]
 }
 
 function getPatchMajorMinorVersion(patchVersion: string) {

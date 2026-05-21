@@ -58,7 +58,9 @@ type Props = {
     inferredHeraldKillCounts?: { blue: number, red: number },
     debugSimulationModeEnabled?: boolean,
     debugSimulationRunning?: boolean,
+    debugShowAllDataEnabled?: boolean,
     onDebugSimulationModeChange?: (isEnabled: boolean) => void,
+    onDebugShowAllDataChange?: (isEnabled: boolean) => void,
     onDebugSimulationToggle?: () => void,
     debugSimulationJumpMinutes?: number[],
     onDebugSimulationJumpToMinute?: (targetMinute: number) => void,
@@ -76,8 +78,10 @@ const DRAGON_SOUL_IMAGE_BY_TYPE: { [dragonType: string]: string } = {
     cloud: CloudDragonSoulImage,
     mountain: MountainDragonSoulImage,
 }
+const DEBUG_PREVIEW_BLUE_DRAGONS = [`infernal`, `ocean`, `infernal`, `cloud`, `elder`]
+const DEBUG_PREVIEW_RED_DRAGONS = [`mountain`, `hextech`, `mountain`, `chemtech`, `elder`]
 
-export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 }, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
+export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventDetails, championNameMap, inferredHeraldKillCounts = { blue: 0, red: 0 }, debugSimulationModeEnabled = false, debugSimulationRunning = false, debugShowAllDataEnabled = false, onDebugSimulationModeChange, onDebugShowAllDataChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
     const [scoreboardLayoutMode, setScoreboardLayoutMode] = useState<ScoreboardLayoutMode>(() => getInitialScoreboardLayoutMode())
@@ -85,6 +89,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     const chatEnabled = chatData ? chatData === `unmute` : false
     const streamData = localStorage.getItem("stream");
     const streamEnabled = streamData ? streamData === `unmute` : false
+    const isDebugAllDataPreviewEnabled = debugSimulationModeEnabled && debugShowAllDataEnabled
 
     useEffect(() => {
         try {
@@ -121,8 +126,12 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
     }
 
     const goldPercentage = getGoldPercentage(firstWindowFrame.blueTeam.totalGold, firstWindowFrame.redTeam.totalGold);
-    const blueDragonIconRenderItems = getDragonIconRenderItems(firstWindowFrame.blueTeam.dragons)
-    const redDragonIconRenderItems = getDragonIconRenderItems(firstWindowFrame.redTeam.dragons, true)
+    const blueDragonIconRenderItems = isDebugAllDataPreviewEnabled
+        ? getDragonIconRenderItems(DEBUG_PREVIEW_BLUE_DRAGONS)
+        : getDragonIconRenderItems(firstWindowFrame.blueTeam.dragons)
+    const redDragonIconRenderItems = isDebugAllDataPreviewEnabled
+        ? getDragonIconRenderItems(DEBUG_PREVIEW_RED_DRAGONS, true)
+        : getDragonIconRenderItems(firstWindowFrame.redTeam.dragons, true)
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, firstWindowFrame.rfc460Timestamp)
     const elapsedGameTimeSeconds = 0
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
@@ -932,6 +941,18 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         </button>
                     </span>
                 ) : null}
+                {debugSimulationModeEnabled ? (
+                    <span className="footer-notes">
+                        <button
+                            type="button"
+                            className="copy-champion-names"
+                            onClick={() => onDebugShowAllDataChange?.(!debugShowAllDataEnabled)}
+                            aria-pressed={debugShowAllDataEnabled}
+                        >
+                            {debugShowAllDataEnabled ? `모든 데이터 표현 ON` : `모든 데이터 표현 OFF`}
+                        </button>
+                    </span>
+                ) : null}
                 {debugSimulationModeEnabled && debugSimulationRunning && debugSimulationJumpMinutes.length > 0
                     ? debugSimulationJumpMinutes.map((targetMinute) => (
                         <span className="footer-notes" key={`debug_sim_jump_${targetMinute}`}>
@@ -959,7 +980,7 @@ export function DisabledGame({ firstWindowFrame, gameMetadata, gameIndex, eventD
                         <div id="video-player" className={chatEnabled ? `chatEnabled` : ``}></div>
                         {getVideoPlayer()}
                     </div> : null}
-                <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={firstWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
+                <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={firstWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} debugShowAllDataEnabled={isDebugAllDataPreviewEnabled} isBasicCompactLayout={isBasicCompactScoreboardLayout} />
             </div>
         </div>
     );

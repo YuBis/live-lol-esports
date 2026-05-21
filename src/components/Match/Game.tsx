@@ -72,7 +72,9 @@ type Props = {
     objectiveTimerBackfillSeed?: ObjectiveTimerBackfillSeed,
     debugSimulationModeEnabled?: boolean,
     debugSimulationRunning?: boolean,
+    debugShowAllDataEnabled?: boolean,
     onDebugSimulationModeChange?: (isEnabled: boolean) => void,
+    onDebugShowAllDataChange?: (isEnabled: boolean) => void,
     onDebugSimulationToggle?: () => void,
     debugSimulationJumpMinutes?: number[],
     onDebugSimulationJumpToMinute?: (targetMinute: number) => void,
@@ -164,10 +166,8 @@ const DRAGON_FIRST_SPAWN_SECONDS = 5 * 60
 const DRAGON_RESPAWN_SECONDS = 5 * 60
 const ELDER_DRAGON_RESPAWN_SECONDS = 6 * 60
 const ELDER_DRAGON_BUFF_DURATION_MS = 150 * 1000
-const FORCE_BARON_UI_PREVIEW = false
-const FORCE_OBJECTIVE_BUFF_HOLDER_PREVIEW = false
-const FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW = false
-const FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW = false
+const DEBUG_PREVIEW_BLUE_DRAGONS = [`infernal`, `ocean`, `infernal`, `cloud`, `elder`]
+const DEBUG_PREVIEW_RED_DRAGONS = [`mountain`, `hextech`, `mountain`, `chemtech`, `elder`]
 const ITEM_PURCHASE_HIGHLIGHT_DURATION_MS = 2000
 const LEVEL_UP_FLASH_DURATION_MS = 2000
 const LEVEL_UP_FLASH_TARGET_LEVELS = [6, 11, 16]
@@ -223,7 +223,7 @@ const PURCHASE_HIGHLIGHT_REGISTERED_TARGET_ITEM_IDS = new Set<number>(
 const PURCHASE_HIGHLIGHT_TRINKET_ITEM_IDS = [3330, 3340, 3348, 3349, 3363, 3364, 6702]
 const PURCHASE_HIGHLIGHT_FALLBACK_CONSUMABLE_ITEM_IDS = [2003, 2010, 2031, 2033, 2055, 2138, 2139, 2140]
 
-export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, windowFrameTimeline, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, inferredHeraldKillTimestampByTeam = { blue: null, red: null }, objectiveTimerBackfillSeed, debugSimulationModeEnabled = false, debugSimulationRunning = false, onDebugSimulationModeChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
+export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, windowFrameTimeline, lastDetailsFrame, gameMetadata, gameIndex, eventDetails, outcome, results, items, runes, championNameMap, backfillStatus = `idle`, inferredHeraldKillCounts = { blue: 0, red: 0 }, inferredHeraldKillTimestampByTeam = { blue: null, red: null }, objectiveTimerBackfillSeed, debugSimulationModeEnabled = false, debugSimulationRunning = false, debugShowAllDataEnabled = false, onDebugSimulationModeChange, onDebugShowAllDataChange, onDebugSimulationToggle, debugSimulationJumpMinutes = [], onDebugSimulationJumpToMinute }: Props) {
     const [gameState, setGameState] = useState<GameState>(GameState[lastWindowFrame.gameState as keyof typeof GameState]);
     const [videoProvider, setVideoProvider] = useState<string>();
     const [videoParameter, setVideoParameter] = useState<string>();
@@ -285,6 +285,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
     const streamEnabled = streamData ? streamData === `unmute` : false
     const effectiveLastWindowTimestamp = playbackTimestamp || lastWindowFrame.rfc460Timestamp
     const isSimulationInProgress = debugSimulationModeEnabled && debugSimulationRunning
+    const isDebugAllDataPreviewEnabled = debugSimulationModeEnabled && debugShowAllDataEnabled
 
     useEffect(() => {
         return applyScoreboardLayoutBodyClassNames(scoreboardLayoutMode)
@@ -1085,12 +1086,12 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
     const formattedGoldLead = formatGoldInK(Math.abs(goldLead))
     const blueBaronPowerPlayClassName = getBaronPowerPlayClassName(`blue`)
     const redBaronPowerPlayClassName = getBaronPowerPlayClassName(`red`)
-    const displayBlueBaronPowerPlay = FORCE_BARON_UI_PREVIEW ? 1500 : baronPowerPlayByTeam.blue
-    const displayRedBaronPowerPlay = FORCE_BARON_UI_PREVIEW ? 900 : baronPowerPlayByTeam.red
-    const displayBlueBaronPowerPlayRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 128 : baronPowerPlayRemainingSecondsByTeam.blue
-    const displayRedBaronPowerPlayRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 79 : baronPowerPlayRemainingSecondsByTeam.red
-    const displayBlueElderBuffRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 95 : elderBuffRemainingSecondsByTeam.blue
-    const displayRedElderBuffRemainingSeconds = FORCE_BARON_UI_PREVIEW ? 47 : elderBuffRemainingSecondsByTeam.red
+    const displayBlueBaronPowerPlay = isDebugAllDataPreviewEnabled ? 1500 : baronPowerPlayByTeam.blue
+    const displayRedBaronPowerPlay = isDebugAllDataPreviewEnabled ? 900 : baronPowerPlayByTeam.red
+    const displayBlueBaronPowerPlayRemainingSeconds = isDebugAllDataPreviewEnabled ? 128 : baronPowerPlayRemainingSecondsByTeam.blue
+    const displayRedBaronPowerPlayRemainingSeconds = isDebugAllDataPreviewEnabled ? 79 : baronPowerPlayRemainingSecondsByTeam.red
+    const displayBlueElderBuffRemainingSeconds = isDebugAllDataPreviewEnabled ? 95 : elderBuffRemainingSecondsByTeam.blue
+    const displayRedElderBuffRemainingSeconds = isDebugAllDataPreviewEnabled ? 47 : elderBuffRemainingSecondsByTeam.red
     const formattedBlueBaronPowerPlay = formatBaronPowerPlayValue(displayBlueBaronPowerPlay)
     const formattedRedBaronPowerPlay = formatBaronPowerPlayValue(displayRedBaronPowerPlay)
     const formattedBlueBaronPowerPlayRemaining = formatBaronPowerPlayRemainingTime(displayBlueBaronPowerPlayRemainingSeconds)
@@ -1157,11 +1158,15 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
     const baronPreSpawnStatusLabel = getBaronPreSpawnStatusLabel(elapsedGameTimeSeconds)
     const blueElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.blueTeam.dragons)
     const redElementalDragonKillCount = getTeamElementalDragonKillCount(lastWindowFrame.redTeam.dragons)
-    const blueDragonIconRenderItems = getDragonIconRenderItems(lastWindowFrame.blueTeam.dragons)
-    const redDragonIconRenderItems = getDragonIconRenderItems(lastWindowFrame.redTeam.dragons, true)
+    const blueDragonIconRenderItems = isDebugAllDataPreviewEnabled
+        ? getDragonIconRenderItems(DEBUG_PREVIEW_BLUE_DRAGONS)
+        : getDragonIconRenderItems(lastWindowFrame.blueTeam.dragons)
+    const redDragonIconRenderItems = isDebugAllDataPreviewEnabled
+        ? getDragonIconRenderItems(DEBUG_PREVIEW_RED_DRAGONS, true)
+        : getDragonIconRenderItems(lastWindowFrame.redTeam.dragons, true)
     const hasBlueBaronPowerPlay = displayBlueBaronPowerPlay !== null
     const hasRedBaronPowerPlay = displayRedBaronPowerPlay !== null
-    const shouldUseElderDragonObjectiveIcon = FORCE_BARON_UI_PREVIEW || blueElementalDragonKillCount >= 4 || redElementalDragonKillCount >= 4
+    const shouldUseElderDragonObjectiveIcon = isDebugAllDataPreviewEnabled || blueElementalDragonKillCount >= 4 || redElementalDragonKillCount >= 4
     const DragonObjectiveStatusIcon = shouldUseElderDragonObjectiveIcon ? ElderDragonSVG : DragonObjectiveSVG
     const BaronOrHeraldObjectiveIcon = shouldShowHeraldInBaronSlot ? `herald` : `baron`
     const dragonObjectiveStatusLabel = getDragonObjectiveStatusLabel(
@@ -1175,8 +1180,8 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
         : elapsedGameTimeSeconds < BARON_FIRST_SPAWN_SECONDS
             ? baronPreSpawnStatusLabel
             : baronObjectiveStatusLabel
-    const displayBaronObjectiveStatusLabel = FORCE_BARON_UI_PREVIEW ? `-1:45` : computedBaronOrHeraldStatusLabel
-    const displayDragonObjectiveStatusLabel = FORCE_BARON_UI_PREVIEW ? `-4:12` : dragonObjectiveStatusLabel
+    const displayBaronObjectiveStatusLabel = isDebugAllDataPreviewEnabled ? `-1:45` : computedBaronOrHeraldStatusLabel
+    const displayDragonObjectiveStatusLabel = isDebugAllDataPreviewEnabled ? `-4:12` : dragonObjectiveStatusLabel
     let inGameTime = getInGameTime(firstWindowFrame.rfc460Timestamp, currentFrameTimestamp)
     const formattedPatchVersion = getFormattedPatchVersion(gameMetadata.patchVersion)
     const championsUrlWithPatchVersion = CHAMPIONS_URL.replace(`PATCH_VERSION`, formattedPatchVersion)
@@ -1457,7 +1462,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
         const metadata = gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1]
         const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
         const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
-        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId, isDebugAllDataPreviewEnabled)
         const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
         return {
             side: `blue` as const,
@@ -1468,7 +1473,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
             deathTimerSeconds,
             objectiveBuffState,
             objectiveBuffClassName,
-            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``,
+            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId, isDebugAllDataPreviewEnabled) ? `player-champion-info-level-flash` : ``,
             killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
             deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
             assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
@@ -1480,7 +1485,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
         const metadata = gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6]
         const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
         const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
-        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+        const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId, isDebugAllDataPreviewEnabled)
         const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
         return {
             side: `red` as const,
@@ -1491,7 +1496,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
             deathTimerSeconds,
             objectiveBuffState,
             objectiveBuffClassName,
-            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``,
+            levelFlashClassName: shouldShowLevelFlash(player.participantId, levelFlashByParticipantId, isDebugAllDataPreviewEnabled) ? `player-champion-info-level-flash` : ``,
             killFlashClassName: kdaFlashByCell[`k_${player.participantId}`] ? `player-stats-kda-flash-kill` : ``,
             deathFlashClassName: kdaFlashByCell[`d_${player.participantId}`] ? `player-stats-kda-flash-death` : ``,
             assistFlashClassName: kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``,
@@ -1888,7 +1893,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                         patchVersion={formattedPatchVersion}
                                                         role={row.metadata.role}
                                                         highlightedItemIds={highlightedPurchasedItemsByParticipantId[row.player.participantId]}
-                                                        forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                        forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                                     />
                                                 </div>
                                             </div>
@@ -1992,7 +1997,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                         patchVersion={formattedPatchVersion}
                                                         role={row.metadata.role}
                                                         highlightedItemIds={highlightedPurchasedItemsByParticipantId[row.player.participantId]}
-                                                        forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                        forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                                     />
                                                 </div>
                                             </div>
@@ -2060,9 +2065,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
                                 const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
                                 const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
-                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId, isDebugAllDataPreviewEnabled)
                                 const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
-                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``
+                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId, isDebugAllDataPreviewEnabled) ? `player-champion-info-level-flash` : ``
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].championId}`}>
                                         <th>
@@ -2093,7 +2098,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                 patchVersion={formattedPatchVersion}
                                                 role={gameMetadata.blueTeamMetadata.participantMetadata[player.participantId - 1].role}
                                                 highlightedItemIds={highlightedPurchasedItemsByParticipantId[player.participantId]}
-                                                forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                             />
                                         </td>
                                         <td className={hasCsLead ? `player-cs-lead-cell` : ``}>
@@ -2177,9 +2182,9 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                 const assistFlashClassName = kdaFlashByCell[`a_${player.participantId}`] ? `player-stats-kda-flash-assist` : ``
                                 const deathTimerSeconds = deathTimerSecondsByParticipantId[player.participantId]
                                 const hasDeathTimer = Number.isFinite(deathTimerSeconds) && Number(deathTimerSeconds) > 0
-                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId)
+                                const objectiveBuffState = hasDeathTimer ? undefined : getDisplayObjectiveBuffState(player.participantId, objectiveBuffsByParticipantId, isDebugAllDataPreviewEnabled)
                                 const objectiveBuffClassName = getObjectiveBuffClassName(objectiveBuffState)
-                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId) ? `player-champion-info-level-flash` : ``
+                                const levelFlashClassName = shouldShowLevelFlash(player.participantId, levelFlashByParticipantId, isDebugAllDataPreviewEnabled) ? `player-champion-info-level-flash` : ``
 
                                 return [(
                                     <tr className="player-stats-row" key={`${gameIndex}_${championsUrlWithPatchVersion}${gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].championId}`}>
@@ -2210,7 +2215,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                 patchVersion={formattedPatchVersion}
                                                 role={gameMetadata.redTeamMetadata.participantMetadata[player.participantId - 6].role}
                                                 highlightedItemIds={highlightedPurchasedItemsByParticipantId[player.participantId]}
-                                                forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                             />
                                         </td>
                                         <td className={hasCsLead ? `player-cs-lead-cell` : ``}>
@@ -2304,7 +2309,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                     role={blueRow.metadata.role}
                                                     reverseWithTrinketFirst={true}
                                                     highlightedItemIds={highlightedPurchasedItemsByParticipantId[blueRow.player.participantId]}
-                                                    forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                    forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                                 />
                                             </td>
                                             <td>
@@ -2371,7 +2376,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                                     patchVersion={formattedPatchVersion}
                                                     role={redRow.metadata.role}
                                                     highlightedItemIds={highlightedPurchasedItemsByParticipantId[redRow.player.participantId]}
-                                                    forcePreviewHighlight={FORCE_ITEM_PURCHASE_HIGHLIGHT_PREVIEW}
+                                                    forcePreviewHighlight={isDebugAllDataPreviewEnabled}
                                                 />
                                             </td>
                                         </tr>
@@ -2457,6 +2462,18 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                         </button>
                     </span>
                 ) : null}
+                {debugSimulationModeEnabled ? (
+                    <span className="footer-notes">
+                        <button
+                            type="button"
+                            className="copy-champion-names"
+                            onClick={() => onDebugShowAllDataChange?.(!debugShowAllDataEnabled)}
+                            aria-pressed={debugShowAllDataEnabled}
+                        >
+                            {debugShowAllDataEnabled ? `모든 데이터 표현 ON` : `모든 데이터 표현 OFF`}
+                        </button>
+                    </span>
+                ) : null}
                 {debugSimulationModeEnabled && debugSimulationRunning && debugSimulationJumpMinutes.length > 0
                     ? debugSimulationJumpMinutes.map((targetMinute) => (
                         <span className="footer-notes" key={`debug_sim_jump_${targetMinute}`}>
@@ -2484,7 +2501,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                         <div id="video-player" className={chatEnabled ? `chatEnabled` : ``}></div>
                         {getVideoPlayer()}
                     </div> : null}
-                <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={lastWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} />
+                <LiveAPIWatcher gameIndex={gameIndex} elapsedGameTimeSeconds={elapsedGameTimeSeconds} gameMetadata={gameMetadata} lastWindowFrame={lastWindowFrame} championsUrlWithPatchVersion={championsUrlWithPatchVersion} blueTeam={eventDetails.match.teams[0]} redTeam={eventDetails.match.teams[1]} debugShowAllDataEnabled={isDebugAllDataPreviewEnabled} isBasicCompactLayout={isBasicCompactScoreboardLayout} />
             </div>
         </div>
     );
@@ -2931,8 +2948,9 @@ function buildObjectiveBuffsByParticipantId(
 function getDisplayObjectiveBuffState(
     participantId: number,
     objectiveBuffsByParticipantId: ObjectiveBuffsByParticipantId,
+    forcePreview = false,
 ): ObjectiveBuffState | undefined {
-    if (FORCE_OBJECTIVE_BUFF_HOLDER_PREVIEW) {
+    if (forcePreview) {
         const previewSlot = ((participantId - 1) % 5) + 1
         if (previewSlot === 1) return { baron: true, elder: false }
         if (previewSlot === 2) return { baron: false, elder: true }
@@ -2953,8 +2971,9 @@ function getObjectiveBuffClassName(objectiveBuffState?: ObjectiveBuffState) {
 function shouldShowLevelFlash(
     participantId: number,
     levelFlashByParticipantId: { [participantId: number]: boolean },
+    forcePreview = false,
 ) {
-    if (FORCE_LEVEL_UP_HIGHLIGHT_PREVIEW) {
+    if (forcePreview) {
         const previewSlot = ((participantId - 1) % 5) + 1
         return previewSlot === 1 || previewSlot === 3 || previewSlot === 5
     }
