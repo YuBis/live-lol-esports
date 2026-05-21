@@ -2795,28 +2795,20 @@ svg.player-champion {
     justify-self: end;
 }
 
-.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--info[class*="enter--top-center"] {
-    animation-name: basic-compact-toast-in-left !important;
-    animation-duration: 280ms !important;
-    animation-timing-function: cubic-bezier(0.22, 1.35, 0.36, 1) !important;
+.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--info[class*="bounce-enter--top-center"] {
+    animation-name: Toastify__bounceInLeft;
 }
 
-.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--error[class*="enter--top-center"] {
-    animation-name: basic-compact-toast-in-right !important;
-    animation-duration: 280ms !important;
-    animation-timing-function: cubic-bezier(0.22, 1.35, 0.36, 1) !important;
+.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--error[class*="bounce-enter--top-center"] {
+    animation-name: Toastify__bounceInRight;
 }
 
-.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--info[class*="exit--top-center"] {
-    animation-name: basic-compact-toast-out-left !important;
-    animation-duration: 180ms !important;
-    animation-timing-function: cubic-bezier(0.4, 0, 1, 1) !important;
+.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--info[class*="bounce-exit--top-center"] {
+    animation-name: Toastify__bounceOutLeft;
 }
 
-.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--error[class*="exit--top-center"] {
-    animation-name: basic-compact-toast-out-right !important;
-    animation-duration: 180ms !important;
-    animation-timing-function: cubic-bezier(0.4, 0, 1, 1) !important;
+.live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-center .Toastify__toast.Toastify__toast--error[class*="bounce-exit--top-center"] {
+    animation-name: Toastify__bounceOutRight;
 }
 
 .live-api-watcher-toast-layer.live-api-watcher-toast-layer-basic-compact .Toastify__toast-container--top-left,
@@ -2903,74 +2895,6 @@ svg.player-champion {
 .toast-kill-feed-divider path,
 .toast-kill-feed-divider g {
     fill: #fff;
-}
-
-@keyframes basic-compact-toast-in-left {
-    0% {
-        transform: translate3d(-2.2rem, 0, 0) scale(0.92);
-        opacity: 0;
-    }
-
-    60% {
-        transform: translate3d(0.35rem, 0, 0) scale(1.04);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translate3d(0, 0, 0) scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes basic-compact-toast-in-right {
-    0% {
-        transform: translate3d(2.2rem, 0, 0) scale(0.92);
-        opacity: 0;
-    }
-
-    60% {
-        transform: translate3d(-0.35rem, 0, 0) scale(1.04);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translate3d(0, 0, 0) scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes basic-compact-toast-out-left {
-    0% {
-        transform: translate3d(0, 0, 0) scale(1);
-        opacity: 1;
-    }
-
-    20% {
-        transform: translate3d(0.14rem, 0, 0) scale(1.01);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translate3d(-2rem, 0, 0) scale(0.94);
-        opacity: 0;
-    }
-}
-
-@keyframes basic-compact-toast-out-right {
-    0% {
-        transform: translate3d(0, 0, 0) scale(1);
-        opacity: 1;
-    }
-
-    20% {
-        transform: translate3d(-0.14rem, 0, 0) scale(1.01);
-        opacity: 1;
-    }
-
-    100% {
-        transform: translate3d(2rem, 0, 0) scale(0.94);
-        opacity: 0;
-    }
 }
 
 .game-selector {
