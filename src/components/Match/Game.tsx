@@ -1509,6 +1509,10 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
     const shouldDisplayWinnerOutcome = !isSimulationInProgress || (Boolean(playbackTimestamp) && lastWindowFrame.gameState === `finished`)
     const blueTeamIsWinner = shouldDisplayWinnerOutcome && outcome?.[0]?.outcome === `win`
     const redTeamIsWinner = shouldDisplayWinnerOutcome && outcome?.[1]?.outcome === `win`
+    const shouldHideTrailingGoldGraphPoint = lastWindowFrame.gameState !== `finished`
+    const renderedGoldGraphPoints = shouldHideTrailingGoldGraphPoint && goldLeadGraphData.points.length > 1
+        ? goldLeadGraphData.points.slice(0, -1)
+        : goldLeadGraphData.points
 
     return (
         <div className={`status-live-game-card ${scoreboardLayoutModeClassName}`}>
@@ -1745,7 +1749,7 @@ export function Game({ firstWindowFrame, lastWindowFrame, playbackTimestamp, win
                                         d={goldLeadGraphData.linePath}
                                         clipPath={`url(#gold-diff-line-red-clip-${gameIndex})`}
                                     />
-                                    {goldLeadGraphData.points.map((point) => (
+                                    {renderedGoldGraphPoints.map((point) => (
                                         <circle
                                             key={`gold_graph_point_${point.elapsedSeconds}_${point.lead}_${point.x}`}
                                             className={point.lead >= 0 ? `gold-difference-graph-point-blue` : `gold-difference-graph-point-red`}

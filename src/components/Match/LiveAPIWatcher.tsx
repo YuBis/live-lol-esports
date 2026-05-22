@@ -323,7 +323,6 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
 
     useEffect(() => {
         if (!debugShowAllDataEnabled) {
-            toast.dismiss()
             DEBUG_PREVIEW_TOAST_IDS.forEach((toastId) => toast.dismiss(toastId))
             return
         }
