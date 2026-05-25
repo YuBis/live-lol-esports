@@ -20,7 +20,17 @@ const baron_blue = require("../../assets/audios/blue_baron_slain.ogg");
 const baron_red = require("../../assets/audios/red_baron_slain.ogg");
 const inib_blue = require("../../assets/audios/blue_inhibitor_destroyed.ogg");
 const inib_red = require("../../assets/audios/red_inhibitor_destroyed.ogg");
+const blue_double = require("../../assets/audios/blue_double.ogg");
+const blue_triple = require("../../assets/audios/blue_triple.ogg");
+const blue_quadra = require("../../assets/audios/blue_quadra.ogg");
+const blue_penta = require("../../assets/audios/blue_penta.ogg");
+const red_double = require("../../assets/audios/red_double.ogg");
+const red_triple = require("../../assets/audios/red_triple.ogg");
+const red_quadra = require("../../assets/audios/red_quadra.ogg");
+const red_penta = require("../../assets/audios/red_penta.ogg");
 const DEBUG_PREVIEW_TOAST_IDS = [`debug_preview_blue_objective`, `debug_preview_red_objective`, `debug_preview_execution`, `debug_preview_kill_feed_blue`, `debug_preview_kill_feed_red`]
+const MULTI_KILL_WINDOW_SECONDS = 10
+const PENTA_AFTER_QUADRA_WINDOW_SECONDS = 30
 
 type Props = {
     lastWindowFrame: WindowFrame,
@@ -82,6 +92,17 @@ type ParticipantDeltaEntry = {
     delta: number;
 }
 
+type TeamKey = `blue` | `red`
+
+type MultiKillTier = 2 | 3 | 4 | 5
+
+type MultiKillTrackerState = {
+    team: TeamKey,
+    killCount: number,
+    lastKillTimestampMs: number,
+    quadraTimestampMs: number | null,
+}
+
 export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeconds, gameMetadata, championsUrlWithPatchVersion, blueTeam, redTeam, debugShowAllDataEnabled = false, isBasicCompactLayout = false }: Props) {
     let trueBlueTeam = blueTeam
     let trueRedTeam = redTeam
@@ -119,6 +140,12 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
         ) > 0,
     })
 
+    const multiKillTrackerByParticipantIdRef = useRef<Map<number, MultiKillTrackerState>>(new Map())
+    const latestRespawnTimestampMsByTeamRef = useRef<{ blue: number | null, red: number | null }>({
+        blue: null,
+        red: null,
+    })
+
     useEffect(() => {
         const soundData = localStorage.getItem("sound");
         const isMuted = soundData !== "unmute";
@@ -128,6 +155,8 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
         const latestMergedTimestampValue = getTimestampValue(latestMergedFrame.rfc460Timestamp)
         if (status.gameIndex !== gameIndex || latestMergedTimestampValue < previousStatusTimestampValue) {
             statusRef.current = buildStatusWatcher(latestMergedFrame, gameIndex, elapsedGameTimeSeconds)
+            multiKillTrackerByParticipantIdRef.current = new Map()
+            latestRespawnTimestampMsByTeamRef.current = { blue: null, red: null }
             return
         }
 
@@ -159,6 +188,7 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
         let soundAlreadyPlaying = isMuted;
         framesToProcess.forEach((frame, frameIndex) => {
             const toastQueue: ToastEvent[] = []
+            const frameTimestampMs = getTimestampValue(frame.rfc460Timestamp)
             const currentTotalKills = {
                 blue: getTeamKillCountFromParticipants(frame.blueTeam.participants),
                 red: getTeamKillCountFromParticipants(frame.redTeam.participants),
@@ -167,6 +197,13 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
             const totalKillsNow = currentTotalKills.blue + currentTotalKills.red
 
             if (status.gameIndex === gameIndex) {
+                updateLatestRespawnTimestampMsByTeam(
+                    status.participants,
+                    { blue: frame.blueTeam.participants, red: frame.redTeam.participants },
+                    frameTimestampMs,
+                    latestRespawnTimestampMsByTeamRef.current,
+                )
+
                 if (status.inhibitors.blue !== frame.blueTeam.inhibitors) {
                     toastQueue.push({ blueTeam: true, sound: inib_red.default, message: "\uC5B5\uC81C\uAE30 \uD30C\uAD34", image: trueBlueTeam.image })
                 }
@@ -208,6 +245,10 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                     frame.redTeam.participants,
                     gameMetadata.redTeamMetadata.participantMetadata,
                     championsUrlWithPatchVersion,
+                    frameTimestampMs,
+                    `blue`,
+                    multiKillTrackerByParticipantIdRef.current,
+                    latestRespawnTimestampMsByTeamRef.current,
                 )
                 if (blueKillToastEvents.length > 0) {
                     toastQueue.push(...blueKillToastEvents)
@@ -222,6 +263,10 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
                     frame.blueTeam.participants,
                     gameMetadata.blueTeamMetadata.participantMetadata,
                     championsUrlWithPatchVersion,
+                    frameTimestampMs,
+                    `red`,
+                    multiKillTrackerByParticipantIdRef.current,
+                    latestRespawnTimestampMsByTeamRef.current,
                 )
                 if (redKillToastEvents.length > 0) {
                     toastQueue.push(...redKillToastEvents)
@@ -265,14 +310,14 @@ export function LiveAPIWatcher({ lastWindowFrame, gameIndex, elapsedGameTimeSeco
 
             if (blueAceTriggered) {
                 const blueKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && toastEvent.blueTeam)
-                if (blueKillToastEvent) {
+                if (blueKillToastEvent && blueKillToastEvent.sound === kill.default) {
                     blueKillToastEvent.sound = blue_ace.default
                 }
             }
 
             if (redAceTriggered) {
                 const redKillToastEvent = toastQueue.find((toastEvent) => toastEvent.eventType === "kill" && !toastEvent.blueTeam)
-                if (redKillToastEvent) {
+                if (redKillToastEvent && redKillToastEvent.sound === kill.default) {
                     redKillToastEvent.sound = red_ace.default
                 }
             }
@@ -525,6 +570,10 @@ function buildKillToastEvents(
     nextOpponentParticipants: WindowParticipant[],
     opponentParticipantMetadata: GameMetadata["blueTeamMetadata"]["participantMetadata"],
     championsUrlWithPatchVersion: string,
+    frameTimestampMs: number,
+    killerTeamKey: TeamKey,
+    multiKillTrackerByParticipantId: Map<number, MultiKillTrackerState>,
+    latestRespawnTimestampMsByTeam: { blue: number | null, red: number | null },
 ): ToastEvent[] {
     const killerEntries = getChampionDeltaEntries(
         previousTeamParticipants,
@@ -555,11 +604,18 @@ function buildKillToastEvents(
     const killers = killerEntries.map((entry) => entry.championIcon)
     const assistants = getOrderedAssistantIcons(killerEntries, assistantEntries)
     const victims = victimEntries.map((entry) => entry.championIcon)
+    const multiKillSound = resolveMultiKillSoundForKillEntries(
+        killerEntries,
+        frameTimestampMs,
+        killerTeamKey,
+        multiKillTrackerByParticipantId,
+        latestRespawnTimestampMsByTeam,
+    )
 
     return [
         {
             blueTeam,
-            sound: kill.default,
+            sound: multiKillSound || kill.default,
             eventType: "kill",
             assistants,
             killers,
@@ -806,6 +862,133 @@ function getTimestampValue(timestamp: string | Date | undefined) {
     if (!timestamp) return 0
     const value = new Date(timestamp).getTime()
     return Number.isFinite(value) ? value : 0
+}
+
+function updateLatestRespawnTimestampMsByTeam(
+    previousParticipantsByTeam: { blue: WindowParticipant[], red: WindowParticipant[] },
+    nextParticipantsByTeam: { blue: WindowParticipant[], red: WindowParticipant[] },
+    timestampMs: number,
+    latestRespawnTimestampMsByTeam: { blue: number | null, red: number | null },
+) {
+    if (!Number.isFinite(timestampMs)) return
+
+    ;([`blue`, `red`] as TeamKey[]).forEach((teamKey) => {
+        const previousParticipants = previousParticipantsByTeam[teamKey]
+        const nextParticipants = nextParticipantsByTeam[teamKey]
+        if (hasRespawnTransition(previousParticipants, nextParticipants)) {
+            latestRespawnTimestampMsByTeam[teamKey] = timestampMs
+        }
+    })
+}
+
+function hasRespawnTransition(previousParticipants: WindowParticipant[], nextParticipants: WindowParticipant[]) {
+    const participantCount = Math.min(previousParticipants.length, nextParticipants.length)
+    for (let participantIndex = 0; participantIndex < participantCount; participantIndex += 1) {
+        const previousParticipant = previousParticipants[participantIndex]
+        const nextParticipant = nextParticipants[participantIndex]
+        if (Number(previousParticipant.currentHealth) <= 0 && Number(nextParticipant.currentHealth) > 0) {
+            return true
+        }
+    }
+    return false
+}
+
+function resolveMultiKillSoundForKillEntries(
+    killerEntries: ParticipantDeltaEntry[],
+    killTimestampMs: number,
+    killerTeamKey: TeamKey,
+    multiKillTrackerByParticipantId: Map<number, MultiKillTrackerState>,
+    latestRespawnTimestampMsByTeam: { blue: number | null, red: number | null },
+) {
+    if (!Number.isFinite(killTimestampMs)) return undefined
+
+    let highestMultiKillTier: MultiKillTier | null = null
+    killerEntries.forEach((killerEntry) => {
+        for (let killIndex = 0; killIndex < killerEntry.delta; killIndex += 1) {
+            const multiKillTier = updateMultiKillTrackerAndGetTier(
+                killerEntry.participantId,
+                killerTeamKey,
+                killTimestampMs,
+                multiKillTrackerByParticipantId,
+                latestRespawnTimestampMsByTeam,
+            )
+            if (multiKillTier === null) continue
+            if (highestMultiKillTier === null || multiKillTier > highestMultiKillTier) {
+                highestMultiKillTier = multiKillTier
+            }
+        }
+    })
+
+    if (highestMultiKillTier === null) return undefined
+    return getMultiKillSoundByTier(killerTeamKey, highestMultiKillTier)
+}
+
+function updateMultiKillTrackerAndGetTier(
+    participantId: number,
+    teamKey: TeamKey,
+    killTimestampMs: number,
+    multiKillTrackerByParticipantId: Map<number, MultiKillTrackerState>,
+    latestRespawnTimestampMsByTeam: { blue: number | null, red: number | null },
+): MultiKillTier | null {
+    const previousState = multiKillTrackerByParticipantId.get(participantId)
+    const shouldResetByTeamChange = previousState?.team !== teamKey
+    const deltaSecondsFromLastKill = previousState
+        ? Math.max(0, (killTimestampMs - previousState.lastKillTimestampMs) / 1000)
+        : Number.POSITIVE_INFINITY
+
+    let canContinueMultiKill = Boolean(previousState && !shouldResetByTeamChange)
+    if (canContinueMultiKill) {
+        const lastKillWithinDefaultWindow = deltaSecondsFromLastKill <= MULTI_KILL_WINDOW_SECONDS
+        const isAttemptingPentaExtension = previousState!.killCount === 4 && deltaSecondsFromLastKill <= PENTA_AFTER_QUADRA_WINDOW_SECONDS
+        const opponentTeamKey: TeamKey = teamKey === `blue` ? `red` : `blue`
+        const latestOpponentRespawnTimestampMs = latestRespawnTimestampMsByTeam[opponentTeamKey]
+        const hasEnemyRespawnedSinceQuadra = Boolean(
+            isAttemptingPentaExtension
+            && previousState!.quadraTimestampMs !== null
+            && latestOpponentRespawnTimestampMs !== null
+            && latestOpponentRespawnTimestampMs >= previousState!.quadraTimestampMs
+            && latestOpponentRespawnTimestampMs <= killTimestampMs
+        )
+
+        canContinueMultiKill = lastKillWithinDefaultWindow || (isAttemptingPentaExtension && !hasEnemyRespawnedSinceQuadra)
+    }
+
+    const nextKillCount = canContinueMultiKill
+        ? Math.min(5, (previousState?.killCount || 1) + 1)
+        : 1
+
+    const nextQuadraTimestampMs = canContinueMultiKill
+        ? (
+            nextKillCount === 4
+                ? killTimestampMs
+                : (previousState?.quadraTimestampMs || null)
+        )
+        : (nextKillCount === 4 ? killTimestampMs : null)
+
+    const nextState: MultiKillTrackerState = {
+        team: teamKey,
+        killCount: nextKillCount,
+        lastKillTimestampMs: killTimestampMs,
+        quadraTimestampMs: nextQuadraTimestampMs,
+    }
+    multiKillTrackerByParticipantId.set(participantId, nextState)
+
+    if (nextKillCount < 2) return null
+    return nextKillCount as MultiKillTier
+}
+
+function getMultiKillSoundByTier(teamKey: TeamKey, tier: MultiKillTier) {
+    if (teamKey === `blue`) {
+        if (tier === 2) return blue_double.default
+        if (tier === 3) return blue_triple.default
+        if (tier === 4) return blue_quadra.default
+        return blue_penta.default
+    }
+
+    if (tier === 2) return red_double.default
+    if (tier === 3) return red_triple.default
+    if (tier === 4) return red_quadra.default
+    return red_penta.default
 }
 
 
