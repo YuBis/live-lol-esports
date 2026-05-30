@@ -131,13 +131,32 @@ const LEAGUE_FAMILY_RULES: LeagueFamilyRule[] = [
     },
 ]
 
+const MAX_DATE_SEARCH_PAGE_COUNT = 24
+const MIN_EXTRA_PAGES_AFTER_DATE_HIT = 2
+const RECENT_DATE_AVAILABILITY_DAYS = 14
+const QUICK_DATE_OFFSETS: Array<{ key: string, label: string, offsetDays: number }> = [
+    { key: `today`, label: `오늘`, offsetDays: 0 },
+    { key: `yesterday`, label: `어제`, offsetDays: -1 },
+    { key: `week_ago`, label: `7일 전`, offsetDays: -7 },
+]
+
 export function EventsSchedule() {
     const [liveEvents, setLiveEvents] = useState<ScheduleEvent[]>([])
     const [last7DaysEvents, setLast7DaysEvents] = useState<ScheduleEvent[]>([])
     const [next7DaysEvents, setNext7DaysEvents] = useState<ScheduleEvent[]>([])
+    const [selectedDateEvents, setSelectedDateEvents] = useState<ScheduleEvent[]>([])
     const [selectedLeagueFilter, setSelectedLeagueFilter] = useState<LeagueFilter>("ALL")
     const [leagueImages, setLeagueImages] = useState<LeagueImageMap>({})
+    const [leagues, setLeagues] = useState<LeagueSummary[]>([])
     const [teamRanksByEventKey, setTeamRanksByEventKey] = useState<TeamRanksByEventKey>({})
+    const [isDateSearchFolded, setIsDateSearchFolded] = useState<boolean>(true)
+    const [selectedDateValue, setSelectedDateValue] = useState<string>(() => getDateInputValue(new Date()))
+    const [isDateSearchLoading, setIsDateSearchLoading] = useState<boolean>(false)
+    const [isDateAvailabilityLoading, setIsDateAvailabilityLoading] = useState<boolean>(false)
+    const [hasLoadedDateAvailability, setHasLoadedDateAvailability] = useState<boolean>(false)
+    const [availableDateKeys, setAvailableDateKeys] = useState<string[]>([])
+    const [hasDateSearchResult, setHasDateSearchResult] = useState<boolean>(false)
+    const [dateSearchErrorMessage, setDateSearchErrorMessage] = useState<string>(``)
 
     useEffect(() => {
         let isMounted = true
@@ -153,6 +172,8 @@ export function EventsSchedule() {
 
                 const schedule: Schedule = scheduleResponse.data.data.schedule
                 const leagues: LeagueSummary[] = leaguesResponse.data.data.leagues
+                setLeagues(leagues)
+                setAvailableDateKeys(extractUniqueEventDateKeys(schedule.events))
 
                 console.groupCollapsed(`Scheduled Matches: ${schedule.events.length}`)
                 console.table(schedule.events)
@@ -172,6 +193,18 @@ export function EventsSchedule() {
                 const rankings = await buildTeamRanksByEvent(schedule.events, leagues)
                 if (!isMounted) return
                 setTeamRanksByEventKey(rankings)
+
+                setIsDateAvailabilityLoading(true)
+                fetchScheduleDateAvailability().then((dateKeys) => {
+                    if (!isMounted) return
+                    setAvailableDateKeys(dateKeys)
+                    setHasLoadedDateAvailability(true)
+                }).catch((error) => {
+                    console.error(error)
+                }).finally(() => {
+                    if (!isMounted) return
+                    setIsDateAvailabilityLoading(false)
+                })
             } catch (error) {
                 console.error(error)
             }
@@ -183,6 +216,48 @@ export function EventsSchedule() {
             isMounted = false
         }
     }, [])
+
+    async function handleSearchByDate(dateValue: string) {
+        if (!dateValue || isDateSearchLoading) return
+
+        if (hasLoadedDateAvailability && availableDateKeys.length > 0 && !availableDateKeys.includes(dateValue)) {
+            setDateSearchErrorMessage(``)
+            setSelectedDateEvents([])
+            setHasDateSearchResult(true)
+            return
+        }
+
+        setDateSearchErrorMessage(``)
+        setIsDateSearchLoading(true)
+        setHasDateSearchResult(true)
+        try {
+            const dateEvents = await fetchScheduleEventsByDate(dateValue)
+            setSelectedDateEvents(dateEvents)
+
+            if (leagues.length > 0 && dateEvents.length > 0) {
+                const dateEventRanksByKey = await buildTeamRanksByEvent(dateEvents, leagues)
+                setTeamRanksByEventKey((previousState) => ({
+                    ...previousState,
+                    ...dateEventRanksByKey,
+                }))
+            }
+        } catch (error) {
+            console.error(error)
+            setSelectedDateEvents([])
+            setDateSearchErrorMessage(`선택한 날짜의 경기를 불러오지 못했습니다.`)
+        } finally {
+            setIsDateSearchLoading(false)
+        }
+    }
+
+    async function handleSearchBySelectedDate() {
+        await handleSearchByDate(selectedDateValue)
+    }
+
+    async function handleQuickDateButtonClick(dateValue: string) {
+        setSelectedDateValue(dateValue)
+        await handleSearchByDate(dateValue)
+    }
 
     document.title = "LoL Live Esports";
 
@@ -209,8 +284,34 @@ export function EventsSchedule() {
     const listedEvents = getUniqueScheduleEvents(
         scheduledEvents
             .flatMap((scheduledEvent) => scheduledEvent.scheduleEvents)
+            .concat(selectedDateEvents)
             .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
     )
+    const selectedDateFilteredEvents = selectedDateEvents
+        .filter((scheduleEvent) => scheduleEvent.league.slug !== "tft_esports")
+        .filter((scheduleEvent) => matchesLeagueFilter(scheduleEvent, selectedLeagueFilter))
+        .sort((a, b) => {
+            const timeSort = new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+            if (timeSort !== 0) return timeSort
+            return a.league.name.localeCompare(b.league.name)
+        })
+    const selectedDateDisplayLabel = formatDateDisplayLabel(selectedDateValue)
+    const availableDateKeySet = new Set(availableDateKeys)
+    const selectedDateHasAvailableEvents = availableDateKeySet.has(selectedDateValue)
+    const quickDateButtons = QUICK_DATE_OFFSETS.map((quickDateOffset) => {
+        const dateValue = getRelativeDateInputValue(quickDateOffset.offsetDays)
+        return {
+            ...quickDateOffset,
+            dateValue,
+            hasData: availableDateKeySet.has(dateValue),
+            isActive: selectedDateValue === dateValue,
+        }
+    })
+    const recentDateAvailabilityItems = buildRecentDateAvailabilityItems(RECENT_DATE_AVAILABILITY_DAYS).map((availabilityItem) => ({
+        ...availabilityItem,
+        hasData: availableDateKeySet.has(availabilityItem.dateValue),
+        isActive: selectedDateValue === availabilityItem.dateValue,
+    }))
 
     return (
         <div className="orders-container">
@@ -233,6 +334,95 @@ export function EventsSchedule() {
                     )
                 })}
             </div>
+            <div className={`schedule-date-search-panel ${isDateSearchFolded ? `folded` : `expanded`}`}>
+                <button
+                    type="button"
+                    className="schedule-date-search-toggle"
+                    onClick={() => setIsDateSearchFolded((previousState) => !previousState)}
+                    aria-expanded={!isDateSearchFolded}
+                    aria-controls="schedule-date-search-controls"
+                >
+                    <span className="schedule-date-search-toggle-icon" aria-hidden="true">{isDateSearchFolded ? `▾` : `▴`}</span>
+                    <span>날짜별 경기 보기</span>
+                </button>
+                {!isDateSearchFolded ? (
+                    <div className="schedule-date-search-controls" id="schedule-date-search-controls">
+                        <div className="schedule-date-search-quick-buttons">
+                            {quickDateButtons.map((quickDateButton) => (
+                                <button
+                                    key={quickDateButton.key}
+                                    type="button"
+                                    className={`schedule-date-quick-button ${quickDateButton.isActive ? `active` : ``} ${quickDateButton.hasData ? `has-data` : `no-data`}`}
+                                    onClick={() => void handleQuickDateButtonClick(quickDateButton.dateValue)}
+                                >
+                                    <span>{quickDateButton.label}</span>
+                                    <span className="schedule-date-quick-button-date">{formatDateDisplayLabel(quickDateButton.dateValue)}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <label htmlFor="schedule-date-input">날짜</label>
+                        <input
+                            id="schedule-date-input"
+                            type="date"
+                            value={selectedDateValue}
+                            onChange={(event) => setSelectedDateValue(event.target.value)}
+                        />
+                        <span className={`schedule-date-selection-indicator ${selectedDateHasAvailableEvents ? `has-data` : `no-data`}`}>
+                            {selectedDateHasAvailableEvents ? `데이터 있음` : `데이터 없음`}
+                        </span>
+                        <button
+                            type="button"
+                            className="schedule-date-search-button"
+                            onClick={handleSearchBySelectedDate}
+                            disabled={isDateSearchLoading || !selectedDateValue}
+                        >
+                            {isDateSearchLoading ? `불러오는 중...` : `불러오기`}
+                        </button>
+                        <div className="schedule-date-availability-strip">
+                            {recentDateAvailabilityItems.map((availabilityItem) => (
+                                <button
+                                    key={`availability_${availabilityItem.dateValue}`}
+                                    type="button"
+                                    className={`schedule-date-availability-chip ${availabilityItem.hasData ? `has-data` : `no-data`} ${availabilityItem.isActive ? `active` : ``}`}
+                                    onClick={() => setSelectedDateValue(availabilityItem.dateValue)}
+                                >
+                                    <span className="schedule-date-availability-chip-label">{availabilityItem.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                        {isDateAvailabilityLoading ? (
+                            <span className="schedule-date-availability-loading">날짜 데이터 인덱스를 불러오는 중...</span>
+                        ) : null}
+                    </div>
+                ) : null}
+            </div>
+            {hasDateSearchResult ? (
+                <div>
+                    <h2 className="games-of-day">선택 날짜 경기 ({selectedDateDisplayLabel})</h2>
+                    {dateSearchErrorMessage ? (
+                        <h3 className="schedule-date-search-error">{dateSearchErrorMessage}</h3>
+                    ) : selectedDateFilteredEvents.length > 0 ? (
+                        <div className="games-list-container">
+                            <div className="games-list-items">
+                                {selectedDateFilteredEvents.map((scheduleEvent) => {
+                                    const leagueLogoUrl = leagueImages[scheduleEvent.league.slug]
+                                    const teamRanks = teamRanksByEventKey[getEventKey(scheduleEvent)]
+                                    return (
+                                        <EventCard
+                                            key={`selected_${scheduleEvent.match.id}_${scheduleEvent.startTime}`}
+                                            scheduleEvent={scheduleEvent}
+                                            leagueLogoUrl={leagueLogoUrl}
+                                            teamRanks={teamRanks}
+                                        />
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ) : (
+                        <h3 className="schedule-date-search-empty">선택한 날짜에 표시할 경기가 없습니다.</h3>
+                    )}
+                </div>
+            ) : null}
             {scheduledEvents.map(scheduledEvent => (
                 <EventCards
                     key={scheduledEvent.title}
@@ -571,4 +761,131 @@ function filterByNext7Days(scheduleEvent: ScheduleEvent) {
     } else {
         return false;
     }
+}
+
+function getDateInputValue(date: Date) {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, `0`)
+    const day = String(date.getDate()).padStart(2, `0`)
+    return `${year}-${month}-${day}`
+}
+
+function formatDateDisplayLabel(dateValue: string) {
+    if (!dateValue) return `-`
+    const [year, month, day] = dateValue.split(`-`).map((token) => Number(token))
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return dateValue
+    return `${year}.${String(month).padStart(2, `0`)}.${String(day).padStart(2, `0`)}`
+}
+
+function getLocalDateKey(dateLike: Date | string) {
+    const date = new Date(dateLike)
+    if (!Number.isFinite(date.getTime())) return ``
+    return getDateInputValue(date)
+}
+
+function isEventOnDateValue(scheduleEvent: ScheduleEvent, targetDateValue: string) {
+    return getLocalDateKey(scheduleEvent.startTime) === targetDateValue
+}
+
+async function fetchScheduleEventsByDate(targetDateValue: string) {
+    const uniqueEventsByKey = new Map<string, ScheduleEvent>()
+    const visitedPageTokens = new Set<string>([`__root__`])
+    const pageTokenQueue: string[] = [``]
+    let fetchedPageCount = 0
+    let pagesFetchedAfterDateHit = 0
+
+    while (pageTokenQueue.length > 0 && fetchedPageCount < MAX_DATE_SEARCH_PAGE_COUNT) {
+        const currentPageToken = pageTokenQueue.shift() || ``
+        const scheduleResponse = await getScheduleResponse(currentPageToken || undefined)
+        const schedule: Schedule = scheduleResponse.data.data.schedule
+        fetchedPageCount += 1
+
+        let hasDateHitInCurrentPage = false
+        schedule.events.forEach((scheduleEvent) => {
+            if (!isEventOnDateValue(scheduleEvent, targetDateValue)) return
+            hasDateHitInCurrentPage = true
+            uniqueEventsByKey.set(getEventKey(scheduleEvent), scheduleEvent)
+        })
+
+        if (hasDateHitInCurrentPage) {
+            pagesFetchedAfterDateHit = 0
+        } else if (uniqueEventsByKey.size > 0) {
+            pagesFetchedAfterDateHit += 1
+            if (pagesFetchedAfterDateHit >= MIN_EXTRA_PAGES_AFTER_DATE_HIT) {
+                break
+            }
+        }
+
+        const olderPageToken = String(schedule.pages?.older || ``)
+        const newerPageToken = String(schedule.pages?.newer || ``)
+        if (olderPageToken && !visitedPageTokens.has(olderPageToken)) {
+            visitedPageTokens.add(olderPageToken)
+            pageTokenQueue.push(olderPageToken)
+        }
+        if (newerPageToken && !visitedPageTokens.has(newerPageToken)) {
+            visitedPageTokens.add(newerPageToken)
+            pageTokenQueue.push(newerPageToken)
+        }
+    }
+
+    return Array.from(uniqueEventsByKey.values())
+}
+
+async function fetchScheduleDateAvailability() {
+    const availableDateKeySet = new Set<string>()
+    const visitedPageTokens = new Set<string>([`__root__`])
+    const pageTokenQueue: string[] = [``]
+    let fetchedPageCount = 0
+
+    while (pageTokenQueue.length > 0 && fetchedPageCount < MAX_DATE_SEARCH_PAGE_COUNT) {
+        const currentPageToken = pageTokenQueue.shift() || ``
+        const scheduleResponse = await getScheduleResponse(currentPageToken || undefined)
+        const schedule: Schedule = scheduleResponse.data.data.schedule
+        fetchedPageCount += 1
+
+        extractUniqueEventDateKeys(schedule.events).forEach((dateKey) => availableDateKeySet.add(dateKey))
+
+        const olderPageToken = String(schedule.pages?.older || ``)
+        const newerPageToken = String(schedule.pages?.newer || ``)
+        if (olderPageToken && !visitedPageTokens.has(olderPageToken)) {
+            visitedPageTokens.add(olderPageToken)
+            pageTokenQueue.push(olderPageToken)
+        }
+        if (newerPageToken && !visitedPageTokens.has(newerPageToken)) {
+            visitedPageTokens.add(newerPageToken)
+            pageTokenQueue.push(newerPageToken)
+        }
+    }
+
+    return Array.from(availableDateKeySet.values()).sort((leftDateKey, rightDateKey) => leftDateKey.localeCompare(rightDateKey))
+}
+
+function extractUniqueEventDateKeys(scheduleEvents: ScheduleEvent[]) {
+    const dateKeySet = new Set<string>()
+    scheduleEvents.forEach((scheduleEvent) => {
+        const dateKey = getLocalDateKey(scheduleEvent.startTime)
+        if (!dateKey) return
+        dateKeySet.add(dateKey)
+    })
+    return Array.from(dateKeySet.values())
+}
+
+function getRelativeDateInputValue(offsetDays: number) {
+    const date = new Date()
+    date.setDate(date.getDate() + offsetDays)
+    return getDateInputValue(date)
+}
+
+function buildRecentDateAvailabilityItems(days: number) {
+    const safeDays = Math.max(1, days)
+    const items: Array<{ dateValue: string, label: string }> = []
+    for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+        const date = new Date()
+        date.setDate(date.getDate() - dayOffset)
+        items.push({
+            dateValue: getDateInputValue(date),
+            label: `${date.getMonth() + 1}/${date.getDate()}`,
+        })
+    }
+    return items
 }

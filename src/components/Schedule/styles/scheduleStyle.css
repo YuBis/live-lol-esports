@@ -408,6 +408,214 @@
     background: rgba(100, 203, 158, 0.25);
 }
 
+.schedule-date-search-panel {
+    width: min(52rem, 100%);
+    margin: 0 auto 1.2rem;
+    border: 1px solid var(--gray-line);
+    border-radius: 0.85rem;
+    background: var(--card-color);
+    overflow: hidden;
+}
+
+.schedule-date-search-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.schedule-date-search-toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.schedule-date-search-toggle-icon {
+    font-size: 0.82rem;
+    opacity: 0.8;
+}
+
+.schedule-date-search-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    padding: 0.75rem 1rem 0.95rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.schedule-date-search-quick-buttons {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45rem;
+}
+
+.schedule-date-quick-button {
+    border: 1px solid var(--gray-line);
+    border-radius: 0.65rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    padding: 0.38rem 0.5rem;
+    min-width: 5.7rem;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+
+.schedule-date-quick-button:hover {
+    transform: translateY(-1px);
+}
+
+.schedule-date-quick-button.has-data {
+    border-color: rgba(100, 203, 158, 0.7);
+    box-shadow: 0 0 0 1px rgba(100, 203, 158, 0.45) inset;
+    background: rgba(100, 203, 158, 0.16);
+}
+
+.schedule-date-quick-button.no-data {
+    opacity: 0.7;
+}
+
+.schedule-date-quick-button.active {
+    border-color: #4ea9ff;
+    box-shadow: 0 0 0 1px rgba(78, 169, 255, 0.55) inset;
+}
+
+.schedule-date-quick-button-date {
+    font-size: 0.7rem;
+    opacity: 0.82;
+}
+
+.schedule-date-search-controls > label {
+    color: var(--text);
+    opacity: 0.8;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.schedule-date-search-controls > input[type="date"] {
+    min-width: 10.6rem;
+    height: 2rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--gray-line);
+    background: rgba(0, 0, 0, 0.18);
+    color: var(--text);
+    padding: 0 0.55rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.schedule-date-selection-indicator {
+    min-width: 4.9rem;
+    text-align: center;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.36rem 0.65rem;
+    border: 1px solid transparent;
+}
+
+.schedule-date-selection-indicator.has-data {
+    color: #d6f6d2;
+    border-color: rgba(100, 203, 158, 0.55);
+    background: rgba(22, 122, 88, 0.25);
+}
+
+.schedule-date-selection-indicator.no-data {
+    color: #f6d8db;
+    border-color: rgba(246, 162, 168, 0.55);
+    background: rgba(168, 56, 72, 0.24);
+}
+
+.schedule-date-search-button {
+    height: 2rem;
+    border: 1px solid var(--green-positive);
+    border-radius: 999px;
+    background: rgba(100, 203, 158, 0.2);
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 800;
+    padding: 0 0.95rem;
+    cursor: pointer;
+}
+
+.schedule-date-search-button:disabled {
+    opacity: 0.65;
+    cursor: default;
+}
+
+.schedule-date-availability-strip {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.35rem;
+}
+
+.schedule-date-availability-chip {
+    min-width: 3.1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    opacity: 0.75;
+}
+
+.schedule-date-availability-chip.has-data {
+    border-color: rgba(100, 203, 158, 0.62);
+    background: rgba(100, 203, 158, 0.2);
+    opacity: 1;
+}
+
+.schedule-date-availability-chip.active {
+    border-color: rgba(78, 169, 255, 0.65);
+    box-shadow: 0 0 0 1px rgba(78, 169, 255, 0.45) inset;
+}
+
+.schedule-date-availability-chip-label {
+    line-height: 1;
+}
+
+.schedule-date-availability-loading {
+    width: 100%;
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--text);
+    opacity: 0.75;
+}
+
+.schedule-date-search-empty,
+.schedule-date-search-error {
+    margin: 0.5rem 0 1.1rem;
+    text-align: center;
+    font-size: 0.96rem;
+    color: var(--text);
+    opacity: 0.84;
+}
+
+.schedule-date-search-error {
+    color: #f6a2a8;
+    opacity: 1;
+}
+
 @media (max-width: 560px) {
     .games-list-items {
         grid-template-columns: minmax(0, 1fr);
@@ -416,5 +624,13 @@
     .schedule-event-card {
         width: 100%;
         min-height: 17.8rem;
+    }
+
+    .schedule-date-search-panel {
+        width: 100%;
+    }
+
+    .schedule-date-search-controls {
+        justify-content: flex-start;
     }
 }

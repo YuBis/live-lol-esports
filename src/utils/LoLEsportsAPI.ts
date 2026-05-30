@@ -24,8 +24,12 @@ let count = 0
 let failureCount = 0
 const LIVE_STATS_STARTING_TIME_STEP_SECONDS = 10
 
-export function getScheduleResponse() {
-    return axios.get(`${API_URL_PERSISTED}/getSchedule?hl=en-US`, {
+export function getScheduleResponse(pageToken?: string) {
+    return axios.get(`${API_URL_PERSISTED}/getSchedule`, {
+        params: {
+            "hl": "en-US",
+            ...(pageToken ? { "pageToken": pageToken } : {}),
+        },
         headers: {
             "x-api-key": API_KEY,
         },
